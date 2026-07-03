@@ -1,5 +1,9 @@
-from mcp_server.server import start
-from knowledge_base.base import enable
+import os
+from knowledge_base.base import KnowledgeBase
 
-start()
-enable()
+
+path = os.path.join(os.getcwd(), "tests/")
+
+kb = KnowledgeBase(path)
+kb.refresh()
+kb.run()
