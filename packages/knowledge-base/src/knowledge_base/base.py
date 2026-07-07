@@ -1,6 +1,7 @@
 import os
 import json
 import time
+from knowledge_space.constants import APP_NAME
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
@@ -10,20 +11,20 @@ class InternalFileRecord:
     Indice (registro/record) interno.
     """
 
-    def __init__(self, recordPath):
+    def __init__(self, record_path):
         """
         Crea il file JSON formattato per salvare i path dei file.
         """
-        self.recordPath = recordPath
-        if not os.path.exists(self.recordPath):
+        self.record_path = record_path
+        if not os.path.exists(self.record_path):
             data = {"files": []}
             json_str = json.dumps(data, indent=4)
-            with open(self.recordPath, "w") as f:
+            with open(self.record_path, "w") as f:
                 f.write(json_str)
 
 
     def get_files(self):
-        with open(self.recordPath, "r") as f:
+        with open(self.record_path, "r") as f:
             data = json.load(f)
         
         return data["files"]
@@ -31,7 +32,7 @@ class InternalFileRecord:
 
     def add_file(self, path: str):
         entry = {path:os.path.getmtime(path)}
-        with open(self.recordPath, "r+") as f:
+        with open(self.record_path, "r+") as f:
             data = json.load(f)
             data["files"].append(entry)
             f.seek(0)
@@ -42,7 +43,7 @@ class InternalFileRecord:
         files = self.get_files()
         files = [entry for entry in files if path not in entry]
 
-        with open(self.recordPath, "w") as f:
+        with open(self.record_path, "w") as f:
             json.dump({"files": files}, f, indent=4)
 
 
@@ -53,7 +54,7 @@ class InternalFileRecord:
                 entry[path] = os.path.getmtime(path)
                 break
 
-        with open(self.recordPath, "w") as f:
+        with open(self.record_path, "w") as f:
             json.dump({"files": files}, f, indent=4)
 
 
@@ -61,30 +62,34 @@ class KnowledgeBase:
     """
     Gestisce l'indicizzazione nel database vettoriale. Avvia il processo ad ogni modifica dell'indice interno.
     """
-    configPath = os.path.expanduser("~/.config/KnowledgeSpace/")
-    recordPath = os.path.expanduser("~/.config/KnowledgeSpace/internal_index.json")
+    
+    xdg_config = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    xdg_state  = os.environ.get("XDG_STATE_HOME")  or os.path.expanduser("~/.local/state")
+    xdg_data   = os.environ.get("XDG_DATA_HOME")   or os.path.expanduser("~/.local/share")
+
+    config_path = os.path.join(xdg_config, "", "config.json")
+    record_path = os.path.join(xdg_state, f"{APP_NAME}", "internal_index.json")
+    chunks_dir  = os.path.join(xdg_data, f"{APP_NAME}", "chunks")
 
     def __init__(self, watchDirectory: str):
         self.watchDirectory = watchDirectory
         self.observer = Observer()
 
         # Crea cartella di configurazione
-        os.makedirs(KnowledgeBase.configPath, exist_ok=True)
+        os.makedirs(KnowledgeBase.config_path, exist_ok=True)
 
-        self.internalFileRecord = InternalFileRecord(KnowledgeBase.recordPath)
+        self.internalFileRecord = InternalFileRecord(KnowledgeBase.record_path)
 
 
     def add(self, filePath: str):
-        print(f"Adding file {filePath}...")
-
+        print(f"Adding file {filePath}...")        
 
     def remove(self, filePath: str):
         print(f"Removing file {filePath}...")
 
-
     def refresh(self):
         """
-        Controlla che la cartella creata dall'utente e l'indice in recordPath siano in sync. Da utilizzare all'avvio della base di conoscenza e per refresh manuali.
+        Controlla che la cartella creata dall'utente e l'indice in record_path siano in sync. Da utilizzare all'avvio della base di conoscenza e per refresh manuali.
         """
 
         files = self.internalFileRecord.get_files()
@@ -103,6 +108,7 @@ class KnowledgeBase:
                 # print(f"{e.name} viene inserito nella base e nel registro\n")
                 self.add(path)
                 self.internalFileRecord.add_file(path)
+
             elif entry not in files:
                 # print(f"{path} sarà rimosso dalla base, verrà aggiunto di nuovo e viene aggiornata la entry\n")
                 self.remove(path)
