@@ -62,61 +62,70 @@ class KnowledgeBase:
     """
     Gestisce l'indicizzazione nel database vettoriale. Avvia il processo ad ogni modifica dell'indice interno.
     """
-    
+
     xdg_config = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
     xdg_state  = os.environ.get("XDG_STATE_HOME")  or os.path.expanduser("~/.local/state")
     xdg_data   = os.environ.get("XDG_DATA_HOME")   or os.path.expanduser("~/.local/share")
 
-    config_path = os.path.join(xdg_config, "", "config.json")
-    record_path = os.path.join(xdg_state, f"{APP_NAME}", "internal_index.json")
-    chunks_dir  = os.path.join(xdg_data, f"{APP_NAME}", "chunks")
+    config_dir  = os.path.join(xdg_config, f"{APP_NAME}")
+    index_dir   = os.path.join(xdg_state, f"{APP_NAME}")
+    chunks_dir  = os.path.join(xdg_data, f"{APP_NAME}")
+
+    internal_index_path = os.path.join(index_dir, "internal_index.json")
+    config_path =  os.path.join(config_dir, "config.json")
+
 
     def __init__(self, watchDirectory: str):
         self.watchDirectory = watchDirectory
         self.observer = Observer()
 
-        # Crea cartella di configurazione
-        os.makedirs(KnowledgeBase.config_path, exist_ok=True)
+        # Crea cartelle di configurazione e salvataggio dati (index & chunk)
+        os.makedirs(KnowledgeBase.config_dir, exist_ok=True)
+        os.makedirs(KnowledgeBase.index_dir, exist_ok=True)
+        os.makedirs(KnowledgeBase.chunks_dir, exist_ok=True)
 
-        self.internalFileRecord = InternalFileRecord(KnowledgeBase.record_path)
+        self.internalFileRecord = InternalFileRecord(KnowledgeBase.internal_index_path)
 
 
     def add(self, filePath: str):
-        print(f"Adding file {filePath}...")        
+        print(f"Adding file {filePath}...")     
+
 
     def remove(self, filePath: str):
         print(f"Removing file {filePath}...")
+        
 
     def refresh(self):
         """
         Controlla che la cartella creata dall'utente e l'indice in record_path siano in sync. Da utilizzare all'avvio della base di conoscenza e per refresh manuali.
         """
 
-        files = self.internalFileRecord.get_files()
+        internal_files = self.internalFileRecord.get_files()
 
         # Controllo file nuovi/modificati/spostati
-        for e in os.scandir(self.watchDirectory):
-            if not e.is_file():
-                continue
+        for (dirpath, dirnames, filenames) in os.walk(self.watchDirectory):
+            for filename in filenames:
+                path = os.path.join(dirpath, filename)
+                if not os.path.isfile(path):
+                    continue
 
-            path = e.path
-            mtime = os.path.getmtime(path)
-            entry = {path:mtime}
+                mtime = os.path.getmtime(path)
+                entry = {path:mtime}
 
-            # Confronto stringa/chiave dei dizionari
-            if not any(path in f for f in files):
-                # print(f"{e.name} viene inserito nella base e nel registro\n")
-                self.add(path)
-                self.internalFileRecord.add_file(path)
+                # Confronto stringa/chiave dei dizionari
+                if not any(path in in_f for in_f in internal_files):
+                    # print(f"{f.name} viene inserito nella base e nel registro\n")
+                    self.add(path)
+                    self.internalFileRecord.add_file(path)
 
-            elif entry not in files:
-                # print(f"{path} sarà rimosso dalla base, verrà aggiunto di nuovo e viene aggiornata la entry\n")
-                self.remove(path)
-                self.add(path)
-                self.internalFileRecord.update_file(path)
+                elif entry not in internal_files:
+                    # print(f"{path} sarà rimosso dalla base, verrà aggiunto di nuovo e viene aggiornata la entry\n")
+                    self.remove(path)
+                    self.add(path)
+                    self.internalFileRecord.update_file(path)
                 
         # Controllo file eliminati
-        for entry in files:
+        for entry in internal_files:
             for path in entry:
                 if not os.path.exists(path):
                     # print(f"{path} viene rimosso dalla base e dal registro")
@@ -152,32 +161,7 @@ class Handler(FileSystemEventHandler):
 
     
     def on_any_event(self, event):
-        if event.is_directory:
-            return None
+        # if event.is_directory:
+        #     return
 
-        path = event.src_path
-            
-        if event.event_type == 'created':
-            self.kb.add(path)
-            self.kb.internalFileRecord.add_file(path)
-
-        elif event.event_type == 'modified':
-            # Watchdog genera questo evento anche quando un file viene creato (in alcuni casi)
-            # Per colpa della libreria quindi si controlla che il file che genera l'evento non sia appena stato aggiunto
-
-            if {path:os.path.getmtime(path)} in self.kb.internalFileRecord.get_files():
-                return
-            
-            self.kb.remove(path)
-            self.kb.add(path)
-            self.kb.internalFileRecord.update_file(path)
-            
-        elif event.event_type == 'deleted':
-            self.kb.remove(path)
-            self.kb.internalFileRecord.remove_file(path)
-
-        elif event.event_type == 'moved':
-            self.kb.remove(path)
-            self.kb.internalFileRecord.remove_file(path)
-            self.kb.add(event.dest_path)
-            self.kb.internalFileRecord.add_file(event.dest_path)
+        self.kb.refresh()
