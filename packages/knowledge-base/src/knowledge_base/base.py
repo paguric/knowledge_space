@@ -8,7 +8,7 @@ from watchdog.events import FileSystemEventHandler
 
 class InternalFileRecord:
     """
-    Indice (registro/record) interno.
+    Indice interno.
     """
 
     def __init__(self, record_path):
@@ -93,11 +93,11 @@ class KnowledgeBase:
 
     def remove(self, filePath: str):
         print(f"Removing file {filePath}...")
-        
+
 
     def refresh(self):
         """
-        Controlla che la cartella creata dall'utente e l'indice in record_path siano in sync. Da utilizzare all'avvio della base di conoscenza e per refresh manuali.
+        Aggiorna l'indice interno e la base di conoscenza (chunk + database vettoriale).
         """
 
         internal_files = self.internalFileRecord.get_files()
@@ -148,13 +148,6 @@ class KnowledgeBase:
 
 
 class Handler(FileSystemEventHandler):
-    """
-    Gestisce i cambiamenti nella base di conoscenza esterna gestita dall'utente.
-    - Ogni nuovo file aggiunto dall'utente viene convertito in chunk markdown e aggiunto direttamente al database vettoriale.
-    - I file eliminati vengono rimossi dal database vettoriale e dalla cache interna di chunk in markdown.
-    - I file modificati vengono prima eliminati, poi sono aggiunti come se fossero mai stati presenti (non è un approccio incrementale: per ogni modifica si ricalcolano da zero chunk ed embedding vettoriali).
-    """
-
     def __init__(self, kb: KnowledgeBase):
         self.kb = kb
         super().__init__()
