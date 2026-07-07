@@ -2,60 +2,28 @@ import os
 import json
 import time
 from knowledge_space.constants import APP_NAME
+from tinydb import TinyDB, Query
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
 
 class InternalFileRecord:
-    """
-    Indice interno.
-    """
-
     def __init__(self, record_path):
-        """
-        Crea il file JSON formattato per salvare i path dei file.
-        """
-        self.record_path = record_path
-        if not os.path.exists(self.record_path):
-            data = {"files": []}
-            json_str = json.dumps(data, indent=4)
-            with open(self.record_path, "w") as f:
-                f.write(json_str)
-
+        self.db = TinyDB(record_path)  # crea/apre il DB
 
     def get_files(self):
-        with open(self.record_path, "r") as f:
-            data = json.load(f)
-        
-        return data["files"]
-
+        return self.db.all()
 
     def add_file(self, path: str):
-        entry = {path:os.path.getmtime(path)}
-        with open(self.record_path, "r+") as f:
-            data = json.load(f)
-            data["files"].append(entry)
-            f.seek(0)
-            json.dump(data, f, indent=4)
+        self.db.insert({"path": path, "mtime": os.path.getmtime(path)})
 
-    
     def remove_file(self, path: str):
-        files = self.get_files()
-        files = [entry for entry in files if path not in entry]
+        File = Query()
+        self.db.remove(File.path == path)
 
-        with open(self.record_path, "w") as f:
-            json.dump({"files": files}, f, indent=4)
-
-
-    def update_file(self, path:str):
-        files = self.get_files()
-        for entry in files:
-            if path in entry:
-                entry[path] = os.path.getmtime(path)
-                break
-
-        with open(self.record_path, "w") as f:
-            json.dump({"files": files}, f, indent=4)
+    def update_file(self, path: str):
+        File = Query()
+        self.db.update({"mtime": os.path.getmtime(path)}, File.path == path)
 
 
 class KnowledgeBase:
