@@ -1,118 +1,60 @@
+import logging
 import os
 import json
 import time
-from knowledge_space.constants import APP_NAME
-from tinydb import TinyDB, Query
+
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
 
-class InternalFileRecord:
-    def __init__(self, record_path):
-        self.db = TinyDB(record_path)  # crea/apre il DB
-
-    def get_files(self):
-        return self.db.all()
-
-    def add_file(self, path: str):
-        self.db.insert({"path": path, "mtime": os.path.getmtime(path)})
-
-    def remove_file(self, path: str):
-        File = Query()
-        self.db.remove(File.path == path)
-
-    def update_file(self, path: str):
-        File = Query()
-        self.db.update({"mtime": os.path.getmtime(path)}, File.path == path)
-
-
 class KnowledgeBase:
-    """
-    Gestisce l'indicizzazione nel database vettoriale. Avvia il processo ad ogni modifica dell'indice interno.
-    """
-
-    xdg_config = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
-    xdg_state  = os.environ.get("XDG_STATE_HOME")  or os.path.expanduser("~/.local/state")
-    xdg_data   = os.environ.get("XDG_DATA_HOME")   or os.path.expanduser("~/.local/share")
-
-    config_dir  = os.path.join(xdg_config, f"{APP_NAME}")
-    index_dir   = os.path.join(xdg_state, f"{APP_NAME}")
-    chunks_dir  = os.path.join(xdg_data, f"{APP_NAME}")
-
-    internal_index_path = os.path.join(index_dir, "internal_index.json")
-    config_path =  os.path.join(config_dir, "config.json")
-
-
-    def __init__(self, watchDirectory: str):
-        self.watchDirectory = watchDirectory
+    def __init__(self, name: str, watch_dir: str):
+        self.name = name
+        self.watch_dir = watch_dir
+        self.files = {}
+        self.index = None # TODO: indice vettoriale (connessione al database)
         self.observer = Observer()
 
-        # Crea cartelle di configurazione e salvataggio dati (index & chunk)
-        os.makedirs(KnowledgeBase.config_dir, exist_ok=True)
-        os.makedirs(KnowledgeBase.index_dir, exist_ok=True)
-        os.makedirs(KnowledgeBase.chunks_dir, exist_ok=True)
 
-        self.internalFileRecord = InternalFileRecord(KnowledgeBase.internal_index_path)
-
-
-    def add(self, filePath: str):
-        print(f"Adding file {filePath}...")     
-
-
-    def remove(self, filePath: str):
-        print(f"Removing file {filePath}...")
-
-
-    def refresh(self):
+    def add(self, file_path: str):
         """
-        Aggiorna l'indice interno e la base di conoscenza (chunk + database vettoriale).
+        Aggiunge o aggiorna file. L'aggiornamento non è incrementale; ripete da zero l'intero processo di aggiunta.
         """
+        mtime = os.path.getmtime(file_path)
 
-        internal_files = self.internalFileRecord.get_files()
+        if file_path in [file_paths for file_paths in self.files]:
+            if mtime == self.files[file_path]:
+                return # file già nella base
+            
+            logging.info(f"\"{self.name}\": aggiorno il file {file_path}")
+            self.remove(file_path)
 
-        # Controllo file nuovi/modificati/spostati
-        for (dirpath, dirnames, filenames) in os.walk(self.watchDirectory):
-            for filename in filenames:
-                path = os.path.join(dirpath, filename)
-                if not os.path.isfile(path):
-                    continue
+        logging.info(f"\"{self.name}\": aggiungo il file {file_path}")
+        
+        self.files[file_path] = mtime
+        # TODO: calcolo chunk e aggiunta a index vettoriale
 
-                mtime = os.path.getmtime(path)
-                entry = {path:mtime}
 
-                # Confronto stringa/chiave dei dizionari
-                if not any(path in in_f for in_f in internal_files):
-                    # print(f"{f.name} viene inserito nella base e nel registro\n")
-                    self.add(path)
-                    self.internalFileRecord.add_file(path)
+    def remove(self, file_path: str):
+        logging.info(f"\"{self.name}\": rimuovo il file {file_path}")
 
-                elif entry not in internal_files:
-                    # print(f"{path} sarà rimosso dalla base, verrà aggiunto di nuovo e viene aggiornata la entry\n")
-                    self.remove(path)
-                    self.add(path)
-                    self.internalFileRecord.update_file(path)
-                
-        # Controllo file eliminati
-        for entry in internal_files:
-            for path in entry:
-                if not os.path.exists(path):
-                    # print(f"{path} viene rimosso dalla base e dal registro")
-                    self.remove(path)
-                    self.internalFileRecord.remove_file(path)
+        del self.files[file_path]
+        # TODO: rimozione chunk ed embedding nell'index vettoriale
 
 
     def run(self):
         event_handler = Handler(self)
-        self.observer.schedule(event_handler, self.watchDirectory, recursive = True)
+        self.observer.schedule(event_handler, self.watch_dir, recursive = True)
         self.observer.start()
-        try:
-            while True:
-                time.sleep(5)
-        except:
-            self.observer.stop()
-            print("KnowledgeBase Stopped")
+    
 
+    def stop(self):
+        self.observer.stop()
         self.observer.join()
+
+    
+    def get_files(self):
+        return self.files
 
 
 class Handler(FileSystemEventHandler):
@@ -122,7 +64,21 @@ class Handler(FileSystemEventHandler):
 
     
     def on_any_event(self, event):
-        # if event.is_directory:
-        #     return
+        if event.is_directory:
+            return None
 
-        self.kb.refresh()
+        elif event.event_type == 'created':
+            self.kb.add(event.src_path)
+
+        elif event.event_type == 'modified':
+            if os.path.getmtime(event.src_path) == self.kb.files[event.src_path]:
+                return
+
+            self.kb.add(event.src_path)
+
+        elif event.event_type == 'deleted':
+            self.kb.remove(event.src_path)
+
+        elif event.event_type == 'moved':
+            self.kb.remove(event.src_path)
+            self.kb.add(event.dest_path)
