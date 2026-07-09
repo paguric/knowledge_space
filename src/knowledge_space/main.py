@@ -1,12 +1,21 @@
 import logging
 import os
+import sys
 import time
 
-from knowledge_space.settings import LOG_FILE
+from knowledge_space.settings import CONFIG_FILE, CHUNKS_DIR, DB_DIR, KB_INDEX_FILE, LOG_FILE
 from knowledge_base.base import KnowledgeBase
 
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+
+
+# Crea cartelle di configurazione e salvataggio dati (chunk, DB, KB persistite)
+os.makedirs(os.path.abspath(CHUNKS_DIR), exist_ok=True)
+os.makedirs(os.path.abspath(DB_DIR), exist_ok=True)
+os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+os.makedirs(os.path.dirname(KB_INDEX_FILE), exist_ok=True)
+os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
 
 
 logging.basicConfig(level=logging.INFO, filename=LOG_FILE, filemode="w",
@@ -18,7 +27,10 @@ logging.getLogger('httpx').setLevel(logging.WARNING)
 logging.getLogger('httpcore').setLevel(logging.WARNING)
 
 
-workspace_dir = os.path.join(os.getcwd(), "tests/")
+# Imposta il path del workspace via CLI
+args = sys.argv[1:]
+workspace_dir = os.path.join(os.getcwd(), args[0])
+
 bases = []
 
 
