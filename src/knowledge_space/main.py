@@ -3,9 +3,11 @@ import os
 import sys
 import time
 
+from knowledge_space.config import ConfigManager
 from knowledge_space.settings import CONFIG_FILE, CHUNKS_DIR, DB_DIR, KB_INDEX_FILE, LOG_FILE
 from knowledge_base.base import KnowledgeBase
 
+from huggingface_hub import login
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
@@ -17,6 +19,10 @@ os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
 os.makedirs(os.path.dirname(KB_INDEX_FILE), exist_ok=True)
 os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
 
+# Crea file di configurazione default se non esiste ancora
+if not os.path.isfile(CONFIG_FILE):
+    ConfigManager.create_default_config_file()
+
 
 logging.basicConfig(level=logging.INFO, filename=LOG_FILE, filemode="w",
                     format="%(asctime)s - %(levelname)s - %(message)s")
@@ -25,6 +31,16 @@ logging.basicConfig(level=logging.INFO, filename=LOG_FILE, filemode="w",
 # https://github.com/langchain-ai/langchain/issues/14065
 logging.getLogger('httpx').setLevel(logging.WARNING)
 logging.getLogger('httpcore').setLevel(logging.WARNING)
+
+
+# Carica le preferenze dell'utente
+cf = ConfigManager()
+
+# Prova ad effettuare il login in HF con chiave API da configurazione
+try:
+    login(token=cf.get_hf_key())
+except:
+    pass
 
 
 # Imposta il path del workspace via CLI
