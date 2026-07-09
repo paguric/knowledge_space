@@ -12,13 +12,18 @@ from watchdog.events import FileSystemEventHandler
 logging.basicConfig(level=logging.INFO, filename=LOG_FILE, filemode="w",
                     format="%(asctime)s - %(levelname)s - %(message)s")
 
+# Disabilita logging di Langchain
+# https://github.com/langchain-ai/langchain/issues/14065
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('httpcore').setLevel(logging.WARNING)
+
 
 workspace_dir = os.path.join(os.getcwd(), "tests/")
 bases = []
 
 
 # Inizializza le basi già create
-logging.info("Inizializzando basi")
+logging.info("Inizializzo basi già presenti su disco")
 for (dirpath, dirnames, filenames) in os.walk(workspace_dir):
     for dirname in dirnames:
         path = os.path.join(dirpath, dirname)
@@ -48,7 +53,7 @@ for (dirpath, dirnames, filenames) in os.walk(workspace_dir):
         base.run()
         logging.info(f"Base \"{base.name}\" avviata con successo")
         logging.info(f"Contenuti di \"{base.name}\": {base.get_files()}")
-
+logging.info("Finito di inizializzare basi su disco")
 
 
 class Handler(FileSystemEventHandler):

@@ -21,3 +21,4 @@ os.makedirs(KnowledgeBase.chunks_dir, exist_ok=True)
 """
 
 LOG_FILE = os.path.join(XDG_STATE, APP_NAME, "log")
+DB_DIR = os.path.join(XDG_STATE, APP_NAME, "chroma_langchain_db")
