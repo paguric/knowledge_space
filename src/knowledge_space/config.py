@@ -1,23 +1,30 @@
 import json
 import os
 
-from knowledge_space.settings import CONFIG_FILE
-
-
 
 class ConfigManager:
-    def __init__(self):
-        with open(CONFIG_FILE, "r") as f:
+    def __init__(self, config_file: str):
+        """
+        config_file = path al file di configurazione sulla macchina dell'utente.
+        """
+        self.config_file = config_file
+
+        if not os.path.isfile(self.config_file):
+            self.create_default_config_file()
+
+        with open(self.config_file, "r") as f:
             preferences = json.load(f)
             self.hf_key = preferences["hf_key"]
-    
 
-    @staticmethod
-    def create_default_config_file():
-        os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+    
+    def create_default_config_file(self):
+        """
+        Crea file di configurazione default.
+        """
+        os.makedirs(os.path.dirname(self.config_file), exist_ok=True)
 
         data = {"hf_key":"NONE"}
-        with open(CONFIG_FILE, "w") as f:
+        with open(self.config_file, "w") as f:
             json.dump(data, f, indent=4)
 
 
