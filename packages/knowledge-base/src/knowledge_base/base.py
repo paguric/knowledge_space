@@ -55,6 +55,7 @@ class KnowledgeBase:
         """
         Aggiunge o aggiorna file. L'aggiornamento non è incrementale; ripete da zero l'intero processo di aggiunta.
         """
+        self.busy = True
         mtime = os.path.getmtime(file_path)
 
         if file_path in self.get_files():
@@ -74,12 +75,20 @@ class KnowledgeBase:
         # Generazione chunk
         logging.info(f"\"{self.name}\": divido in chunk {file_path}")
         chunks = fixed_size_chunking(md_text)
+
+        # Setup cartella dei chunk
+        self.chunks_dir = os.path.join(chunks_dir, self.name)
+        file_name = os.path.basename(file_path).rsplit('.', 1)[0]
+        file_chunks_dir = os.path.join(self.chunks_dir, f"{file_name}")
+        os.makedirs(file_chunks_dir, exist_ok=True)
+        
+        # Salvataggio chunk su disco
         for i, chunk in enumerate(chunks):
-            with open(os.path.join(chunks_dir, f"{os.path.basename(file_path).rsplit('.', 1)[0]}_{i}.md"), "w", encoding="utf-8") as f:
+            with open(os.path.join(file_chunks_dir, f"{file_name}_chunk_{i}.md"), "w") as f:
                 f.write(chunk)
 
         # Aggiunta all'index vettoriale
-        documents = [Document(page_content=chunk) for chunk in chunks]
+        documents = [Document(page_content=chunk, metadata={"source": file_path},) for chunk in chunks]
         uuids = [str(uuid4()) for _ in range(len(documents))]
         logging.info(f"\"{self.name}\": aggiungo all'indice vettoriale (calcolo embedding) {file_path}")
         self.vector_store.add_documents(documents=documents, ids=uuids)
@@ -90,6 +99,7 @@ class KnowledgeBase:
         self.files.insert({"knowledge_base": self.name, "path": file_path, "mtime": mtime, "added": str(datetime.datetime.now())})
 
         logging.info(f"\"{self.name}\": {file_path} aggiunto correttamente")
+        self.busy = False
 
 
     def remove(self, file_path: str):
@@ -125,9 +135,12 @@ class KnowledgeBase:
 
 
     def get_vector_store_content(self):
-        return self.vector_store.get()
+        """
+        Restituisce contenuti della collezione nel vector store con chunk, metadati ed embedding.
+        """
+        return self.vector_store.get(include=["embeddings", "metadatas", "documents"])
 
-
+        
 class Handler(FileSystemEventHandler):
     def __init__(self, kb: KnowledgeBase):
         self.kb = kb

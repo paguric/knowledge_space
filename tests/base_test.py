@@ -11,6 +11,7 @@ from knowledge_space.config import ConfigManager
 from knowledge_space import ks_logging
 
 import chromadb
+from tinydb import TinyDB, Query
 
 
 # Setup: crea i file e le cartelle dove salvare chunk, indice dei file, indice vettoriale, log e chunk.
@@ -74,27 +75,52 @@ def test_kb():
     client = chromadb.PersistentClient(path=db_dir)
 
 
-def test_add_file(test_kb):
-    data_url = "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf" # https://www.oclc.org/content/dam/oclc/dewey/versions/print/intro.pdf
-    response = requests.get(data_url)
+def add_file(kb: KnowledgeBase, file_url: str, file_name: str):
+    response = requests.get(file_url)
 
-    with open(os.path.join(test_kb.watch_dir, "dummy.pdf"), mode="wb") as f:
+    with open(os.path.join(kb.watch_dir, file_name), mode="wb") as f:
         f.write(response.content)
 
-    # Attende calcolo chunk
-    logging.info(f"Attendo aggiunta file...")
-    time.sleep(10)
+
+def test_add_file(test_kb):
+    # files = ["https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf", "https://www.oclc.org/content/dam/oclc/dewey/versions/print/intro.pdf"]
+    files = ["https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf"]
+
+    # Casi base: file pdf con contenuti e nomi "normali"
+    for i, f in enumerate(files):
+        base_file_name = f"file_{i}"
+        file_name = f"{base_file_name}.pdf"
+        add_file(test_kb, f, file_name)
+        time.sleep(2) # attende che la base diventi busy
+
+        # Attende calcolo chunk
+        i = 0
+        while(test_kb.busy):
+            logging.info(f"Attendo aggiunta file {i}...")
+            i += 1
+            time.sleep(1)
+
+        # Verifica contenuti collezione chromadb (chunk aggiunti con metadati ed embedding)
+        collection_contents = test_kb.get_vector_store_content()
+        assert collection_contents["documents"]
+        assert collection_contents["metadatas"]
+        assert collection_contents["embeddings"].any()
+        # logging.info(f"Contenuti collezione vector store: \"{collection_contents}\"")
+
+        # Verifica indice dei file tinydb
+        Base = Query()
+        assert test_kb.files.search(Base.knowledge_base == "kb1" and Base.path == os.path.join(test_kb.watch_dir, file_name))
+
+        # Verifica presenza chunk su FS
+        file_chunks_dir = os.path.join(chunks_dir, test_kb.name, base_file_name)
+        for e in os.scandir(file_chunks_dir):
+            if e.is_file():
+                with open(e, "r") as f:
+                    assert f.read() in collection_contents["documents"]
     
-    # Verifica chunk
+    # Edge cases: file con contenuti e nomi "strani"
     # TODO
 
-    # Verifica contenuti collezione chromadb
-    collection_contents = test_kb.get_vector_store_content()
-    logging.info(f"Contenuti collezione vector store: \"{collection_contents}\"")
-
-    # Verifica indice dei file tinydb
-    # TODO
-    
 
 def test_add_dir():
     pass
