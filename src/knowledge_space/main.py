@@ -18,7 +18,7 @@ from watchdog.events import FileSystemEventHandler
 setup_folders()
 knowledge_base.base.db_dir = DB_DIR
 knowledge_base.base.files_index = FILES_INDEX
-knowledge_base.base.files_index = CHUNKS_DIR
+knowledge_base.base.chunks_dir = CHUNKS_DIR
 
 
 # Setup logging
