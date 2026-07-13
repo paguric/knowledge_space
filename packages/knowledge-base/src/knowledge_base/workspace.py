@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 
 from knowledge_base.base import KnowledgeBase
 
@@ -30,6 +31,9 @@ class Workspace:
                 self.bases.append(base)
 
         logging.info("Finito di inizializzare basi su disco")
+
+        self.domains = TinyDB(domains_index)
+
         logging.info(f"Nuovo Workspace creato: \"{self.name}\", watch_dir={self.watch_dir}")
         logging.info(f"Contenuti di \"{self.name}\": {[base for base in self.bases]}")
 

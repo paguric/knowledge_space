@@ -8,11 +8,14 @@ XDG_STATE  = os.environ.get("XDG_STATE_HOME")  or os.path.expanduser("~/.local/s
 XDG_DATA   = os.environ.get("XDG_DATA_HOME")   or os.path.expanduser("~/.local/share")
 
 
-CONFIG_FILE   = os.path.join(XDG_CONFIG, APP_NAME, "config.json")
-CHUNKS_DIR    = os.path.join(XDG_DATA, APP_NAME, "chunks")
-DB_DIR        = os.path.join(XDG_STATE, APP_NAME, "chroma_langchain_db")
-FILES_INDEX   = os.path.join(XDG_STATE, APP_NAME, "bases.json")
-LOG_FILE      = os.path.join(XDG_STATE, APP_NAME, "log")
+CONFIG_FILE      = os.path.join(XDG_CONFIG, APP_NAME, "config.json")
+CHUNKS_DIR       = os.path.join(XDG_DATA, APP_NAME, "chunks")
+DB_DIR           = os.path.join(XDG_STATE, APP_NAME, "chroma_langchain_db")
+FILES_INDEX      = os.path.join(XDG_STATE, APP_NAME, "files.json")
+BASES_INDEX      = os.path.join(XDG_STATE, APP_NAME, "bases.json")
+DOMAINS_INDEX    = os.path.join(XDG_STATE, APP_NAME, "domains.json")
+WORKSPACES_INDEX = os.path.join(XDG_STATE, APP_NAME, "workspaces.json")
+LOG_FILE         = os.path.join(XDG_STATE, APP_NAME, "log")
 
 
 def setup_folders():
@@ -23,4 +26,5 @@ def setup_folders():
     os.makedirs(os.path.abspath(DB_DIR), exist_ok=True)
     os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
     os.makedirs(os.path.dirname(FILES_INDEX), exist_ok=True)
+    os.makedirs(os.path.dirname(DOMAINS_INDEX), exist_ok=True)
     os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
