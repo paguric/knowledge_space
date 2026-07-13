@@ -72,7 +72,7 @@ def test_kb():
     os.makedirs(db_dir, exist_ok=True)
     shutil.rmtree(files_index, ignore_errors=True)
 
-    client = chromadb.PersistentClient(path=db_dir)
+    client = chromadb.PersistentClient(path=db_dir) # ???
 
 
 def add_file(kb: KnowledgeBase, file_url: str, file_name: str):

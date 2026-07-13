@@ -3,7 +3,9 @@ import os
 import sys
 import time
 
-from knowledge_base.base import KnowledgeBase
+import knowledge_base.base
+from knowledge_base.workspace import Workspace
+from knowledge_base.domain import Domain
 from knowledge_space.config import ConfigManager
 from knowledge_space.constants import APP_NAME
 from knowledge_space import ks_logging
@@ -35,59 +37,11 @@ except:
     pass
 
 
-# Imposta il path del workspace principale via CLI
+# Crea workspace via argomenti CLI
 args = sys.argv[1:]
-workspace_dir = os.path.join(os.getcwd(), args[0]) # ???
+workspaces = [Workspace(os.path.join(os.getcwd(), arg)) for arg in args]
+for ws in workspaces:
+    ws.run()
 
-bases = []
-
-
-# Inizializza le basi già create
-logging.info("Inizializzo basi già presenti su disco")
-
-for (dirpath, dirnames, filenames) in os.walk(workspace_dir):
-    for dirname in dirnames:
-        path = os.path.join(dirpath, dirname)
-        logging.info(f"Creo nuova base \"{os.path.basename(path)}\"")
-        base = KnowledgeBase(os.path.basename(path), path)
-
-        bases.append(base)
-        base.run()
-
-logging.info("Finito di inizializzare basi su disco")
-
-
-class Handler(FileSystemEventHandler):
-    """
-    Inizializza istanze di KnowledgeBase all'aggiunta di nuove KB/progetti nel workspace.
-    """
-    def on_any_event(self, event):
-        if not event.is_directory or not event.event_type == 'created':
-            return
-
-        path = event.src_path
-        logging.info(f"Creo nuova base \"{os.path.basename(path)}\"")
-        base = KnowledgeBase(os.path.basename(path), path)
-
-        # Se l'utente fra drag-&-drop di una cartella non vuota, bisogna riempire la base
-        # Se la cartella contiene sotto cartelle, diventa un processo ricorsivo (crea nuova base, riempila, ripeti)
-
-        bases.append(base)
-        base.run()
-
-
-event_handler = Handler()
-
-observer = Observer()
-observer.schedule(event_handler, workspace_dir, recursive = True)
-observer.start()
-try:
-    while True:
-        time.sleep(5)
-except:
-    observer.stop()
-    for b in bases:
-        b.stop()
-    logging.info("Fermato main observer")
-
-observer.join()
+while(1):
+    time.sleep(10)
