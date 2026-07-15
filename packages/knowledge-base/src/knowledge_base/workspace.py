@@ -14,9 +14,9 @@ domains_index = "nd"
 
 
 class Workspace:
-    def __init__(self, dir_path: str):
-        self.name =  os.path.basename(os.path.normpath(dir_path))
-        self.watch_dir = dir_path
+    def __init__(self, watch_dir: str, name: str = None, bases = None):
+        self.name =  os.path.basename(os.path.normpath(watch_dir))
+        self.watch_dir = watch_dir
         self.bases = []
 
         # Inizializza le basi già create
@@ -26,7 +26,7 @@ class Workspace:
             for dirname in dirnames:
                 path = os.path.join(dirpath, dirname)
                 logging.info(f"Creo nuova base \"{os.path.basename(path)}\"")
-                base = KnowledgeBase(os.path.basename(path), path)
+                base = KnowledgeBase(path)
                 # base.base_ready.wait()
 
                 self.bases.append(base)
@@ -55,6 +55,22 @@ class Workspace:
         self.observer.join()
 
 
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "watch_dir": self.watch_dir,
+            "bases": self.bases
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            name=data["name"],
+            watch_dir=data["watch_dir"],
+            bases=data["bases"]
+        )
+
+
 class Handler(FileSystemEventHandler):
     """
     Inizializza istanze di KnowledgeBase all'aggiunta di nuove KB/progetti nel workspace.
@@ -71,6 +87,6 @@ class Handler(FileSystemEventHandler):
         path = event.src_path
         
         logging.info(f"Creo nuova base \"{os.path.basename(path)}\"")
-        base = KnowledgeBase(os.path.basename(path), path)
+        base = KnowledgeBase(path)
         self.ws.bases.append(base)
         base.run()

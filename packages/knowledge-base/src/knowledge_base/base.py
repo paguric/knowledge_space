@@ -24,8 +24,8 @@ chunks_dir = "nd"
 
 
 class KnowledgeBase:
-    def __init__(self, name: str, watch_dir: str):
-        self.name = name
+    def __init__(self, watch_dir: str):
+        self.name = os.path.basename(os.path.normpath(watch_dir))
         self.watch_dir = watch_dir
         self.ready = threading.Event() # semaforo per attendere fine aggiunta file
 
