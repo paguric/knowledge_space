@@ -1,6 +1,6 @@
 import logging
 import os
-import time
+import threading
 
 from knowledge_base.base import KnowledgeBase
 
@@ -27,6 +27,7 @@ class Workspace:
                 path = os.path.join(dirpath, dirname)
                 logging.info(f"Creo nuova base \"{os.path.basename(path)}\"")
                 base = KnowledgeBase(os.path.basename(path), path)
+                # base.base_ready.wait()
 
                 self.bases.append(base)
 

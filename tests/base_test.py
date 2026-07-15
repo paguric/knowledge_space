@@ -3,7 +3,7 @@ import os
 import pytest
 import requests
 import shutil
-import time
+import threading
 
 import knowledge_base.base
 from knowledge_base.base import KnowledgeBase
@@ -91,14 +91,8 @@ def test_add_file(test_kb):
         base_file_name = f"file_{i}"
         file_name = f"{base_file_name}.pdf"
         add_file(test_kb, f, file_name)
-        time.sleep(2) # attende che la base diventi busy
-
-        # Attende calcolo chunk
-        i = 0
-        while(test_kb.busy):
-            logging.info(f"Attendo aggiunta file {i}...")
-            i += 1
-            time.sleep(1)
+        
+        test_kb.ready.wait() # attende aggiunta
 
         # Verifica contenuti collezione chromadb (chunk aggiunti con metadati ed embedding)
         collection_contents = test_kb.get_vector_store_content()
