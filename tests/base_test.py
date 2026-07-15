@@ -53,7 +53,7 @@ os.makedirs(kb1_dir, exist_ok=True)
 
 @pytest.fixture
 def test_kb():
-    # TODO: Use pytest's built-in tmp_path fixture to create temp directories. Configure knowledge_base.settings to point to those temp paths inside the fixture, then yield a KnowledgeBase instance
+    # NOTE: We could use pytest's built-in tmp_path fixture to create temp directories. Configure knowledge_base.settings to point to those temp paths inside the fixture, then yield a KnowledgeBase instance
     """
     Crea un'istanza pulita di KnowledgeBase prima di ciascun test e pulisce il database dopo il test.
     """
@@ -71,8 +71,6 @@ def test_kb():
     shutil.rmtree(db_dir, ignore_errors=True)
     os.makedirs(db_dir, exist_ok=True)
     shutil.rmtree(files_index, ignore_errors=True)
-
-    client = chromadb.PersistentClient(path=db_dir) # ???
 
 
 def add_file(kb: KnowledgeBase, file_url: str, file_name: str):
