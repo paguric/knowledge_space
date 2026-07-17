@@ -28,45 +28,46 @@ def test_global_index_default_when_file_missing(tmp_path):
 def test_global_index_save_and_load_roundtrip(tmp_path):
     index_path = tmp_path / "workspaces.json"
     gi = GlobalIndex(path=index_path)
+    ws1, ws2 = tmp_path / "ws1", tmp_path / "ws2"
 
-    data = GlobalIndexData(
-        last_workspace=Path("/home/user/ws1"),
-        workspaces=[Path("/home/user/ws1"), Path("/home/user/ws2")],
-    )
+    data = GlobalIndexData(last_workspace=ws1, workspaces=[ws1, ws2])
     gi.save(data)
 
     assert index_path.exists()
     restored = gi.load()
     assert restored.version == 1
-    assert restored.last_workspace == Path("/home/user/ws1")
-    assert restored.workspaces == [Path("/home/user/ws1"), Path("/home/user/ws2")]
+    assert restored.last_workspace == ws1
+    assert restored.workspaces == [ws1, ws2]
 
 
 def test_global_index_add_workspace(tmp_path):
     gi = GlobalIndex(path=tmp_path / "workspaces.json")
-    assert gi.add_workspace(Path("/ws/a")) is True
-    assert gi.add_workspace(Path("/ws/a")) is False  # già presente
-    assert gi.add_workspace(Path("/ws/b")) is True
-    assert gi.list_workspaces() == [Path("/ws/a"), Path("/ws/b")]
+    ws_a, ws_b = tmp_path / "ws_a", tmp_path / "ws_b"
+    assert gi.add_workspace(ws_a) is True
+    assert gi.add_workspace(ws_a) is False  # già presente
+    assert gi.add_workspace(ws_b) is True
+    assert gi.list_workspaces() == [ws_a, ws_b]
 
 
 def test_global_index_remove_workspace(tmp_path):
     gi = GlobalIndex(path=tmp_path / "workspaces.json")
-    gi.add_workspace(Path("/ws/a"))
-    gi.add_workspace(Path("/ws/b"))
-    gi.set_last_workspace(Path("/ws/a"))
+    ws_a, ws_b = tmp_path / "ws_a", tmp_path / "ws_b"
+    gi.add_workspace(ws_a)
+    gi.add_workspace(ws_b)
+    gi.set_last_workspace(ws_a)
 
-    assert gi.remove_workspace(Path("/ws/a")) is True
-    assert gi.remove_workspace(Path("/ws/a")) is False
-    assert gi.list_workspaces() == [Path("/ws/b")]
+    assert gi.remove_workspace(ws_a) is True
+    assert gi.remove_workspace(ws_a) is False
+    assert gi.list_workspaces() == [ws_b]
     # rimuovendo il last_workspace, il campo viene pulito
     assert gi.get_last_workspace() is None
 
 
 def test_global_index_set_last_workspace(tmp_path):
     gi = GlobalIndex(path=tmp_path / "workspaces.json")
-    gi.set_last_workspace(Path("/ws/c"))
-    assert gi.get_last_workspace() == Path("/ws/c")
+    ws_c = tmp_path / "ws_c"
+    gi.set_last_workspace(ws_c)
+    assert gi.get_last_workspace() == ws_c
 
 
 # --------------------------------------------------------------------------- #

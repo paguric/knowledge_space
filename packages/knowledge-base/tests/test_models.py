@@ -30,9 +30,9 @@ def test_file_entry_with_chunks():
     assert file_entry.chunks[1].active is False
 
 
-def test_knowledge_base_serialization_roundtrip():
+def test_knowledge_base_serialization_roundtrip(tmp_path):
     kb = KnowledgeBase(
-        path=Path("/home/user/test_ws/test_kb1"),
+        path=tmp_path / "test_kb1",
         files={
             "doc.pdf": FileEntry(
                 mtime=1783699858.842,
@@ -57,13 +57,13 @@ def test_domain_serialization():
     assert restored.active is True
 
 
-def test_workspace_serialization_roundtrip():
+def test_workspace_serialization_roundtrip(tmp_path):
     ws = Workspace(
-        path=Path("/home/user/test_ws"),
+        path=tmp_path,
         domains=[Domain(name="domain1", base_names=["test_kb1"])],
         bases={
             "test_kb1": KnowledgeBase(
-                path=Path("/home/user/test_ws/test_kb1"),
+                path=tmp_path / "test_kb1",
                 files={
                     "file.pdf": FileEntry(
                         mtime=1.0,
