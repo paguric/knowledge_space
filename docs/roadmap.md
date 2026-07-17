@@ -17,13 +17,13 @@ Fondamenta su cui poggiano tutti gli altri step.
 
 Implementare la logica operativa sui workspace.
 
-- [ ] Creare `WorkspaceManager`:
+- [x] Creare `WorkspaceManager`:
   - `add(path)` / `remove(path)` / `list()`
   - `load(path)` → restituisce `Workspace`
-  - `sync(workspace)` → allinea basi e file col filesystem
-  - `set_last_workspace(path)`
-- [ ] Integrare `watchdog` per sincronizzazione a runtime.
-- [ ] Scrivere test per CRUD workspace e sincronizzazione FS.
+  - `sync(workspace)` → allinea basi (cartelle) col filesystem
+  - `set_last_workspace(path)` / `get_last_workspace()`
+- [x] Integrare `watchdog` per sincronizzazione a runtime (`WorkspaceWatcher`, observer iniettabile).
+- [x] Scrivere test per CRUD workspace e sincronizzazione FS (8 test in `test_workspace_manager.py`).
 
 ### Step 2: Domini
 
