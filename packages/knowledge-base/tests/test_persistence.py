@@ -76,7 +76,8 @@ def test_global_index_set_last_workspace(tmp_path):
 
 
 def test_workspace_config_default_when_file_missing(tmp_path):
-    wc = WorkspaceConfig(workspace_path=tmp_path)
+    config_path = tmp_path / ".ks" / "config.json"
+    wc = WorkspaceConfig(config_path=config_path, workspace_path=tmp_path)
     assert not wc.exists()
     data = wc.load()
     assert data.version == 1
@@ -85,7 +86,8 @@ def test_workspace_config_default_when_file_missing(tmp_path):
 
 
 def test_workspace_config_save_and_load_roundtrip(tmp_path):
-    wc = WorkspaceConfig(workspace_path=tmp_path)
+    config_path = tmp_path / ".ks" / "config.json"
+    wc = WorkspaceConfig(config_path=config_path, workspace_path=tmp_path)
 
     data = WorkspaceConfigData(
         domains=[Domain(name="domain1", base_names=["kb1"])],
@@ -106,7 +108,7 @@ def test_workspace_config_save_and_load_roundtrip(tmp_path):
     wc.save(data)
 
     assert wc.exists()
-    assert wc.path == tmp_path / ".knowledge-space" / "config.json"
+    assert wc.config_path == config_path
 
     restored = wc.load()
     assert restored.version == 1
@@ -117,7 +119,8 @@ def test_workspace_config_save_and_load_roundtrip(tmp_path):
 
 
 def test_workspace_config_init_default(tmp_path):
-    wc = WorkspaceConfig(workspace_path=tmp_path)
+    config_path = tmp_path / ".ks" / "config.json"
+    wc = WorkspaceConfig(config_path=config_path, workspace_path=tmp_path)
     wc.init_default()
     assert wc.exists()
     assert wc.load().version == 1
@@ -127,7 +130,8 @@ def test_workspace_config_init_default(tmp_path):
 
 
 def test_workspace_config_to_workspace(tmp_path):
-    wc = WorkspaceConfig(workspace_path=tmp_path)
+    config_path = tmp_path / ".ks" / "config.json"
+    wc = WorkspaceConfig(config_path=config_path, workspace_path=tmp_path)
     wc.save(
         WorkspaceConfigData(
             domains=[Domain(name="domain1")],

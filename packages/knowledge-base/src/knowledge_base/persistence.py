@@ -1,18 +1,16 @@
-"""Persistenza ibrida su disco.
+"""Persistenza su disco per il modello di dominio.
 
-- ``GlobalIndex``: legge/scrive l'indice globale dei workspace registrati
-  (``~/.local/state/KnowledgeSpace/workspaces.json``).
-- ``WorkspaceConfig``: legge/scrive la configurazione di un singolo workspace
-  (``<workspace>/.knowledge-space/config.json``).
+- ``GlobalIndex``: legge/scrive l'indice globale dei workspace registrati.
+- ``WorkspaceConfig``: legge/scrive la configurazione di un singolo workspace.
 
 Entrambi i loader non usano variabili globali: il path del file viene passato
-al costruttore (con default XDG), così i test possono iniettare un path temporaneo.
+esplicitamente al costruttore. La libreria non conosce il nome dell'applicazione
+né le convenzioni XDG: l'applicazione chiamante (``knowledge-space``) calcola
+i path e li inietta.
 """
 
 from __future__ import annotations
 
-import json
-import os
 from pathlib import Path
 from typing import List, Optional
 
@@ -22,20 +20,16 @@ from knowledge_base.models import (
     WorkspaceConfigData,
 )
 
-APP_NAME = "KnowledgeSpace"
-
-
-def _default_global_index_path() -> Path:
-    """Restituisce il path XDG di default per l'indice globale."""
-    xdg_state = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
-    return Path(xdg_state) / APP_NAME / "workspaces.json"
-
 
 class GlobalIndex:
-    """Loader/saver dell'indice globale dei workspace."""
+    """Loader/saver dell'indice globale dei workspace.
 
-    def __init__(self, path: Optional[Path] = None) -> None:
-        self.path: Path = Path(path) if path is not None else _default_global_index_path()
+    Il path del file indice viene passato esplicitamente; la libreria non
+    presume dove possa vivere su disco.
+    """
+
+    def __init__(self, path: Path) -> None:
+        self.path: Path = Path(path)
 
     def _read(self) -> GlobalIndexData:
         if not self.path.exists():
@@ -94,30 +88,34 @@ class GlobalIndex:
 
 
 class WorkspaceConfig:
-    """Loader/saver della configurazione di un singolo workspace."""
+    """Loader/saver della configurazione di un singolo workspace.
 
-    def __init__(self, workspace_path: Path) -> None:
+    Il path del file di configurazione viene passato esplicitamente: la
+    libreria non presume il nome della sottocartella nÃ© la struttura del
+    workspace. L'applicazione chiamante decide dove salvare ``config.json``.
+    """
+
+    def __init__(self, config_path: Path, workspace_path: Path) -> None:
+        self.config_path: Path = Path(config_path)
         self.workspace_path: Path = Path(workspace_path)
-        self.dir: Path = self.workspace_path / ".knowledge-space"
-        self.path: Path = self.dir / "config.json"
 
     def exists(self) -> bool:
         """Restituisce ``True`` se il file di configurazione esiste."""
-        return self.path.exists()
+        return self.config_path.exists()
 
     def load(self) -> WorkspaceConfigData:
         """Carica la configurazione del workspace (vuota se il file non esiste)."""
-        if not self.path.exists():
+        if not self.config_path.exists():
             return WorkspaceConfigData()
-        with open(self.path, "r", encoding="utf-8") as f:
+        with open(self.config_path, "r", encoding="utf-8") as f:
             return WorkspaceConfigData.model_validate_json(f.read())
 
     def save(self, data: Optional[WorkspaceConfigData] = None) -> None:
         """Scrive la configurazione del workspace su disco."""
         if data is None:
             data = WorkspaceConfigData()
-        self.dir.mkdir(parents=True, exist_ok=True)
-        with open(self.path, "w", encoding="utf-8") as f:
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.config_path, "w", encoding="utf-8") as f:
             f.write(data.model_dump_json(indent=2))
 
     def init_default(self) -> None:
