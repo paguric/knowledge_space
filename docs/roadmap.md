@@ -29,12 +29,12 @@ Implementare la logica operativa sui workspace.
 
 Implementare la gestione dei domini.
 
-- [ ] Creare `DomainManager`:
-  - `create(workspace, name, base_names)`
-  - `auto_generate(workspace)` dalla struttura di cartelle
+- [x] Creare `DomainManager`:
+  - `create(workspace, name, base_names)` / `delete(workspace, name)`
+  - `auto_generate(workspace)` dalla struttura di cartelle (lvl1 + sottocartelle → dominio; foglie del sottoalbero → basi)
   - `activate(workspace, name)` / `deactivate(workspace, name)`
   - `add_base(workspace, domain, base)` / `remove_base(workspace, domain, base)`
-- [ ] Scrivere test per creazione, auto-generazione e flag `active`.
+- [x] Scrivere test per creazione, auto-generazione e flag `active` (10 test in `test_domain_manager.py`).
 
 ### Step 3: KnowledgeBase e indicizzazione
 
