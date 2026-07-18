@@ -207,6 +207,25 @@ Definire configurazioni TOML default per scenari d'uso rappresentativi. I profil
 - [ ] Salvare i profili in `configs/profiles/<name>.toml` (cartella del repo, non del workspace).
 - [ ] Documentare come applicare un profilo a un workspace (`defaults.toml` del workspace = copia del profilo).
 
+#### Scelta del retriever per profilo (GraphRAG)
+
+Per abbinare la tipologia di retrieval sul grafo a ciascun profilo, usiamo come riferimento la classificazione dei **tipi di domanda** e delle **pipeline atomiche** di GraphRAG:
+
+> **Fonte ( Memgraph Docs ):** *Atomic Pipelines — Question and Pipeline Types*
+> <https://memgraph.com/docs/ai-ecosystem/graph-rag/atomic-pipelines#question-and-pipeline-types>
+>
+> La documentazione categorizza le domande (specifiche, esplorative, di sintesi, globali…) e, per ciascuna, suggerisce la pipeline atomica più adatta (vector retriever, text2cypher, hybrid, hybrid+cypher, tools, ecc.). Useremo questa classificazione per rispondere, ad esempio, alla domanda: **"quale tipologia di retrieval sul grafo utilizzare per lo studente?"** individuando il tipo di domanda predominante nello scenario "studente" e leggendo la pipeline corrispondente dal reference.
+
+> **Nota ( Memgraph vs Neo4j ):** sebbene il reference citato sia tratto dalla documentazione di **Memgraph**, il progetto utilizzerà **Neo4j** come grafico, coerentemente con quanto previsto negli [piani GraphRAG](graph.md). La classificazione dei tipi di domanda/pipeline è indipendente dalla backend : la mappatura similarity_retriever ↔ nome Memgraph va semplicemente ricondotta ai retriever equivalenti della libreria `neo4j-graphrag` (vedi `RetrieverFactory` in [graph.md §14](graph.md)). In altre parole, Memgraph è il solo reference concettuale per la progettazione dei profili .
+
+#### Mapping preliminare profilo ↔ pipeline atomica
+
+Da confermare una volta implementati i retriever della Fase 1 (Step 8-bis):
+
+- [ ] **`researcher`** — question type prevalente: **exploratory / synthesis** → pipeline atomica candidate: `hybrid_cypher` (dense+sparse con augment di dati dal grafo) o `tools` se servono more-than-retrieval capabilities.
+- [ ] **`legal`** — question type prevalente: **specific / lookup** → pipeline atomica candidate: `vector_cypher` (filtri strutturali per articolo/sezione) o `text2cypher` se la domanda è già ben formalmente esprimibile come pattern di grafo.
+- [ ] **`student`** — question type prevalente: **specific** (definizioni, confronti diretti) → pipeline atomica candidate: `vector` (puro, leggero) o `vector_cypher` se lo studente filtra per esame/anno. Preferire il più economico compatibile con la recall attesa.
+
 ### Step 11: Test end-to-end e benchmark
 
 - [ ] Test end-to-end (in `packages/knowledge-base/tests/e2e/`):
@@ -323,4 +342,4 @@ Thin layer FastAPI sopra i manager già testati.
 
 ---
 
-*Ultimo aggiornamento: 18 luglio 2026*
+*Ultimo aggiornamento: 19 luglio 2026*
