@@ -113,6 +113,40 @@ RETURN node.id            AS chunk_id,
 """
 # Proprietà dei nodi da ritornare inoltre (per i retriever vettoriali puri).
 return_properties = ["chunk_id", "text"]
+
+# --- Pipeline di retrieval (Step 8 docs/roadmap.md) ---
+# Tre step sequenziali: pre-retrieval -> retrieval -> post-retrieval.
+# Ogni step accetta method = "identity" come NO-OP esplicito (i dati passano
+# through, senza istanziare LLM/reranker): pipeline sempre omogenea e
+# intento dell'utente dichiarato nel TOML (es. legal: nulla viene riassunto).
+
+[pre_retrieval]
+# Query rewriting. "identity" = nessuna riscrittura (1:1).
+method = "identity"
+# params = { n_queries = 3 }  # es. per multi_query
+
+[retrieval]
+# Metodo di ricerca: "dense" | "sparse" | "hybrid".
+# - dense: similarity search sul vector store (sempre disponibile).
+# - sparse: BM25-like. Se il modello embedding espone embed_sparse
+#   (es. bge-m3) viene usato nativamente; altrimenti la manager monta
+#   automaticamente un BM25 esterno (rank_bm25) sul testo grezzo dei chunk,
+#   con un warning di log all'avvio.
+# - hybrid: ensemble dense + sparse; la fusione e' controllata da `fusion`.
+method = "dense"
+fusion = "rrf"   # "rrf" (default, robusto) | "weighted_sum" (richiede pesi)
+
+[post_retrieval]
+# Numero di risultati finali passati al LLM generatore.
+top_k = 10
+# Reranking: riordino dei top-N prima della compression.
+# "identity" = nessun rerank (l'ordine del retrieval resta tale).
+reranker = "identity"
+# reranker_model = "BAAI/bge-reranker-v2-m3"   # solo se reranker != "identity"
+# Compression: sintesi/riduzione dei contenuti passati all'LLM.
+# "identity" = testo originale as-is (nessun riassunto).
+# Utile per il caso legale: passare le leggi non riassunte al LLM.
+compressor = "identity"
 ```
 
 ### Esempio di `bases/test_kb1.toml`
@@ -127,6 +161,10 @@ chunk_overlap = 100
 
 [embedding]
 model = "sentence-transformers/all-MiniLM-L6-v2"   # base con modello più leggero
+
+[pre_retrieval]
+method = "multi_query"
+params = { n_queries = 4 }
 ```
 
 ### Strategie (plugin/strategy pattern)
@@ -138,6 +176,9 @@ Ogni componente è identificato da un **nome** + eventuali **parametri**, in mod
 | `[ingestion]` | `library` | `"docling"`, `"pypdf"`, `"unstructured"`, `"markitdown"`, `"PyMuPDF4LLM"`, `"pdfplumber"` |
 | `[chunking]` | `method` | `"fixed_size"`, `"recursive"`, `"sentence"`, `"markdown"`, `"parent_child"`, `"late_chunking"` |
 | `[embedding]` | `model` | qualsiasi modello HuggingFace locale o API (es. OpenAI) registrato |
+| `[pre_retrieval]` | `method` | `"identity"` (no-op), `"hyde"`, `"multi_query"` |
+| `[retrieval]` | `method` / `fusion` | `"dense"` / `"sparse"` / `"hybrid"` ; `"rrf"` / `"weighted_sum"` (solo se `hybrid`) |
+| `[post_retrieval]` | `reranker` / `compressor` | `"identity"` (no-op), `"cross_encoder"`, `"llm"` ; `"identity"`, `"llm_chain_extract"` |
 | `[graph]` | `schema`/`resolver`/`on_chunk_edit`/`retriever` | `"manuale"`/`"EXTRACTED"`/`"FREE"`, `"semantic"`/`"exact"`/`"fuzzy"`, `"eager"`/`"lazy"`, `"vector"`/`"vector_cypher"`/`"hybrid"`/`"hybrid_cypher"`/`"text2cypher"`/`"tools"` |
 
 La sezione `[graph]` è descritta in dettaglio in [graph.md](graph.md). Il campo `retriever` seleziona il metodo di ricerca GraphRAG (tabella dei valori in [graph.md §14](graph.md)); l'app istanzia solo il retriever specificato dall'utente. Il cambio del modello di `[embedding]` è **bloccato** se la collection Chroma non è vuota (vedi [graph.md §9](graph.md)). I chunk vivono in `<base>/.chunks/<file_stem>/` (dotfolder, ownership dell'utente, editabili).
@@ -191,6 +232,90 @@ def load_base_config(base_name: str, workspace_paths) -> BaseConfig:
         with open(base_toml, "rb") as f:
             config = config.override(BaseConfig.from_toml(tomllib.load(f)))
     return config
+```
+
+---
+
+### Pipeline di retrieval
+
+La ricerca è configurabile in tre step sequenziali:
+
+```
+query → [pre_retrieval] → [retrieval] → [post_retrieval] → contesto → LLM generatore
+```
+
+Ogni step accetta `"identity"` come **no-op esplicito**: i dati passano through senza chiamate a LLM/reranker. La pipeline resta omogenea e il file TOML **dichiara l'intento** dell'utente (utile per es. `legal`: "nessuna riscrittura, nessuna compression").
+
+#### `[pre_retrieval]` — query rewriting
+
+| Campo | Valori | Descrizione |
+|---|---|---|
+| `method` | `"identity"` \| `"hyde"` \| `"multi_query"` | `identity` = no-op (1:1); `hyde` genera documenti ipotetici; `multi_query` espande in N sub-query via LLM |
+| `params` | mappa (opzionale) | es. `{ n_queries = 3, llm = "..." }` per `multi_query` |
+
+Output: lista di query (`list[str]`) passate al retrieval.
+
+#### `[retrieval]` — ricerca
+
+| Campo | Valori | Descrizione |
+|---|---|---|
+| `method` | `"dense"` \| `"sparse"` \| `"hybrid"` | scelta esplicita utente |
+| `fusion` | `"rrf"` \| `"weighted_sum"` | usato solo se `method = "hybrid"`; `rrf` default (robusto, no tuning) |
+
+**Comportamento sparse**:
+- Se il modello embedding della base espone `embed_sparse` nativamente (es. `BAAI/bge-m3`), viene riusato.
+- **Altrimenti fallback automatico a BM25 esterno** (`rank_bm25` sul testo grezzo dei chunk), con **warning di log all'avviso** all'avvio. L'utente non deve fare nulla; il sistema sceglie la strategia better-available per il modello scelto.
+
+Compatibilità `method` × modello embedding:
+
+| Modello embedding | `dense` | `sparse` | `hybrid` |
+|---|---|---|---|
+| `BAAI/bge-m3` | ✓ | ✓ nativo | ✓ nativo |
+| `gte-large-en-v1.5`, `bge-large-en-v1.5`, `all-mpnet`, `all-MiniLM`, `multilingual-e5-*` | ✓ | ✓ via BM25 fallback | ✓ via BM25 fallback |
+
+#### `[post_retrieval]` — rerank e compress
+
+| Campo | Valori | Descrizione |
+|---|---|---|
+| `top_k` | intero | numero di risultati finali passati all'LLM (applicato **ultimi**, dopo ogni altra elaborazione) |
+| `reranker` | `"identity"` \| `"cross_encoder"` \| `"llm"` | riordino dei top-N; `identity` = no rerank |
+| `reranker_model` | stringa (opzionale) | es. `BAAI/bge-reranker-v2-m3`; solo se `reranker != "identity"` |
+| `compressor` | `"identity"` \| `"llm_chain_extract"` | compression/sintesi del contesto; `identity` = testo as-is |
+
+**Ordine fisso**: rerank **prima**, compress **dopo**. L'LLM generatore vede solo ciò che esce dal compressor.
+
+#### Esempio: profilo legale (nessuna manipolazione)
+
+```toml
+[pre_retrieval]
+method = "identity"                # query del legale è già precisa, non va riscritta
+
+[retrieval]
+method = "hybrid"
+fusion = "rrf"
+
+[post_retrieval]
+top_k = 20
+reranker = "identity"              # nessun rerank
+compressor = "identity"            # testo originale passato as-is, NESSUN riassunto
+```
+
+#### Esempio: profilo ricercatore (pipeline avanzata)
+
+```toml
+[pre_retrieval]
+method = "multi_query"
+params = { n_queries = 4 }
+
+[retrieval]
+method = "hybrid"
+fusion = "rrf"
+
+[post_retrieval]
+top_k = 8
+reranker = "cross_encoder"
+reranker_model = "BAAI/bge-reranker-v2-m3"
+compressor = "llm_chain_extract"   # compression contestualizzata del top-8 rerankato
 ```
 
 ---

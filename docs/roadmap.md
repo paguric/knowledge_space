@@ -122,26 +122,36 @@ Implementare la logica operativa sulle basi di conoscenza, orchestrando ingestio
 
 ### Step 8: Pipeline di retrieval (pre / retrieval / post)
 
-Implementare la pipeline di ricerca completa, configurabile via TOML per base.
+Implementare la pipeline di ricerca completa, configurabile via TOML per base. La pipeline ha **tre step sequenziali**: pre-retrieval → retrieval → post-retrieval. Ogni step accetta `method = "identity"` come **no-op esplicito** (i dati passano through, senza istanziare LLM/reranker): pipeline sempre omogenea, intento dell'utente dichiarato nel TOML. Utile per es. profilo `legal` dove le leggi non devono essere riassunte.
 
-- [ ] **Pre-retrieval (query rewriting)**:
+- [ ] **Pre-retrieval (query rewriting)** — sezione `[pre_retrieval]`:
   - Definire l'interfaccia `QueryRewriter` (Protocol/ABC): `rewrite(query: str) -> list[str]` (una query può generare sub-query).
-  - Implementare strategy: `identity` (no-op), `hyde` (Hypothetical Document Embeddings), `multi_query` (espansione con LLM).
+  - Implementare strategy: `identity` (no-op, 1:1), `hyde` (Hypothetical Document Embeddings), `multi_query` (espansione con LLM in N sub-query).
+  - Parametri strategy-specific in `params = {...}` (es. `multi_query` accetta `n_queries=3`, `llm=...`).
   - Registrare nel registry.
-- [ ] **Retrieval**:
-  - Implementare retrieval **dense** (similarity search sul vector store).
-  - Implementare retrieval **sparse** (BM25 / keyword search).
-  - Implementare **ensemble** (fusione di dense + sparse, es. Reciprocal Rank Fusion).
+- [ ] **Retrieval** — sezione `[retrieval]`:
+  - `method = "dense" | "sparse" | "hybrid"` — scelta esplicita utente.
+  - Retrieval **dense**: similarity search sul vector store.
+  - Retrieval **sparse**:
+    - Se il modello embedding della base espone `embed_sparse` (es. `BAAI/bge-m3`), usarlo nativamente.
+    - **Altrimenti fallback automatico a BM25 esterno** (`rank_bm25` sul testo grezzo dei chunk), con warning di log all'avvio.
+  - Retrieval **hybrid**: ensemble di dense + sparse + fusione; `fusion = "rrf" | "weighted_sum"` (default `rrf`, robusto senza tuning pesi).
   - Rispettare i flag `active` (workspace, dominio, base, file, chunk) durante la ricerca.
   - `search(query, workspace?, domain?, kb?)` → restituisce chunk rilevanti con score.
-- [ ] **Post-retrieval (compression)**:
-  - Definire l'interfaccia `Compressor` (Protocol/ABC): `compress(documents: list, query: str) -> list`.
-  - Implementare strategy: `identity` (no-op), `llm_chain_extract` (langchain `LLMChainExtractor`).
+- [ ] **Post-retrieval (rerank + compress)** — sezione `[post_retrieval]`:
+  - `top_k = 10` — numero di risultati finali (applicato **ultimi**, dopo ogni altra elaborazione).
+  - `reranker = "identity" | "cross_encoder" | "llm"` — riordino dei top-N; `reranker_model` opzionale (es. `BAAI/bge-reranker-v2-m3`).
+  - `compressor = "identity" | "llm_chain_extract" | ...` — compression/sintesi dei contenuti passati al LLM.
+  - Ordine fisso: **retrieve → rerank → compress** (l'LLM generatore vede solo ciò che esce dal compressor).
+  - Definire due interfacce separate (`Reranker`, `Compressor`) perché rispondono a domande diverse ("quali sono i più rilevanti?" vs "quali contenuti passare al LLM?").
+  - Implementare strategy: `identity` per entrambe (no-op), `cross_encoder` con model esterno, `llm_chain_extract` (langchain `LLMChainExtractor`).
   - Registrare nel registry.
 - [ ] Estendere `BaseConfig` con sezioni `[pre_retrieval]`, `[retrieval]`, `[post_retrieval]`.
-- [ ] Scrivere test per ciascuna fase della pipeline (con mock per le strategy LLM-based).
+- [ ] Aggiungere dipendenza soft `rank_bm25` (BM25 fallback, puro Python).
+- [ ] Validazione all'avvio: se `[retrieval].method` richiede sparse ma il modello embedding non lo supporta nativamente, montare BM25 fallback e loggare un warning (info ai fini di audit).
+- [ ] Scrivere test per ciascuna fase della pipeline (con mock per le strategy LLM-based); test specifici per `identity` (no-op pass-through) e per hybrid con modello solo-dense (verifica del fallback BM25).
 
-> **Da definire**: integrazione con LLM per query rewriting e compression (locale vs API), algoritmi di fusione, numero di top-k configurabile, supporto metadati di filtraggio.
+> **Da definire**: integrazione con LLM per query rewriting, reranking e compression (locale vs API), pesi della `weighted_sum`, supporto metadati di filtraggio al retrieval.
 
 ### Step 8-bis: Pipeline GraphRAG + edit-aware re-embedding
 
@@ -391,4 +401,4 @@ Thin layer FastAPI sopra i manager già testati.
 
 ---
 
-*Ultimo aggiornamento: 20 luglio 2026*
+*Ultimo aggiornamento: 21 luglio 2026*
