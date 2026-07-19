@@ -9,6 +9,7 @@ Questo documento è l'indice del piano di refactor. Ogni argomento è trattato i
 - [CLI standalone](cli.md)
 - [Gestione della configurazione](configuration.md)
 - [Roadmap, scelte e rischi](roadmap.md)
+- [Pipeline GraphRAG + edit-aware re-embedding](graph.md)
 
 ---
 

@@ -24,7 +24,7 @@ chunks_dir = "nd"
 
 
 class KnowledgeBase:
-    def __init__(self, watch_dir: str):
+    def __init__(self, watch_dir: str, name: str = None, files = None):
         self.name = os.path.basename(os.path.normpath(watch_dir))
         self.watch_dir = watch_dir
         self.ready = threading.Event() # semaforo per attendere fine aggiunta file
@@ -147,6 +147,22 @@ class KnowledgeBase:
         Restituisce contenuti della collezione nel vector store con chunk, metadati ed embedding.
         """
         return self.vector_store.get(include=["embeddings", "metadatas", "documents"])
+
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "watch_dir": self.watch_dir,
+            "files": self.files
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            name=data["name"],
+            watch_dir=data["watch_dir"],
+            files=data["files"]
+        )
 
         
 class Handler(FileSystemEventHandler):

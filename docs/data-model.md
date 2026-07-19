@@ -47,21 +47,45 @@ File: `<workspace>/.knowledge-space/config.json`
     "test_kb1": {
       "path": "/home/lapo225/test_ws2/test_kb1",
       "active": true,
+      "embedding_model": "sentence-transformers/all-mpnet-base-v2",
       "files": {
         "descrizione_progtes.pdf": {
           "mtime": 1783699858.842,
           "added": "2026-07-13T20:04:44",
           "active": true,
           "chunks": [
-            { "index": 0, "active": true },
-            { "index": 1, "active": true }
+            {
+              "index": 0,
+              "active": true,
+              "chunk_id": "test_kb1::descrizione_progtes::0",
+              "edited": false,
+              "edited_mtime": null,
+              "content_hash": "a1b2c3d4..."
+            },
+            {
+              "index": 1,
+              "active": true,
+              "chunk_id": "test_kb1::descrizione_progtes::1",
+              "edited": true,
+              "edited_mtime": "2026-07-15T11:22:33",
+              "content_hash": "e5f6a7b8..."
+            }
           ]
         }
       }
     }
+  },
+  "graph": {
+    "bolt_uri": "bolt://localhost:7687",
+    "database": "neo4j",
+    "schema_ref": ".knowledge-space/schema.json",
+    "embedding_model": "sentence-transformers/all-mpnet-base-v2",
+    "retriever": "hybrid_cypher"
   }
 }
 ```
+
+I nuovi campi (`chunk_id`, `edited`, `edited_mtime`, `content_hash`, `embedding_model`, `graph`) supportano la pipeline GraphRAG e l'edit-aware re-embedding. Il `graph.retriever` è il **valore di default workspace-level** per il metodo di ricerca (può essere sovrascritto per-base da `[graph].retriever` nel TOML della base — vedi [graph.md §14](graph.md)).
 
 ## Schema JSON dell'indice globale
 
@@ -83,11 +107,23 @@ File: `~/.local/state/KnowledgeSpace/workspaces.json`
 ```python
 from pydantic import BaseModel, Field
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 class ChunkRef(BaseModel):
+    """Riferimento a un chunk di un file. Il testo del chunk vive su disco
+    (``<base>/.chunks/<file_stem>/<file_stem>_chunk_<i>.md``), qui teniamo
+    metadati per filtrare la ricerca e gestire l'edit-aware re-embedding.
+    ``chunk_id`` è deterministico (``base::file::i``) e usato come chiave
+    in Chroma e come ``Neo4jNode.id`` nel grafo (idempotenza del writer).
+    ``content_hash`` rileva edit effettivi (skip re-embed su save identici)."""
+
     index: int
     active: bool = True
+    chunk_id: str
+    edited: bool = False
+    edited_mtime: Optional[str] = None
+    content_hash: str
+
 
 class FileEntry(BaseModel):
     mtime: float
@@ -95,20 +131,41 @@ class FileEntry(BaseModel):
     active: bool = True
     chunks: List[ChunkRef] = Field(default_factory=list)
 
+
 class KnowledgeBase(BaseModel):
     path: Path
     active: bool = True
     files: Dict[str, FileEntry] = Field(default_factory=dict)
+    # Modello usato per indicizzare la collection Chroma. Serve a bloccare
+    # il cambio modello embedding su collection non vuota (vedi docs/graph.md §8).
+    embedding_model: Optional[str] = None
+
 
 class Domain(BaseModel):
     name: str
     active: bool = True
     base_names: List[str] = Field(default_factory=list)
 
+
+class GraphConfigData(BaseModel):
+    """Stato di connessione al grafo Neo4j del workspace (un grafo per
+    workspace). I parametri comportamentali per-base vivono in ``[graph]``
+    del ``BaseConfig`` (TOML); qui vive solo ciò che è condiviso da tutte
+    le basi del workspace (connessione al DB, schema ref, modello emb.,
+    retriever di default)."""
+
+    bolt_uri: str = "bolt://localhost:7687"
+    database: str = "neo4j"
+    schema_ref: Optional[Path] = None
+    embedding_model: Optional[str] = None
+    retriever: str = "hybrid_cypher"   # default workspace; override per-base in [graph].retriever (TOML)
+
+
 class Workspace(BaseModel):
     path: Path
     domains: List[Domain] = Field(default_factory=list)
     bases: Dict[str, KnowledgeBase] = Field(default_factory=dict)
+    graph: Optional[GraphConfigData] = None
 ```
 
 Serializzazione:
