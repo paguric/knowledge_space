@@ -69,6 +69,50 @@ separator = "\n\n"
 [embedding]
 model = "sentence-transformers/all-mpnet-base-v2"
 # device = "cpu"
+
+[graph]
+# Configurazione del grafo della conoscenza (vedi docs/graph.md).
+# I parametri di connessione al DB (bolt_uri, credenziali) sono a livello
+# workspace in <workspace>/.knowledge-space/graph/graph.json, perché il
+# grafo è uno per workspace; qui restano solo i comportamenti per-base.
+schema = "manuale"          # "manuale" | "EXTRACTED" | "FREE"
+resolver = "semantic"      # "semantic" (default, extra [nlp]) | "exact" | "fuzzy" (extra [fuzzy-matching]) | "none"
+on_chunk_edit = "eager"    # "eager" (default, ri-estrazione LLM) | "lazy" (solo embedding)
+chunk_embedding_property = "embedding"   # nome della proprietà vettore nel nodo Chunk
+
+# Node/relationship types + patterns. Ignorati se schema = "EXTRACTED" o "FREE".
+# Si possono anche materializzare in <workspace>/.knowledge-space/schema.json
+# (vedi docs/graph.md §6-bis: caricato, non ricreato).
+node_types = ["Person", "Organization", "Concept"]
+relationship_types = ["WORKS_FOR", "RELATED_TO"]
+patterns = [
+    ["Person", "WORKS_FOR", "Organization"],
+    ["Concept", "RELATED_TO", "Concept"],
+]
+
+# --- Retrieval (fase di ricerca, vedi docs/graph.md §14) ---
+# Metodo di ricerca GraphRAG usato dall'app per le query su questa base.
+# L'utente può specificare uno qualsiasi tra quelli supportati da
+# neo4j-graphrag; l'app istanzia il retriever corrispondente.
+retriever = "hybrid_cypher"   # vedi tabella in docs/graph.md §14
+top_k = 5                     # numero di risultati (default del retriever)
+# Nome del vector index Neo4j (Topic/Chunk) usato dai retriever vettoriali.
+vector_index = "chunk-embeddings"
+# Nome del full-text index Neo4j (BM25). Obbligatorio per i retriever "hybrid*".
+fulltext_index = "chunk-text"
+# Query Cypher di arricchimento eseguita dopo la similarità. Usata dai
+# retriever "*_cypher" per arricchire i match con traversal del grafo.
+# Variabili in scope: `node` (nodo matchato) e `score` (similarità).
+retrieval_query = """
+RETURN node.id            AS chunk_id,
+       node.text          AS text,
+       node.base_name     AS base_name,
+       node.file_name     AS file_name,
+       node.chunk_index   AS chunk_index,
+       score
+"""
+# Proprietà dei nodi da ritornare inoltre (per i retriever vettoriali puri).
+return_properties = ["chunk_id", "text"]
 ```
 
 ### Esempio di `bases/test_kb1.toml`
@@ -91,9 +135,30 @@ Ogni componente è identificato da un **nome** + eventuali **parametri**, in mod
 
 | Sezione | Campo `library`/`method`/`model` | Esempi |
 |---|---|---|
-| `[ingestion]` | `library` | `"docling"`, `"pypdf"`, `"unstructured"` |
-| `[chunking]` | `method` | `"fixed_size"`, `"recursive"`, `"sentence"`, `"markdown"` |
-| `[embedding]` | `model` | qualsiasi modello HuggingFace |
+| `[ingestion]` | `library` | `"docling"`, `"pypdf"`, `"unstructured"`, `"markitdown"`, `"PyMuPDF4LLM"`, `"pdfplumber"` |
+| `[chunking]` | `method` | `"fixed_size"`, `"recursive"`, `"sentence"`, `"markdown"`, `"parent_child"`, `"late_chunking"` |
+| `[embedding]` | `model` | qualsiasi modello HuggingFace locale o API (es. OpenAI) registrato |
+| `[graph]` | `schema`/`resolver`/`on_chunk_edit`/`retriever` | `"manuale"`/`"EXTRACTED"`/`"FREE"`, `"semantic"`/`"exact"`/`"fuzzy"`, `"eager"`/`"lazy"`, `"vector"`/`"vector_cypher"`/`"hybrid"`/`"hybrid_cypher"`/`"text2cypher"`/`"tools"` |
+
+La sezione `[graph]` è descritta in dettaglio in [graph.md](graph.md). Il campo `retriever` seleziona il metodo di ricerca GraphRAG (tabella dei valori in [graph.md §14](graph.md)); l'app istanzia solo il retriever specificato dall'utente. Il cambio del modello di `[embedding]` è **bloccato** se la collection Chroma non è vuota (vedi [graph.md §9](graph.md)). I chunk vivono in `<base>/.chunks/<file_stem>/` (dotfolder, ownership dell'utente, editabili).
+
+#### Modelli di embedding supportati
+
+Il sistema supporta **molteplici modelli di embedding** via registry. Ogni modello registra metadati discoverable esposti poi dall'API e dal frontend (vedi [roadmap.md](roadmap.md) Step 6 e Step 15):
+
+| Modello | `languages` | `dim` | `max_context_tokens` | Licenza | Note |
+|---|---|---|---|---|---|
+| `sentence-transformers/all-mpnet-base-v2` | EN | 768 | 384 | Apache 2.0 | Solo inglese; non adatto a documenti italiani. |
+| `sentence-transformers/all-MiniLM-L6-v2` | EN | 384 | 384 | Apache 2.0 | Leggero; solo EN. |
+| `Alibaba-NLP/gte-large-en-v1.5` | EN | 1024 | 8192 | Apache 2.0 | Top EN su MTEB (65.39); lungo contesto. |
+| `BAAI/bge-large-en-v1.5` | EN | 1024 | 512 | MIT | Buona qualità EN, ctx corto. |
+| `BAAI/bge-m3` | multilingua (100+, 🇮🇹) | 1024 | 8192 | MIT | SOTA MIRACL; dense+sparse+colbert; ideale per IT + terminologia tecnica. |
+| `intfloat/multilingual-e5-small` | multilingua (100+, 🇮🇹) | 384 | 512 | MIT | Leggero, ~470 MB; buon compromesso per studenti IT. |
+| `intfloat/multilingual-e5-large` | multilingua (100+, 🇮🇹) | 1024 | 512 | MIT | Più pesante ma migliore qualità di e5-small. |
+
+> **Avvertenza critica — contesto e lingue**:
+> - Ogni modello ha un `max_context_tokens` (es. 384 per `all-mpnet`, 8192 per `gte`/`bge-m3`). Se un chunk supera questo limite, il `KnowledgeBaseManager` deve **lanciare un errore esplicito** (non troncare silenziosamente) — vedi nota in [roadmap.md](roadmap.md) Step 6.
+> - I modelli solo-EN (`all-mpnet`, `all-MiniLM`, `gte-large-en`, `bge-large-en`) **non sono adatti a documenti italiani**: il frontend deve mostrarne le lingue supportate per evitare scelte errate (Step 15).
 
 Il programma mantiene un **registro di strategie** per `ingestion`, `chunking`, `embedding`, e istanzia quella giusta in base al nome nel config. Aggiungere una nuova libreria di ingestion = registrare una nuova strategia, senza toccare il codice esistente.
 

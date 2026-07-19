@@ -86,11 +86,24 @@ Implementare diverse strategie di chunking come plugin.
 - [ ] Definire l'interfaccia `EmbeddingStrategy` (Protocol/ABC): `embed(texts: list[str]) -> list[list[float]]`.
 - [ ] Implementare strategy `sentence-transformers` (già esistente, incapsulare) che accetta il nome del modello dal config.
 - [ ] Implementare strategy `huggingface` (langchain `HuggingFaceEmbeddings`).
-- [ ] Registrare le strategy nel registry.
+- [ ] **Supportare molteplici modelli di embedding** via registry; ogni strategia deve esporre metadati discoverable:
+  - `model_name` (es. `BAAI/bge-m3`, `intfloat/multilingual-e5-small`, `Alibaba-NLP/gte-large-en-v1.5`).
+  - `languages` (lista, es. `["en"]`, `["en", "it"]`, `["multilingual"]`).
+  - `dim` (dimensione vettore).
+  - `max_context_tokens` (lunghezza massima contesto, es. 512 per `all-mpnet-base-v2`, 8192 per `gte-large-en-v1.5` e `bge-m3`).
+  - `license` (Apache 2.0, MIT, CC-BY-NC-4.0, …).
+  - `requires_api` (bool; `False` per locali, `True` per OpenAI/Cohere).
+- [ ] **Esposizione frontend (Fase 4)**: l'API REST e il frontend devono elencare i modelli registrati con i loro metadati, in particolare **quali lingue supportano** (italiano / inglese / multi) e la dimensione del contesto, così che l'utente possa scegliere consapevolmente il modello compatibile col proprio corpus.
 - [ ] Garantire che ogni base usi il proprio modello di embedding (collection Chroma separata).
 - [ ] Scrivere test di consistenza: embedding della stessa query con modelli diversi produce vettori di dimensioni diverse.
 
 > **Da definire**: supporto per modelli locali vs API (es. `OpenAIEmbeddings`), caching degli embedding, device (CPU/GPU).
+
+> **NOTA IMPORTANTE — dimensione del contesto** (da tenere in considerazione durante l'implementazione di Step 5 e 6): ogni modello di embedding ha un `max_context_tokens` (es. `all-mpnet-base-v2` = 384/512, `gte-large-en-v1.5` = 8192, `bge-m3` = 8192). Se un chunk troppo grande non può essere convertito dal modello, il manager deve **lanciare un errore esplicito** (non troncare silenziosamente). Si raccomanda di:
+> - Aggiungere un validatore nel `KnowledgeBaseManager` (Step 7) che stima la lunghezza in token del chunk (es. via `tiktoken` per modelli EN, o tokenizer del modello stesso) PRIMA di invocare l'embedding.
+> - L'errore deve includere: nome base, file, indice chunk, lunghezza token stimata, `max_context_tokens` del modello.
+> - Opzionalmente, loggare un warning quando un chunk supera l'80% del `max_context_tokens` (soglia configurabile in `BaseConfig`).
+> - Il chunking (Step 5) dovrebbe in heat prendere `max_context_tokens` dal `BaseConfig.embedding` per regolare `chunk_size` di conseguenza quando possibile, riducendo le probabilità di eccedere.
 
 ### Step 7: KnowledgeBaseManager e indicizzazione
 
@@ -102,9 +115,10 @@ Implementare la logica operativa sulle basi di conoscenza, orchestrando ingestio
   - `remove_file(kb, path)` → rimozione da indice e vector store
   - `sync(kb)` → allinea file con filesystem (mtime check)
 - [ ] Il manager legge `BaseConfig` (Step 3) per istanziare le strategy corrette.
+- [ ] **Validazione lunghezza chunk vs `max_context_tokens`** dell'embedding (vedi nota Step 6): errore esplicito se un chunk eccede il limite del modello.
 - [ ] Encapsulare Chroma/langchain nel manager (nessuna variabile globale).
 - [ ] Salvataggio dei chunk su disco (opzionale/da rivalutare).
-- [ ] Scrivere test per ingestion, rimozione, sync mtime, ricerca base.
+- [ ] Scrivere test per ingestion, rimozione, sync mtime, ricerca base, e **test che verifichi il lancio dell'errore quando un chunk eccede `max_context_tokens`**.
 
 ### Step 8: Pipeline di retrieval (pre / retrieval / post)
 
@@ -171,41 +185,73 @@ Validare end-to-end la pipeline di business completa (Fase 1) tramite dataset si
 
 ### Step 9: Dataset sintetici
 
-- [ ] Definire corpus di esempio in `tests/data/synthetic/` organizzati per dominio tematico:
-  - **Accademico**: paper/abstract, appunti, slide markdown.
-  - **Legale**: contratti, sentenze, normative (testo strutturato con sezioni).
-  - **Tecnico**: README, documentazione API, issue (markdown con codice).
-- [ ] Generare documenti in formati realistici (PDF, Markdown, TXT) per coprire le strategy di ingestion.
-- [ ] Definire un set di **query golden** per ogni dominio,con **risposta attesa** (chunk id / snippet / keywords) per valutare recall e precision.
-- [ ] Documentare la struttura del dataset e come rigenerarlo (eventuale script).
+I **formati supportati** in produzione (e quindi da coprire nei dataset) sono cinque:
+
+1. **Paper accademici** (PDF a colonne, tabelle, formule, referenze, abstract).
+2. **Testi legislativi** (PDF/TXT: normative, articoli, commi, lettere — es. GDPR, contratti).
+3. **Libri di testo** (PDF lunghi a capitoli, multi-colonna, TOC, typografia uniforme).
+4. **Slide PPTX** (presentazioni con titolo/bullet/tabelle/immagini).
+5. **Appunti** (Markdown testuale, sintassi semplice, liste, codice breve).
+6. **Corpo di mail in formato testuale** (TXT/`.eml`: thread, quote con `>`, mittente/soggetto/data).
+
+> L'insieme è **chiuso**: qualsiasi formato non in questa lista non è supportato; il manager di ingestion deve rifiutarlo con un errore esplicito.
+
+- [ ] Definire corpus di esempio in `tests/data/synthetic/` organizzati per ciascuno dei 6 formati sopra:
+  - `papers/` — paper accademici realistici (o estratti da arXiv open access), in PDF.
+  - `legal/` — estratti GDPR/contratti in PDF e TXT, con struttura articoli/commi.
+  - `textbooks/` — PDF di libri di testo o sample chapters pubblici (multi-colonna, TOC).
+  - `slides/` — file PPTX con slide testuali + bullet + una tabella.
+  - `notes/` — file Markdown con titoli, liste, codice breve.
+  - `emails/` — file `.txt`/`.eml` con thread di 2–3 messaggi (quote `>`, mittente, data).
+- [ ] Variazioni linguistiche: per ciascun formato, includere campioni in **italiano** e in **inglese** (per testare la copertura linguistica degli embedding e validare che modelli solo-EN degradano su IT — vedi Step 6).
+- [ ] Generare i file tramite script riproducibile (es. `tests/data/synthetic/build.py`) che usa template testo + piccole varianti, oppure scarica un sottoinsieme piccolo e open da fonti pubbliche (arXiv, EUR-Lex).
+- [ ] Definire un set di **query golden** per ogni dominio, con **risposta attesa** (chunk id / snippet / keywords) per valutare recall e precision.
+- [ ] Documentare la struttura del dataset e come rigenerarlo.
 
 ### Step 10: Profili di configurazione predefiniti
 
 Definire configurazioni TOML default per scenari d'uso rappresentativi. I profili sono **punti di partenza** copiabili dall'utente, non logica hardcoded.
 
-- [ ] **`researcher`**:
-  - ingestion: `docling` (gestione PDF ricca).
-  - chunking: `recursive` con `chunk_size` medio-grande (1200), overlap 200.
-  - embedding: modello potente (`all-mpnet-base-v2`).
+- [ ] **`researcher`** (paper accademici EN):
+  - ingestion: `docling` — test set ufficiale di docling è esplicitamente paper arXiv ([arXiv:2408.09869](https://arxiv.org/abs/2408.09869)). Alt: `PyMuPDF4LLM` per pipeline veloci senza GPU.
+  - chunking: `recursive` con `chunk_size` ~1200, overlap 200. Il recursive supera il semantic su paper accademici ([arXiv:2607.01852](https://arxiv.org/abs/2607.01852); [Chroma TR](https://www.trychroma.com/research/evaluating-chunking)). Markdown-aware opzionale (qualitativo).
+  - embedding: `gte-large-en-v1.5` (MTEB 65.39, ctx 8192) — [HF card](https://huggingface.co/Alibaba-NLP/gte-large-en-v1.5). Alt: `bge-large-en-v1.5` (ctx 512, MTEB 64.23). ⚠️ Entrambi EN-only: non adatti a documenti italiani.
   - pre-retrieval: `multi_query` (espansione LLM) o `hyde`.
   - retrieval: `ensemble` (dense + sparse).
   - post-retrieval: `llm_chain_extract` (compressione contestualizzata).
-- [ ] **`legal`**:
-  - ingestion: `docling` (PDF strutturati).
-  - chunking: `markdown` (preserva gerarchia sezioni/articles).
-  - embedding: `all-mpnet-base-v2` o modello specializzato se disponibile.
+- [ ] **`legal`** (testi legislativi/GDPR, multilingua IT+EN):
+  - ingestion: `pdfplumber` + `pdfminer.six` — ❌ **fonte specifica assente**: la preferenza è inferita dalle capacità di coordinate/layout ([pdfplumber README](https://github.com/jsvine/pdfplumber)). Da validare nel dataset sintetico Step 9. Alt robusto: `docling` (OCR + tabelle + layout).
+  - chunking: `markdown`/structure-aware + Parent-Child (chunk=articolo, parent=articolo intero). Il fixed-size causa **boundary fragmentation** su GDPR documentato in [SCAR, arXiv:2606.16661](https://arxiv.org/abs/2606.16661).
+  - embedding: `BAAI/bge-m3` (multilingua 100+ lingue, ctx 8192, retrieval sparse+dense integrato tipo BM25 — utile per terminologia legale esatta) — [HF card](https://huggingface.co/BAAI/bge-m3), [paper arXiv:2402.03216](https://arxiv.org/pdf/2402.03216). Alt: `intfloat/multilingual-e5-large`.
   - pre-retrieval: `identity` (query già precisa dal legale).
-  - retrieval: `dense` con top-k alto + filtro metadati per articolo.
+  - retrieval: `dense` (top-k alto) + filtro metadati per articolo; opzionale ensemble con sparse (bge-m3 lo supporta nativamente).
   - post-retrieval: `identity` (serve il testo originale, no compressione).
-- [ ] **`student`**:
-  - ingestion: `pypdf` o `docling` (bilanciato).
-  - chunking: `fixed_size` 800/150 (leggero, veloce).
-  - embedding: `all-MiniLM-L6-v2` (modello leggero, low RAM).
+- [ ] **`student`** (libri di testo, slide, appunti — italiano, leggero):
+  - ingestion: `PyMuPDF4LLM` per PDF (multi-colonna, TOC, veloce — [PyMuPDF4LLM docs](https://pymupdf.readthedocs.io/en/latest/pymupdf4llm/)) + `markitdown` per slide PPTX/EPUB ([markitdown](https://github.com/microsoft/markitdown)).
+  - chunking: `Parent-Child` (genitore=sezione); alt `Late Chunking` se si dispone di embedding long-context ([arXiv:2409.04701](https://arxiv.org/abs/2409.04701), [Jina blog](https://jina.ai/news/late-chunking-in-long-context-embedding-models/)). `fixed_size` 800/150 come fallback leggero.
+  - embedding: `intfloat/multilingual-e5-small` (dim 384, ~470 MB, supporta IT — [HF card](https://huggingface.co/intfloat/multilingual-e5-small), Mr.TyDi MRR@10 64.4). Alt: `BAAI/bge-m3` su HW buono (più pesante ma migliore qualità e ctx 8192). ⚠️ `all-MiniLM-L6-v2` è solo-EN — NON adatto a documenti IT.
   - pre-retrieval: `identity`.
   - retrieval: `dense` top-k medio.
   - post-retrieval: `identity`.
+- [ ] **`tecnico`** (documentazione markdown, codice, IT+EN):
+  - ingestion: ingest diretta per markdown; `markitdown` per normalizzare sorgenti miste.
+  - chunking: `MarkdownHeaderTextSplitter` + `Recursive` (code block mai spezzato — [Pinecone](https://www.pinecone.io/learn/chunking-strategies/)).
+  - embedding: `BAAI/bge-m3` (multilingua + sparse retrieval preserva identificatori di codice "token weights similar to BM25" — [bge-m3 card](https://huggingface.co/BAAI/bge-m3)). Alt EN-only: `gte-large-en-v1.5`.
+  - pre-retrieval: `identity`.
+  - retrieval: `dense` + sparse ensemble.
+  - post-retrieval: `identity`.
 - [ ] Salvare i profili in `configs/profiles/<name>.toml` (cartella del repo, non del workspace).
 - [ ] Documentare come applicare un profilo a un workspace (`defaults.toml` del workspace = copia del profilo).
+- [ ] **Per ciascun profilo, documentare nel commento TOML quali lingue supporta l'embedding scelto** (EN / multilingua incl. IT / etc.) e `max_context_tokens`, così l'utente può scegliere consapevolmente (vedi Step 6 e requisito frontend Step 15).
+
+##### Affidabilità delle evidenze per profilo
+
+| Profilo | Ingestion | Chunking | Embedding |
+|---|---|---|---|
+| `researcher` | Alta (arXiv test set) | Alta (recursive > semantic confermato) | Alta (MTEB + ctx 8192) |
+| `legal` | ❌ Bassa (fonte assente — da validare) | Alta (boundary fragmentation ✓ in SCAR) | Alta (SOTA MIRACL + IT + sparse) |
+| `student` | Media (feature doc, no benchmark diretto) | Alta (Late Chunking ✓) | Media (IT coperto ma non score Mr.TyDi) |
+| `tecnico` | Bassa (qualitativa) | Media (Pinecone qualitativo) | Media (estrapolazione) |
 
 #### Scelta del retriever per profilo (GraphRAG)
 
@@ -274,12 +320,15 @@ Thin layer FastAPI sopra i manager già testati.
 - [ ] Implementare router `health`, `workspaces`, `domains`, `bases`, `files`, `search`, `config`.
 - [ ] Aggiungere CORS.
 - [ ] Scrivere test per l'API.
+- [ ] **Endpoint `/api/v1/models/embeddings`**: elenca i modelli di embedding registrati con i loro metadati (`model_name`, `languages`, `dim`, `max_context_tokens`, `license`, `requires_api`). Il frontend lo usa per mostrare all'utente le opzioni.
 
 ### Step 15: Frontend React / GUI
 
 - [ ] Collegare il frontend alle API REST.
 - [ ] Permettere modifica dei file TOML dall'interfaccia (quando prevista da configuration.md).
 - [ ] Visualizzare struttura ad albero (workspace → domini → basi → file → chunk).
+- [ ] **Selettore modello di embedding**: quando l'utente configura una base, mostrare l'elenco dei modelli disponibili (da `/api/v1/models/embeddings`) e **evidenziare esplicitamente quali lingue supporta ciascun modello** (es. badge "🇮🇹 IT", "🇬🇧 EN", "🌍 multilingua"). Questo aiuta l'utente a scegliere un modello compatibile col proprio corpus e a evitare errori (es. modelli solo-EN su documenti italiani).
+- [ ] **Avviso contesto**: mostrare `max_context_tokens` del modello e confrontarlo con `chunk_size` della strategia di chunking scelta, avvisando l'utente se configura un `chunk_size` che rischia di eccedere il limite (vedi nota Step 6 — lancio errore al runtime).
 
 ### Step 16: Polish e documentazione
 
@@ -342,4 +391,4 @@ Thin layer FastAPI sopra i manager già testati.
 
 ---
 
-*Ultimo aggiornamento: 19 luglio 2026*
+*Ultimo aggiornamento: 20 luglio 2026*
