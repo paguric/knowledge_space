@@ -174,7 +174,9 @@ Ogni componente è identificato da un **nome** + eventuali **parametri**, in mod
 | Sezione | Campo `library`/`method`/`model` | Esempi |
 |---|---|---|
 | `[ingestion]` | `library` | `"docling"`, `"pypdf"`, `"unstructured"`, `"markitdown"`, `"PyMuPDF4LLM"`, `"pdfplumber"` |
-| `[chunking]` | `method` | `"fixed_size"`, `"recursive"`, `"sentence"`, `"markdown"`, `"parent_child"`, `"late_chunking"` |
+| `[chunking]` | `method` | `"fixed_size"` (con `chunk_overlap=0` no-overlap, `>0` sliding window), `"recursive"`, `"semantic"`, `"sentence"`, `"markdown"` |
+| `[retrieval]` | `expansion` (in pausa, Step 8) | `"none"` (default), `"parent_child"` con `parent_granularity = "section" \| "paragraph"` |
+| `[embedding]` | `mode` (in pausa, Step 6) | `"standard"` (default), `"late_chunking"` (richiede modello long-context ≥8192 tok; fallback automatico a `standard` se doc > `max_context_tokens`) |
 | `[embedding]` | `model` | qualsiasi modello HuggingFace locale o API (es. OpenAI) registrato |
 | `[pre_retrieval]` | `method` | `"identity"` (no-op), `"hyde"`, `"multi_query"` |
 | `[retrieval]` | `method` / `fusion` | `"dense"` / `"sparse"` / `"hybrid"` ; `"rrf"` / `"weighted_sum"` (solo se `hybrid`) |

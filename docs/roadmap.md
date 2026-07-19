@@ -69,17 +69,24 @@ Implementare diverse strategie di ingestion come plugin registrabili nel config 
 
 ### Step 5: Strategie di chunking
 
-Implementare diverse strategie di chunking come plugin.
+Implementare diverse strategie di chunking come plugin nel registry delle strategie.
 
 - [ ] Definire l'interfaccia `ChunkingStrategy` (Protocol/ABC): `split(text: str) -> list[Chunk]`.
-- [ ] Implementare strategy `fixed_size` (già esistente con `CharacterTextSplitter`).
-- [ ] Implementare strategy `recursive` (langchain `RecursiveCharacterTextSplitter`).
-- [ ] Implementare strategy `sentence` (split per frasi, es. `langchain_text_splitters`).
-- [ ] Implementare strategy `markdown` (split rispettando la struttura Markdown, es. `MarkdownHeaderTextSplitter`).
-- [ ] Registrare le strategy nel registry.
-- [ ] Scrivere test per ciascuna strategy con testi di esempio.
+- [ ] **Strategie base** (priorità 1):
+  - [ ] `fixed_size` — `CharacterTextSplitter` con `chunk_size` e `chunk_overlap`; `chunk_overlap = 0` = no-overlap, `chunk_overlap > 0` = sliding window. **Una sola strategy, due comportamenti** via parametro (no duplicazione `sliding_window`).
+  - [ ] `recursive` — `RecursiveCharacterTextSplitter` (separatori gerarchici `["\n\n", "\n", " ", ""]`).
+  - [ ] `semantic` — `SemanticChunker` (richiede embedding; confronta embedding di frasi adiacenti per trovare boundary semantici). ⚠️ Runtime cost: embeddi ogni frase; non default in `defaults.toml`.
+  - [ ] `sentence` — split per frasi (boundary `.`/`?`/`!`); `params.granularity = "sentence" | "paragraph"` (default `sentence`). Un'unica strategy con parametro, non due separate.
+  - [ ] `markdown` — `MarkdownHeaderTextSplitter` (rispetta header `#`/`##`/`###`, code block intatto).
+- [ ] **Strategie avanzate** (priorità 2 — **in pausa**, implementate dopo la validazione Fase 2):
+  - [ ] ~~`parent_child` (Small-to-Big)~~ — **non è una strategy di chunking**; è un pattern di retrieval che arricchisce un chunker base. Esposta in `[retrieval].expansion = "none" | "parent_child"` con `parent_granularity = "section" | "paragraph"`. Vedi Step 8.
+  - [ ] ~~`late_chunking`~~ — **non è una strategy di chunking**; è una modalità di embedding che richiede modello long-context (≥8192 tok). Esposta in `[embedding].mode = "standard" | "late_chunking"`, con fallback automatico a `standard` se il documento supera `max_context_tokens` del modello. Vedi Step 6.
+- [ ] Parametri specifici di ciascuna strategy (`chunk_size`, `chunk_overlap`, `separators`, `granularity`, …) letti da `BaseConfig.chunking.params` (mappa libera tipizzata per strategy).
+- [ ] **Contestualizzazione col modello embedding**: il chunker riceve `max_context_tokens` dal `BaseConfig.embedding` e, quando possibile, regola `chunk_size` di conseguenza; il manager (Step 7) valida ogni chunk prima dell'embedding.
+- [ ] Registrare tutte le strategy base nel registry con metadati discoverable (`name`, `params_schema`, `requires_embedding`).
+- [ ] Scrivere test per ciascuna strategy con testi di esempio; test specifici per `fixed_size` con `chunk_overlap = 0` vs `> 0` (no-overlap vs sliding window).
 
-> **Da definire**: parametri specifici di ciascuna strategy (chunk_size, overlap, separatori, ecc.) e come verranno passati dal `BaseConfig`.
+> **Da definire**: implementazione di riferimento per `semantic` (langchain `SemanticChunker` vs custom); tokenizer per `sentence` boundary in italiano (NLTK `punkt` multilingua vs regex).
 
 ### Step 6: Embedding configurabile per base
 
@@ -117,12 +124,19 @@ Implementare la logica operativa sulle basi di conoscenza, orchestrando ingestio
 - [ ] Il manager legge `BaseConfig` (Step 3) per istanziare le strategy corrette.
 - [ ] **Validazione lunghezza chunk vs `max_context_tokens`** dell'embedding (vedi nota Step 6): errore esplicito se un chunk eccede il limite del modello.
 - [ ] Encapsulare Chroma/langchain nel manager (nessuna variabile globale).
-- [ ] Salvataggio dei chunk su disco (opzionale/da rivalutare).
-- [ ] Scrivere test per ingestion, rimozione, sync mtime, ricerca base, e **test che verifichi il lancio dell'errore quando un chunk eccede `max_context_tokens`**.
+- [ ] **Salvataggio chunk su disco obbligatorio** in `<base>/.chunks/<file_stem>/<file_stem>_chunk_<i>.md` (formato Markdown, editabile dall'utente). Prerequisito per Step 8-bis. I chunk su disco sono la sorgente di verità:
+  - Il manager scrive i chunk al termine della pipeline di chunking; se il file `.chunks/<file_stem>/` esiste già (re-ingest), sovrascrive solo i chunk aggiornati (mtime check) e lascia intatti quelli editati (flag `edited=true` su `ChunkRef`).
+  - I chunk su disco hanno la precedenza sull'eventuale testo ricalcolato: se l'utente edita un `.md`, il watcher di Step 8-bis re-embedda solo quelli modificati (content hash check, vedi `ChunkRef.content_hash`).
+- [ ] **ID deterministico** per chunk: `chunk_id = f"{base_name}::{file_stem}::{i}"` (usato come chiave in Chroma e come `Neo4jNode.id`).
+- [ ] **Estensione metadata Chroma**: `chunk_id`, `base_name`, `file_name`, `chunk_index`, `edited`, `content_hash`; `collection.upsert` (no `add_documents(uuid4())`) — prerequisito Step 8-bis F0.
+- [ ] **Migrazione retroattiva** dei `config.json` esistenti (campi opzionali Pydantic con default copre la lettura, ma il manager deve popolare i nuovi campi alla prima sync): `chunk_id`, `content_hash`, `embedding_model`, e sezione `graph` se assente. Idempotenza: riesecuzione di `add_file` non duplicare record Chroma né chunk su disco.
+- [ ] Scrivere test per ingestion, rimozione, sync mtime, ricerca base, **test che verifichi il lancio dell'errore quando un chunk eccede `max_context_tokens`**, e **test di idempotenza** (add_file × 2 = stessi chunk_id e stessi record Chroma).
 
 ### Step 8: Pipeline di retrieval (pre / retrieval / post)
 
 Implementare la pipeline di ricerca completa, configurabile via TOML per base. La pipeline ha **tre step sequenziali**: pre-retrieval → retrieval → post-retrieval. Ogni step accetta `method = "identity"` come **no-op esplicito** (i dati passano through, senza istanziare LLM/reranker): pipeline sempre omogenea, intento dell'utente dichiarato nel TOML. Utile per es. profilo `legal` dove le leggi non devono essere riassunte.
+
+> **Small-to-Big (Parent-Child)**: pattern di **espansione** che si stacking sopra un chunker base (vedi Step 5). Esposto in `[retrieval].expansion = "none" | "parent_child"` con `parent_granularity = "section" | "paragraph"`. Quando `expansion = "parent_child"`, il retrieval matcha sul child ma restituisce il parent collegato; il chunker base resta libero. **Priorità 2 — in pausa**.
 
 - [ ] **Pre-retrieval (query rewriting)** — sezione `[pre_retrieval]`:
   - Definire l'interfaccia `QueryRewriter` (Protocol/ABC): `rewrite(query: str) -> list[str]` (una query può generare sub-query).
@@ -187,6 +201,28 @@ Costruire il grafo della conoscenza su Neo4j **riprendendo** la pipeline `neo4j-
 | Cambio modello emb. | Bloccato se collection non vuota |
 | Retrieval | Configurabile `[graph].retriever` per-base (default `hybrid_cypher`); l'app istanzia solo il metodo scelto dall'utente |
 
+### Step 8-ter: `AppContext` e bootstrap dell'applicazione
+
+`knowledge-base` è una libreria pura senza alcuna conoscenza di XDG, APP_NAME o variabili globali. Il **wiring** avviene in `knowledge-space`, che costruisce un `AppContext` e lo passa esplicitamente a CLI, MCP server e REST API. Questo step introduce l'unico punto dell'app in cui le dipendenze vengono assemblate; tutti gli entrypoint (Step 12 CLI, Step 13 MCP, Step 14 REST) ricevono un `AppContext` già pronto (o un factory che lo costruisce da `RuntimePaths`).
+
+- [ ] Definire `RuntimePaths` (Pydantic) in `knowledge_space`: path XDG (`data_home`, `state_home`, `config_home`) + convenzione `<workspace>/.knowledge-space/`. Costruito da `APP_NAME` + env (default XDG spec, overridable per test).
+- [ ] Definire `AppContext` (Pydantic o dataclass) in `knowledge_space.context`:
+  - `runtime_paths: RuntimePaths`
+  - `global_index: GlobalIndex` (con path=`runtime_paths.state_home/...`)
+  - `workspace_manager: WorkspaceManager`
+  - `domain_manager: DomainManager`
+  - `base_manager_factory: Callable[[WorkspaceConfig, BaseConfig], KnowledgeBaseManager]` — factory per base (riusa i manager già testati della Fase 1).
+  - `embedder_factory: Callable[[str], EmbeddingStrategy]` — lazy, modello caricato on-demand.
+  - `llm_factory: Callable[[str], LLMStrategy]` (per query rewriting, reranking, compression, GraphRAG).
+  - `graph_store_factory: Callable[[GraphConfigData], GraphStore]` (Step 8-bis; opzionale — `None` se Neo4j non configurato).
+  - `base_config_loader: BaseConfigLoader` (Step 3), che legge `defaults.toml` + `bases/<name>.toml`.
+- [ ] Implementare `build_app_context(runtime_paths: RuntimePaths | None = None) -> AppContext` in `knowledge_space.bootstrap` (entrypoint unico; default usa `RuntimePaths.default()`).
+- [ ] **Nessuna variabile globale**: l'AppContext è l'unico stato condiviso; CLI/MCP/REST lo ricevono come argomento o tramite `fastapi.Depends`.
+- [ ] Validazione all'avvio: avvertire se `[graph]` configurato ma Neo4j non raggiungibile (downgrade a vectore solo con warning).
+- [ ] Scrivere test in `packages/knowledge-space/tests/`: costruzione `AppContext` con `RuntimePaths` temporanei (tmp_path), mocking delle factory, verifica che i manager ricevono path corretti (no XDG reale).
+
+> **Anticipato rispetto a CLI**: questo step è nella **Fase 1** perché il CLI (Step 12) ne ha bisogno, e perché tenerlo nella Fase 3 nasconderebbe un rischio architetturale (iniezione di dipendenze) sotto la logica di presentazione. L'implementazione è in `knowledge-space` (app, non libreria), ma i test di wiring sono puri e isolati con `tmp_path`.
+
 ---
 
 ## Fase 2 — Testing e validazione
@@ -202,17 +238,15 @@ I **formati supportati** in produzione (e quindi da coprire nei dataset) sono ci
 3. **Libri di testo** (PDF lunghi a capitoli, multi-colonna, TOC, typografia uniforme).
 4. **Slide PPTX** (presentazioni con titolo/bullet/tabelle/immagini).
 5. **Appunti** (Markdown testuale, sintassi semplice, liste, codice breve).
-6. **Corpo di mail in formato testuale** (TXT/`.eml`: thread, quote con `>`, mittente/soggetto/data).
 
 > L'insieme è **chiuso**: qualsiasi formato non in questa lista non è supportato; il manager di ingestion deve rifiutarlo con un errore esplicito.
 
-- [ ] Definire corpus di esempio in `tests/data/synthetic/` organizzati per ciascuno dei 6 formati sopra:
+- [ ] Definire corpus di esempio in `tests/data/synthetic/` organizzati per ciascuno dei 5 formati sopra:
   - `papers/` — paper accademici realistici (o estratti da arXiv open access), in PDF.
   - `legal/` — estratti GDPR/contratti in PDF e TXT, con struttura articoli/commi.
   - `textbooks/` — PDF di libri di testo o sample chapters pubblici (multi-colonna, TOC).
   - `slides/` — file PPTX con slide testuali + bullet + una tabella.
   - `notes/` — file Markdown con titoli, liste, codice breve.
-  - `emails/` — file `.txt`/`.eml` con thread di 2–3 messaggi (quote `>`, mittente, data).
 - [ ] Variazioni linguistiche: per ciascun formato, includere campioni in **italiano** e in **inglese** (per testare la copertura linguistica degli embedding e validare che modelli solo-EN degradano su IT — vedi Step 6).
 - [ ] Generare i file tramite script riproducibile (es. `tests/data/synthetic/build.py`) che usa template testo + piccole varianti, oppure scarica un sottoinsieme piccolo e open da fonti pubbliche (arXiv, EUR-Lex).
 - [ ] Definire un set di **query golden** per ogni dominio, con **risposta attesa** (chunk id / snippet / keywords) per valutare recall e precision.
@@ -231,24 +265,17 @@ Definire configurazioni TOML default per scenari d'uso rappresentativi. I profil
   - post-retrieval: `llm_chain_extract` (compressione contestualizzata).
 - [ ] **`legal`** (testi legislativi/GDPR, multilingua IT+EN):
   - ingestion: `pdfplumber` + `pdfminer.six` — ❌ **fonte specifica assente**: la preferenza è inferita dalle capacità di coordinate/layout ([pdfplumber README](https://github.com/jsvine/pdfplumber)). Da validare nel dataset sintetico Step 9. Alt robusto: `docling` (OCR + tabelle + layout).
-  - chunking: `markdown`/structure-aware + Parent-Child (chunk=articolo, parent=articolo intero). Il fixed-size causa **boundary fragmentation** su GDPR documentato in [SCAR, arXiv:2606.16661](https://arxiv.org/abs/2606.16661).
+  - chunking: `markdown`/structure-aware (chunk=articolo; header `§/Art.` riconosciuti). **Future** (in pausa, Step 8): `parent_child` come `[retrieval].expansion` (child=comma, parent=articolo intero). Il fixed-size causa **boundary fragmentation** su GDPR documentato in [SCAR, arXiv:2606.16661](https://arxiv.org/abs/2606.16661).
   - embedding: `BAAI/bge-m3` (multilingua 100+ lingue, ctx 8192, retrieval sparse+dense integrato tipo BM25 — utile per terminologia legale esatta) — [HF card](https://huggingface.co/BAAI/bge-m3), [paper arXiv:2402.03216](https://arxiv.org/pdf/2402.03216). Alt: `intfloat/multilingual-e5-large`.
   - pre-retrieval: `identity` (query già precisa dal legale).
   - retrieval: `dense` (top-k alto) + filtro metadati per articolo; opzionale ensemble con sparse (bge-m3 lo supporta nativamente).
   - post-retrieval: `identity` (serve il testo originale, no compressione).
 - [ ] **`student`** (libri di testo, slide, appunti — italiano, leggero):
   - ingestion: `PyMuPDF4LLM` per PDF (multi-colonna, TOC, veloce — [PyMuPDF4LLM docs](https://pymupdf.readthedocs.io/en/latest/pymupdf4llm/)) + `markitdown` per slide PPTX/EPUB ([markitdown](https://github.com/microsoft/markitdown)).
-  - chunking: `Parent-Child` (genitore=sezione); alt `Late Chunking` se si dispone di embedding long-context ([arXiv:2409.04701](https://arxiv.org/abs/2409.04701), [Jina blog](https://jina.ai/news/late-chunking-in-long-context-embedding-models/)). `fixed_size` 800/150 come fallback leggero.
+  - chunking: `recursive` con `chunk_size` ~800, overlap 150 (leggero e robusto). **Future** (in pausa, Step 5/6): `parent_child` (genitore=sezione) come `[retrieval].expansion`, oppure `late_chunking` in `[embedding].mode` se si dispone di embedding long-context ([arXiv:2409.04701](https://arxiv.org/abs/2409.04701), [Jina blog](https://jina.ai/news/late-chunking-in-long-context-embedding-models/)).
   - embedding: `intfloat/multilingual-e5-small` (dim 384, ~470 MB, supporta IT — [HF card](https://huggingface.co/intfloat/multilingual-e5-small), Mr.TyDi MRR@10 64.4). Alt: `BAAI/bge-m3` su HW buono (più pesante ma migliore qualità e ctx 8192). ⚠️ `all-MiniLM-L6-v2` è solo-EN — NON adatto a documenti IT.
   - pre-retrieval: `identity`.
   - retrieval: `dense` top-k medio.
-  - post-retrieval: `identity`.
-- [ ] **`tecnico`** (documentazione markdown, codice, IT+EN):
-  - ingestion: ingest diretta per markdown; `markitdown` per normalizzare sorgenti miste.
-  - chunking: `MarkdownHeaderTextSplitter` + `Recursive` (code block mai spezzato — [Pinecone](https://www.pinecone.io/learn/chunking-strategies/)).
-  - embedding: `BAAI/bge-m3` (multilingua + sparse retrieval preserva identificatori di codice "token weights similar to BM25" — [bge-m3 card](https://huggingface.co/BAAI/bge-m3)). Alt EN-only: `gte-large-en-v1.5`.
-  - pre-retrieval: `identity`.
-  - retrieval: `dense` + sparse ensemble.
   - post-retrieval: `identity`.
 - [ ] Salvare i profili in `configs/profiles/<name>.toml` (cartella del repo, non del workspace).
 - [ ] Documentare come applicare un profilo a un workspace (`defaults.toml` del workspace = copia del profilo).
@@ -261,7 +288,6 @@ Definire configurazioni TOML default per scenari d'uso rappresentativi. I profil
 | `researcher` | Alta (arXiv test set) | Alta (recursive > semantic confermato) | Alta (MTEB + ctx 8192) |
 | `legal` | ❌ Bassa (fonte assente — da validare) | Alta (boundary fragmentation ✓ in SCAR) | Alta (SOTA MIRACL + IT + sparse) |
 | `student` | Media (feature doc, no benchmark diretto) | Alta (Late Chunking ✓) | Media (IT coperto ma non score Mr.TyDi) |
-| `tecnico` | Bassa (qualitativa) | Media (Pinecone qualitativo) | Media (estrapolazione) |
 
 #### Scelta del retriever per profilo (GraphRAG)
 
