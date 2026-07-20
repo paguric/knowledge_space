@@ -85,7 +85,7 @@ File: `<workspace>/.knowledge-space/config.json`
 }
 ```
 
-I nuovi campi (`chunk_id`, `edited`, `edited_mtime`, `content_hash`, `embedding_model`, `graph`) supportano la pipeline GraphRAG e l'edit-aware re-embedding. Il `graph.retriever` è il **valore di default workspace-level** per il metodo di ricerca (può essere sovrascritto per-base da `[graph].retriever` nel TOML della base — vedi [graph.md §14](graph.md)).
+I nuovi campi (`chunk_id`, `edited`, `edited_mtime`, `content_hash`, `embedding_model`, `graph`) supportano la pipeline GraphRAG e l'edit-aware re-embedding. Il `graph.retriever` è il **valore di default workspace-level** per il metodo di ricerca (può essere sovrascritto per-base da `[graph].retriever` nel TOML della base — vedi [04-graph.md §14](04-graph.md)).
 
 ## Schema JSON dell'indice globale
 
@@ -137,7 +137,7 @@ class KnowledgeBase(BaseModel):
     active: bool = True
     files: Dict[str, FileEntry] = Field(default_factory=dict)
     # Modello usato per indicizzare la collection Chroma. Serve a bloccare
-    # il cambio modello embedding su collection non vuota (vedi docs/graph.md §8).
+    # il cambio modello embedding su collection non vuota (vedi docs/04-graph.md §8).
     embedding_model: Optional[str] = None
 
 

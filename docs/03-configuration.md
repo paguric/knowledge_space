@@ -28,7 +28,7 @@ Conviene tenere separati due concetti distinti:
 | Chi lo scrive | il programma | l'utente (a mano) |
 | Formato | JSON (machine-friendly) | TOML (human-friendly, con commenti) |
 
-- Lo **stato** del workspace vive in `<workspace>/.knowledge-space/config.json` (vedi [data-model.md](data-model.md)).
+- Lo **stato** del workspace vive in `<workspace>/.knowledge-space/config.json` (vedi [02-data-model.md](02-data-model.md)).
 - La **configurazione** di ogni base vive in **TOML**, un file per base.
 
 ---
@@ -37,15 +37,35 @@ Conviene tenere separati due concetti distinti:
 
 ### Filesystem
 
+La struttura completa del filesystem (workspace, basi, chunk, graph) vive qui. La pipeline GraphRAG fa riferimento a questo layout — vedi anche [04-graph.md](04-graph.md) per le convenzioni specifiche del grafo.
+
 ```
+<base_path>/                          # base = cartella foglia (watch_dir sorgente)
+├── documento.pdf                      # file sorgente dell'utente
+├── appunti.md
+└── .chunks/                           # dotfolder, dati di proprietà dell'utente
+    └── documento/
+        ├── documento_chunk_0.md       # chunk editabili dall'utente
+        ├── documento_chunk_1.md
+        └── ...
+
 <workspace>/.knowledge-space/
-├── config.json              # stato (struttura ad albero)
-├── defaults.toml            # default per tutte le basi del workspace
-└── bases/
-    ├── test_kb1.toml         # configurazione specifica della base test_kb1
-    └── test_kb2.toml         # configurazione specifica della base test_kb2
+├── config.json                        # stato (albero Workspace -> Domain -> Base -> File -> Chunk)
+├── defaults.toml                      # default per tutte le basi del workspace
+├── bases/
+│   ├── test_kb1.toml                  # configurazione specifica della base test_kb1
+│   └── test_kb2.toml                  # configurazione specifica della base test_kb2
+├── snapshots/                         # originazione pre-edit per audit
+│   └── <base>/<file_stem>/<file_stem>_chunk_<i>.orig.md
+├── schema.json                        # schema del grafo (caricato, vedi 04-graph.md §6-bis)
+└── graph/                             # stato e connessione del grafo workspace
+    └── graph.json                     # bolt_uri, database, embedding_model, schema ref
 ```
 
+Regole:
+- I chunk sono file markdown **plain**, editabili. L'utente "possiede" i propri dati.
+- `.chunks/` è dentro la base (così si sposta con la base), ignorato dal watcher sorgente (vedi [04-graph.md](04-graph.md) F0.4).
+- `graph.json` appartiene al workspace (un grafo per workspace), ma la **configurazione del comportamento** (schema, `on_chunk_edit`, `resolver`) è in `[graph]` del `BaseConfig` per-base — vedi [04-graph.md](04-graph.md).
 - `<workspace>/.knowledge-space/defaults.toml` → default di tutto il workspace.
 - `<workspace>/.knowledge-space/bases/<base_name>.toml` → configurazione specifica di una base.
 
@@ -71,7 +91,7 @@ model = "sentence-transformers/all-mpnet-base-v2"
 # device = "cpu"
 
 [graph]
-# Configurazione del grafo della conoscenza (vedi docs/graph.md).
+# Configurazione del grafo della conoscenza (vedi docs/04-graph.md).
 # I parametri di connessione al DB (bolt_uri, credenziali) sono a livello
 # workspace in <workspace>/.knowledge-space/graph/graph.json, perché il
 # grafo è uno per workspace; qui restano solo i comportamenti per-base.
@@ -82,7 +102,7 @@ chunk_embedding_property = "embedding"   # nome della proprietà vettore nel nod
 
 # Node/relationship types + patterns. Ignorati se schema = "EXTRACTED" o "FREE".
 # Si possono anche materializzare in <workspace>/.knowledge-space/schema.json
-# (vedi docs/graph.md §6-bis: caricato, non ricreato).
+# (vedi docs/04-graph.md §6-bis: caricato, non ricreato).
 node_types = ["Person", "Organization", "Concept"]
 relationship_types = ["WORKS_FOR", "RELATED_TO"]
 patterns = [
@@ -90,11 +110,11 @@ patterns = [
     ["Concept", "RELATED_TO", "Concept"],
 ]
 
-# --- Retrieval (fase di ricerca, vedi docs/graph.md §14) ---
+# --- Retrieval (fase di ricerca, vedi docs/04-graph.md §14) ---
 # Metodo di ricerca GraphRAG usato dall'app per le query su questa base.
 # L'utente può specificare uno qualsiasi tra quelli supportati da
 # neo4j-graphrag; l'app istanzia il retriever corrispondente.
-retriever = "hybrid_cypher"   # vedi tabella in docs/graph.md §14
+retriever = "hybrid_cypher"   # vedi tabella in docs/04-graph.md §14
 top_k = 5                     # numero di risultati (default del retriever)
 # Nome del vector index Neo4j (Topic/Chunk) usato dai retriever vettoriali.
 vector_index = "chunk-embeddings"
@@ -114,7 +134,7 @@ RETURN node.id            AS chunk_id,
 # Proprietà dei nodi da ritornare inoltre (per i retriever vettoriali puri).
 return_properties = ["chunk_id", "text"]
 
-# --- Pipeline di retrieval (Step 8 docs/roadmap.md) ---
+# --- Pipeline di retrieval (Step 8 docs/06-roadmap-fase1.md) ---
 # Tre step sequenziali: pre-retrieval -> retrieval -> post-retrieval.
 # Ogni step accetta method = "identity" come NO-OP esplicito (i dati passano
 # through, senza istanziare LLM/reranker): pipeline sempre omogenea e
@@ -183,11 +203,11 @@ Ogni componente è identificato da un **nome** + eventuali **parametri**, in mod
 | `[post_retrieval]` | `reranker` / `compressor` | `"identity"` (no-op), `"cross_encoder"`, `"llm"` ; `"identity"`, `"llm_chain_extract"` |
 | `[graph]` | `schema`/`resolver`/`on_chunk_edit`/`retriever` | `"manuale"`/`"EXTRACTED"`/`"FREE"`, `"semantic"`/`"exact"`/`"fuzzy"`, `"eager"`/`"lazy"`, `"vector"`/`"vector_cypher"`/`"hybrid"`/`"hybrid_cypher"`/`"text2cypher"`/`"tools"` |
 
-La sezione `[graph]` è descritta in dettaglio in [graph.md](graph.md). Il campo `retriever` seleziona il metodo di ricerca GraphRAG (tabella dei valori in [graph.md §14](graph.md)); l'app istanzia solo il retriever specificato dall'utente. Il cambio del modello di `[embedding]` è **bloccato** se la collection Chroma non è vuota (vedi [graph.md §9](graph.md)). I chunk vivono in `<base>/.chunks/<file_stem>/` (dotfolder, ownership dell'utente, editabili).
+La sezione `[graph]` è descritta in dettaglio in [04-graph.md](04-graph.md). Il campo `retriever` seleziona il metodo di ricerca GraphRAG (tabella dei valori in [04-graph.md §14](04-graph.md)); l'app istanzia solo il retriever specificato dall'utente. Il cambio del modello di `[embedding]` è **bloccato** se la collection Chroma non è vuota (vedi [04-graph.md §9](04-graph.md)). I chunk vivono in `<base>/.chunks/<file_stem>/` (dotfolder, ownership dell'utente, editabili) — vedi la sezione [Filesystem](#filesystem) per la struttura completa.
 
 #### Modelli di embedding supportati
 
-Il sistema supporta **molteplici modelli di embedding** via registry. Ogni modello registra metadati discoverable esposti poi dall'API e dal frontend (vedi [roadmap.md](roadmap.md) Step 6 e Step 15):
+Il sistema supporta **molteplici modelli di embedding** via registry. Ogni modello registra metadati discoverable esposti poi dall'API e dal frontend (vedi [06-roadmap-fase1.md](06-roadmap-fase1.md) Step 6 e [09-roadmap-fase4.md](09-roadmap-fase4.md) Step 15):
 
 | Modello | `languages` | `dim` | `max_context_tokens` | Licenza | Note |
 |---|---|---|---|---|---|
@@ -200,7 +220,7 @@ Il sistema supporta **molteplici modelli di embedding** via registry. Ogni model
 | `intfloat/multilingual-e5-large` | multilingua (100+, 🇮🇹) | 1024 | 512 | MIT | Più pesante ma migliore qualità di e5-small. |
 
 > **Avvertenza critica — contesto e lingue**:
-> - Ogni modello ha un `max_context_tokens` (es. 384 per `all-mpnet`, 8192 per `gte`/`bge-m3`). Se un chunk supera questo limite, il `KnowledgeBaseManager` deve **lanciare un errore esplicito** (non troncare silenziosamente) — vedi nota in [roadmap.md](roadmap.md) Step 6.
+> - Ogni modello ha un `max_context_tokens` (es. 384 per `all-mpnet`, 8192 per `gte`/`bge-m3`). Se un chunk supera questo limite, il `KnowledgeBaseManager` deve **lanciare un errore esplicito** (non troncare silenziosamente) — vedi nota in [06-roadmap-fase1.md](06-roadmap-fase1.md) Step 6.
 > - I modelli solo-EN (`all-mpnet`, `all-MiniLM`, `gte-large-en`, `bge-large-en`) **non sono adatti a documenti italiani**: il frontend deve mostrarne le lingue supportate per evitare scelte errate (Step 15).
 
 Il programma mantiene un **registro di strategie** per `ingestion`, `chunking`, `embedding`, e istanzia quella giusta in base al nome nel config. Aggiungere una nuova libreria di ingestion = registrare una nuova strategia, senza toccare il codice esistente.

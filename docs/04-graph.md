@@ -29,35 +29,20 @@ Le decisioni consolidate a valle della discussione sono:
 
 ## 1. Layout filesystem
 
-```
-<base_path>/                          # base = cartella foglia (watch_dir sorgente)
-+- documento.pdf                      # file sorgente dell'utente
-+- appunti.md
-'+- .chunks/                          # dotfolder, dati di proprietà dell'utente
-    '+- documento/
-        +- documento_chunk_0.md       # chunk editabili dall'utente
-        +- documento_chunk_1.md
-        +- ...
+Il layout completo del filesystem del workspace e delle basi (inclusi `.chunks/`, `snapshots/`, `schema.json`, `graph/`) è specificato in un unico punto: [03-configuration.md § Filesystem](03-configuration.md#filesystem).
 
-<workspace>/.knowledge-space/
-+- config.json                        # stato (albero Workspace -> Domain -> Base -> File -> Chunk)
-+- defaults.toml
-+- bases/<base>.toml
-+- snapshots/                         # originazione pre-edit per audit
-|   '+- <base>/<file_stem>/<file_stem>_chunk_<i>.orig.md
-+- schema.json                        # schema del grafo (caricato, vedi §6-bis)
-'+- graph/                            # stato e connessione del grafo workspace
-    +- graph.json                    # bolt_uri, database, embedding_model, schema ref
-```
+Per comodità, riassunto dei path rilevanti per la pipeline GraphRAG:
 
-Regole:
-- I chunk sono file markdown **plain**, editabili. L'utente "possiede" i propri dati.
-- `.chunks/` è dentro la base (così si sposta con la base), ignorato dal watcher sorgente (vedi F0.4).
-- `graph.json` appartiene al workspace (un grafo per workspace), ma la **configurazione del comportamento** (schema, `on_chunk_edit`, `resolver`) è in `[graph]` del `BaseConfig` per-base — vedi [configuration.md](configuration.md).
+- **Chunk su disco**: `<base>/.chunks/<file_stem>/<file_stem>_chunk_<i>.md` — dotfolder dentro la base, ignorato dal watcher sorgente (F0.4), editabile dall'utente.
+- **Snapshot originale**: `<workspace>/.knowledge-space/snapshots/<base>/<file_stem>/<file_stem>_chunk_<i>.orig.md` — per audit pre-edit.
+- **Schema del grafo**: `<workspace>/.knowledge-space/schema.json` — caricato, non ricreato (vedi §6-bis).
+- **Stato del grafo**: `<workspace>/.knowledge-space/graph/graph.json` — `bolt_uri`, `database`, `embedding_model`, riferimento allo schema.
+
+La **configurazione del comportamento** del grafo (schema, `on_chunk_edit`, `resolver`) resta in `[graph]` del `BaseConfig` per-base (vedi [03-configuration.md](03-configuration.md)).
 
 ## 2. Modello dati (estensioni)
 
-Vedi [data-model.md](data-model.md) per i modelli Pydantic. Riassunto delle estensioni:
+Vedi [02-data-model.md](02-data-model.md) per i modelli Pydantic. Riassunto delle estensioni:
 
 - `ChunkRef`: aggiunge `chunk_id: str` (deterministico `base::file::i`), `edited: bool = False`, `edited_mtime: Optional[str] = None`, `content_hash: str` (sha1 del testo).
 - `KnowledgeBase`: aggiunge `embedding_model: Optional[str]` (modello usato per indicizzare la collection Chroma; serve §9 per blocco cambio modello).
@@ -213,7 +198,7 @@ Ordine consigliato (bloccanti dall'alto in basso):
 - **F1 — Pacchetto e dipendenze**
   - F1.1 `neo4j-graphrag` + `neo4j` + extra `[nlp]` in `knowledge-base`.
   - F1.2 Modulo `knowledge_base/graph/`.
-  - F1.3 `graph.json` workspace + sezione `[graph]` TOML per-base (vedi [configuration.md](configuration.md)).
+  - F1.3 `graph.json` workspace + sezione `[graph]` TOML per-base (vedi [03-configuration.md](03-configuration.md)).
   - F1.4 Test caricamento `GraphConfigData` roundtrip JSON.
 
 - **F2 — `KSChunkLoader`**
@@ -254,8 +239,8 @@ Ordine consigliato (bloccanti dall'alto in basso):
 - **Resolver semantico non è magico**: `SpaCySemanticMatchResolver` collassa nomi simili per significato;Near misses come "OpenAI" ≈ "CloseAI" potrebbero in teoria essere sbagliati ma la cosine similarity ha una soglia. Possibile regolare la soglia o passare a `fuzzy` se si vedono falsi positivi. L'exact resta fallback sicuro.
 - **Ri-estrazione su edit (eager)**: costa una chiamata LLM per chunk editato. Mitigato dal debounce + hash check.
 - **Edit che espande un chunk oltre `chunk_size`**: si rispetta l'edit manuale, niente ri-chunking automatico (cancellerebbe le modifiche). Warning opzionale se la lunghezza diverge molto dal config.
-- **Race conditions watcher**: Chroma PersistentClient è safe per singolo processo; il `ChunkWatcher` deve condividere la stessa istanza collection del watcher sorgente. Per più processi (REST + MCP) serve sincronizzazione (vedi [roadmap.md](roadmap.md) Considerazioni e rischi).
-- **Neo4j non embedded**: serve un'istanza Neo4j in esecuzione (locale o remota). Documentare requisiti runtime in una sezione "Prerequisiti" del README o in `docs/rest-api.md`.
+- **Race conditions watcher**: Chroma PersistentClient è safe per singolo processo; il `ChunkWatcher` deve condividere la stessa istanza collection del watcher sorgente. Per più processi (REST + MCP) serve sincronizzazione (vedi [05-roadmap-overview.md](05-roadmap-overview.md) Considerazioni e rischi).
+- **Neo4j non embedded**: serve un'istanza Neo4j in esecuzione (locale o remota). Documentare requisiti runtime in una sezione "Prerequisiti" del README o in `docs/12-rest-api.md`.
 - **Re-estrazione schema non migra le entità vecchie**: cambiare schema non riscrive le entità estratte col vecchio; l'utente deve cancellarle Cypher-side o accettare coesistenza.
 
 ## 13. Test
@@ -299,7 +284,7 @@ La pipeline GraphRAG separa la **costruzione** del grafo (SimpleKGPipeline, §3)
 
 ### Fallback workspace-level
 
-`GraphConfigData.retriever` (default `"hybrid_cypher"`) è il valore usato se una base **non** specifica `[graph].retriever` nel suo TOML. Questo permette di cambiare il retriever di default per tutto il workspace in un solo punto (vedi [data-model.md](data-model.md) `GraphConfigData`).
+`GraphConfigData.retriever` (default `"hybrid_cypher"`) è il valore usato se una base **non** specifica `[graph].retriever` nel suo TOML. Questo permette di cambiare il retriever di default per tutto il workspace in un solo punto (vedi [02-data-model.md](02-data-model.md) `GraphConfigData`).
 
 ### Factory lato app
 
