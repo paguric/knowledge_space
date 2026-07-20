@@ -12,15 +12,17 @@ I **formati supportati** in produzione (e quindi da coprire nei dataset) sono ci
 
 1. **Paper accademici** (PDF a colonne, tabelle, formule, referenze, abstract).
 2. **Testi legislativi** (PDF/TXT: normative, articoli, commi, lettere — es. GDPR, contratti).
-3. **Libri di testo** (PDF lunghi a capitoli, multi-colonna, TOC, typografia uniforme).
-4. **Slide PPTX** (presentazioni con titolo/bullet/tabelle/immagini).
-5. **Appunti** (Markdown testuale, sintassi semplice, liste, codice breve).
+3. **Preventivi / contratti** (DOCX: documenti Office con tabelle, intestazioni, paragrafi — per profilo consulente).
+4. **Libri di testo** (PDF lunghi a capitoli, multi-colonna, TOC, typografia uniforme).
+5. **Slide PPTX** (presentazioni con titolo/bullet/tabelle/immagini).
+6. **Appunti** (Markdown testuale, sintassi semplice, liste, codice breve).
 
 > L'insieme è **chiuso**: qualsiasi formato non in questa lista non è supportato; il manager di ingestion deve rifiutarlo con un errore esplicito.
 
-- [ ] Definire corpus di esempio in `tests/data/synthetic/` organizzati per ciascuno dei 5 formati sopra:
+- [ ] Definire corpus di esempio in `tests/data/synthetic/` organizzati per ciascuno dei 6 formati sopra:
   - `papers/` — paper accademici realistici (o estratti da arXiv open access), in PDF.
   - `legal/` — estratti GDPR/contratti in PDF e TXT, con struttura articoli/commi.
+  - `preventivi/` — documenti DOCX con tabelle, intestazioni, paragrafi.
   - `textbooks/` — PDF di libri di testo o sample chapters pubblici (multi-colonna, TOC).
   - `slides/` — file PPTX con slide testuali + bullet + una tabella.
   - `notes/` — file Markdown con titoli, liste, codice breve.
@@ -40,8 +42,8 @@ Definire configurazioni TOML default per scenari d'uso rappresentativi. I profil
   - pre-retrieval: `multi_query` (espansione LLM) o `hyde`.
   - retrieval: `ensemble` (dense + sparse).
   - post-retrieval: `llm_chain_extract` (compressione contestualizzata).
-- [ ] **`consulente`** (testi normativi, GDPR, contratti — multilingua IT+EN):
-  - ingestion: `pymupdf4llm` — veloce, multi-colonna, TOC preservato ([docs](https://pymupdf.readthedocs.io/en/latest/pymupdf4llm/)). Alternativa: `docling` (OCR + tabelle) per PDF complessi.
+- [ ] **`consulente`** (testi normativi, GDPR, contratti, preventivi — multilingua IT+EN):
+  - ingestion: `pymupdf4llm` per PDF (veloce, multi-colonna, TOC preservato — [docs](https://pymupdf.readthedocs.io/en/latest/pymupdf4llm/)). `docling` per DOCX (preventivi, contratti) e PDF complessi con OCR/tabelle.
   - chunking: `markdown`/structure-aware (chunk=articolo; header `§/Art.` riconosciuti). **Future** (in pausa, Step 8): `parent_child` come `[retrieval].expansion` (child=comma, parent=articolo intero). Il fixed-size causa **boundary fragmentation** su GDPR documentato in [SCAR, arXiv:2606.16661](https://arxiv.org/abs/2606.16661).
   - embedding: `BAAI/bge-m3` (multilingua 100+ lingue, ctx 8192, retrieval sparse+dense integrato tipo BM25 — utile per terminologia legale esatta) — [HF card](https://huggingface.co/BAAI/bge-m3), [paper arXiv:2402.03216](https://arxiv.org/pdf/2402.03216). Alt: `intfloat/multilingual-e5-large`.
   - pre-retrieval: `identity` (query già precisa dal consulente).

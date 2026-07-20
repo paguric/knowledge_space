@@ -14,7 +14,8 @@ L'insieme è **chiuso**: qualsiasi formato non in questa lista viene rifiutato c
 | Testi normativi | `.pdf`, `.txt` | `consulente` |
 | Libri di testo | `.pdf` | `consulente` |
 | Slide | `.pptx` | `studente` |
-| Appunti | `.md` | tutti (letteura diretta, nessuna libreria) |
+| Preventivi / contratti | `.docx` | `consulente` |
+| Appunti | `.md` | tutti (lettura diretta, nessuna libreria) |
 
 ## Interfaccia `IngestionStrategy`
 
@@ -60,7 +61,7 @@ params.generate_page_images = false
 params.image_export = "reference"  # "reference" | "embedded" | "none"
 ```
 
-**Quando usare**: paper accademici (layout a colonne, formule, tabelle), documenti PDF complessi. Profilo **ricercatore**.
+**Quando usare**: paper accademici (layout a colonne, formule, tabelle), documenti PDF complessi, DOCX (preventivi, contratti). Profilo **ricercatore** e `consulente` per DOCX.
 
 ### PyMuPDF4LLM
 
