@@ -2,7 +2,7 @@
 
 Esporre i manager consolidati nella Fase 1 tramite MCP e CLI.
 
-> Per la collocazione di questa fase nel piano generale: vedi [05-roadmap-overview.md](05-roadmap-overview.md).
+> Per la collocazione di questa fase nel piano generale: vedi [90-roadmap-overview.md](90-roadmap-overview.md).
 
 ---
 
@@ -11,7 +11,7 @@ Esporre i manager consolidati nella Fase 1 tramite MCP e CLI.
 - [ ] Aggiungere `typer` alle dipendenze di `knowledge-space`.
 - [ ] Creare `knowledge_space/cli.py`.
 - [ ] Implementare comandi per workspace, domini, basi, file, ricerca.
-- [ ] La CLI **legge** ma non scrive i file TOML (vedi [03-configuration.md](03-configuration.md)).
+- [ ] La CLI **legge** ma non scrive i file TOML (vedi [30-configuration.md](30-configuration.md)).
 - [ ] Scrivere test di integrazione per i comandi CLI.
 
 ### Step 13: Server MCP

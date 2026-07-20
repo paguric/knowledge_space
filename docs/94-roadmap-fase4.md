@@ -1,6 +1,6 @@
 # Fase 4 — REST + Frontend
 
-> Per la collocazione di questa fase nel piano generale: vedi [05-roadmap-overview.md](05-roadmap-overview.md).
+> Per la collocazione di questa fase nel piano generale: vedi [90-roadmap-overview.md](90-roadmap-overview.md).
 
 ---
 
@@ -18,7 +18,7 @@ Thin layer FastAPI sopra i manager già testati.
 ### Step 15: Frontend React / GUI
 
 - [ ] Collegare il frontend alle API REST.
-- [ ] Permettere modifica dei file TOML dall'interfaccia (quando prevista da 03-configuration.md).
+- [ ] Permettere modifica dei file TOML dall'interfaccia (quando prevista da 30-configuration.md).
 - [ ] Visualizzare struttura ad albero (workspace → domini → basi → file → chunk).
 - [ ] **Selettore modello di embedding**: quando l'utente configura una base, mostrare l'elenco dei modelli disponibili (da `/api/v1/models/embeddings`) e **evidenziare esplicitamente quali lingue supporta ciascun modello** (es. badge "🇮🇹 IT", "🇬🇧 EN", "🌍 multilingua"). Questo aiuta l'utente a scegliere un modello compatibile col proprio corpus e a evitare errori (es. modelli solo-EN su documenti italiani).
 - [ ] **Avviso contesto**: mostrare `max_context_tokens` del modello e confrontarlo con `chunk_size` della strategia di chunking scelta, avvisando l'utente se configura un `chunk_size` che rischia di eccedere il limite (vedi nota Step 6 — lancio errore al runtime).

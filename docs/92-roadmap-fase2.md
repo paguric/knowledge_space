@@ -2,7 +2,7 @@
 
 Validare end-to-end la pipeline di business completa (Fase 1) tramite dataset sintetici e profili di configurazione predefiniti, prima di esporre il sistema tramite CLI/MCP/REST.
 
-> Per la collocazione di questa fase nel piano generale: vedi [05-roadmap-overview.md](05-roadmap-overview.md).
+> Per la collocazione di questa fase nel piano generale: vedi [90-roadmap-overview.md](90-roadmap-overview.md).
 
 ---
 
@@ -75,7 +75,7 @@ Per abbinare la tipologia di retrieval sul grafo a ciascun profilo, usiamo come 
 >
 > La documentazione categorizza le domande (specifiche, esplorative, di sintesi, globali…) e, per ciascuna, suggerisce la pipeline atomica più adatta (vector retriever, text2cypher, hybrid, hybrid+cypher, tools, ecc.). Useremo questa classificazione per rispondere, ad esempio, alla domanda: **"quale tipologia di retrieval sul grafo utilizzare per lo studente?"** individuando il tipo di domanda predominante nello scenario "studente" e leggendo la pipeline corrispondente dal reference.
 
-> **Nota ( Memgraph vs Neo4j ):** sebbene il reference citato sia tratto dalla documentazione di **Memgraph**, il progetto utilizzerà **Neo4j** come grafico, coerentemente con quanto previsto negli [piani GraphRAG](04-graph.md). La classificazione dei tipi di domanda/pipeline è indipendente dalla backend : la mappatura similarity_retriever ↔ nome Memgraph va semplicemente ricondotta ai retriever equivalenti della libreria `neo4j-graphrag` (vedi `RetrieverFactory` in [04-graph.md §14](04-graph.md)). In altre parole, Memgraph è il solo reference concettuale per la progettazione dei profili .
+> **Nota ( Memgraph vs Neo4j ):** sebbene il reference citato sia tratto dalla documentazione di **Memgraph**, il progetto utilizzerà **Neo4j** come grafico, coerentemente con quanto previsto negli [piani GraphRAG](40-graph.md). La classificazione dei tipi di domanda/pipeline è indipendente dalla backend : la mappatura similarity_retriever ↔ nome Memgraph va semplicemente ricondotta ai retriever equivalenti della libreria `neo4j-graphrag` (vedi `RetrieverFactory` in [40-graph.md §14](40-graph.md)). In altre parole, Memgraph è il solo reference concettuale per la progettazione dei profili .
 
 #### Mapping preliminare profilo ↔ pipeline atomica
 

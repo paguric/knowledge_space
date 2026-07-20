@@ -47,7 +47,7 @@ La codebase è organizzata come workspace `uv` con tre pacchetti:
 
 ## Modulo `knowledge_base/graph/` (pipeline GraphRAG)
 
-Nuovo sotto-modulo previsto dallo Step 8-bis (vedi [04-graph.md](04-graph.md) e [06-roadmap-fase1.md](06-roadmap-fase1.md)). Rispetta la regola d'oro sopra: è una libreria che riceve esplicitamente il driver Neo4j, l'embedder, la connessione Chroma e la configurazione (`GraphConfigData` lato workspace + `[graph]` lato base).
+Nuovo sotto-modulo previsto dallo Step 8-bis (vedi [40-graph.md](40-graph.md) e [91-roadmap-fase1.md](91-roadmap-fase1.md)). Rispetta la regola d'oro sopra: è una libreria che riceve esplicitamente il driver Neo4j, l'embedder, la connessione Chroma e la configurazione (`GraphConfigData` lato workspace + `[graph]` lato base).
 
 Componenti previsti:
 
@@ -55,7 +55,7 @@ Componenti previsti:
 - **`GraphPipeline`**: assemblaggio di `KSChunkLoader -> schema (caricato da `schema.json`) -> LLMEntityRelationExtractor(create_lexical_graph=True) -> Neo4jWriter -> EntityResolver`.
 - **`ChunkWatcher`**: watcher watchdog dedicato a `<base>/.chunks/**/*.md`, con debounce + hash check, che invoca `KSChunkLoader.upsert_chunk` e poi `GraphPipeline` (scope mirato) sul chunk editato (eager cascade).
 - **Schema manager**: caricamento `GraphSchema.from_file` se esiste, altrimenti `SchemaBuilder`/`SchemaFromTextExtractor` con materializzazione su `schema.json`.
-- **`RetrieverFactory`**: costruisce il retriever di `neo4j-graphrag` corrispondente a `[graph].retriever` (valori ammessi: `vector`, `vector_cypher`, `hybrid`, `hybrid_cypher`, `text2cypher`, `tools`) iniettando driver, embedder, LLM e indici (`vector_index`/`fulltext_index`). Validazione all'avvio (retriever non ammesso → errore; `hybrid*` senza `fulltext_index` → errore). Vedi [04-graph.md §14](04-graph.md).
+- **`RetrieverFactory`**: costruisce il retriever di `neo4j-graphrag` corrispondente a `[graph].retriever` (valori ammessi: `vector`, `vector_cypher`, `hybrid`, `hybrid_cypher`, `text2cypher`, `tools`) iniettando driver, embedder, LLM e indici (`vector_index`/`fulltext_index`). Validazione all'avvio (retriever non ammesso → errore; `hybrid*` senza `fulltext_index` → errore). Vedi [40-graph.md §14](40-graph.md).
 
 Esempio di flusso dal lato applicazione (`knowledge-space` o `mcp-server`):
 
@@ -98,5 +98,5 @@ Iniezione delle dipendenze: nessuna variabile globale; il `GraphStore` e l'`embe
 - [ ] Rimuovere gli entrypoint CLI da `knowledge-base`.
 - [ ] Documentare nel README di ciascun pacchetto il suo ruolo.
 - [ ] Aggiungere la dipendenza `neo4j-graphrag` + `neo4j` (extra `[nlp]`) a `knowledge-base`.
-- [ ] Creare il sotto-modulo `knowledge_base/graph/` (`KSChunkLoader`, `GraphPipeline`, `ChunkWatcher`, schema manager, `RetrieverFactory`) — vedi [04-graph.md](04-graph.md).
+- [ ] Creare il sotto-modulo `knowledge_base/graph/` (`KSChunkLoader`, `GraphPipeline`, `ChunkWatcher`, schema manager, `RetrieverFactory`) — vedi [40-graph.md](40-graph.md).
 - [ ] Spostare i chunk in `<base>/.chunks/` e introduzione ID deterministici (prerequisito F0 del piano GraphRAG).

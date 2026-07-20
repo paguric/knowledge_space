@@ -28,7 +28,7 @@ Conviene tenere separati due concetti distinti:
 | Chi lo scrive | il programma | l'utente (a mano) |
 | Formato | JSON (machine-friendly) | TOML (human-friendly, con commenti) |
 
-- Lo **stato** del workspace vive in `<workspace>/.knowledge-space/config.json` (vedi [02-data-model.md](02-data-model.md)).
+- Lo **stato** del workspace vive in `<workspace>/.knowledge-space/config.json` (vedi [20-data-model.md](20-data-model.md)).
 - La **configurazione** di ogni base vive in **TOML**, un file per base.
 
 ---
@@ -37,7 +37,7 @@ Conviene tenere separati due concetti distinti:
 
 ### Filesystem
 
-La struttura completa del filesystem (workspace, basi, chunk, graph) vive qui. La pipeline GraphRAG fa riferimento a questo layout — vedi anche [04-graph.md](04-graph.md) per le convenzioni specifiche del grafo.
+La struttura completa del filesystem (workspace, basi, chunk, graph) vive qui. La pipeline GraphRAG fa riferimento a questo layout — vedi anche [40-graph.md](40-graph.md) per le convenzioni specifiche del grafo.
 
 ```
 <workspace>/
@@ -57,7 +57,7 @@ La struttura completa del filesystem (workspace, basi, chunk, graph) vive qui. L
     ├── defaults.toml                     # default per tutte le basi del workspace
     └── graph/                            # stato e connessione del grafo workspace (uno per workspace)
         ├── graph.json                    # bolt_uri, database, embedding_model, schema_ref
-        └── schema.json                   # schema del grafo (caricato, vedi 04-graph.md §6-bis)
+        └── schema.json                   # schema del grafo (caricato, vedi 40-graph.md §6-bis)
 ```
 
 Regole:
@@ -65,7 +65,7 @@ Regole:
 - I chunk sono file markdown **plain**, editabili. L'utente "possiede" i propri dati.
 - Ogni base ha il proprio `.knowledge-space/` (chunk + `base.toml`): la base è **autocontenuta**, copiabile/spostabile con la sua config e i suoi chunk.
 - Il watcher sorgente della base ignora i path che iniziano con `.` (`.knowledge-space/`).
-- `graph/` appartiene al workspace (un grafo per workspace), ma la **configurazione del comportamento** (schema, `on_chunk_edit`, `resolver`) è in `[graph]` del `BaseConfig` per-base — vedi [04-graph.md](04-graph.md).
+- `graph/` appartiene al workspace (un grafo per workspace), ma la **configurazione del comportamento** (schema, `on_chunk_edit`, `resolver`) è in `[graph]` del `BaseConfig` per-base — vedi [40-graph.md](40-graph.md).
 - Cascata di configurazione: default hardcoded → `<workspace>/.knowledge-space/defaults.toml` → `<base>/.knowledge-space/base.toml`.
 - Se una base non ha `base.toml`, usa i default del workspace (comportamento legittimo, **nessun warning**).
 - Se `defaults.toml` manca, KS usa i default hardcoded del programma **con un warning all'avvio** (segnala intenzione/config persa); KS non riscrive mai il TOML.
@@ -91,7 +91,7 @@ model = "sentence-transformers/all-mpnet-base-v2"
 # device = "cpu"
 
 [graph]
-# Configurazione del grafo della conoscenza (vedi docs/04-graph.md).
+# Configurazione del grafo della conoscenza (vedi docs/40-graph.md).
 # I parametri di connessione al DB (bolt_uri, credenziali) sono a livello
 # workspace in <workspace>/.knowledge-space/graph/graph.json, perché il
 # grafo è uno per workspace; qui restano solo i comportamenti per-base.
@@ -102,7 +102,7 @@ chunk_embedding_property = "embedding"   # nome della proprietà vettore nel nod
 
 # Node/relationship types + patterns. Ignorati se schema = "EXTRACTED" o "FREE".
 # Si possono anche materializzare in <workspace>/.knowledge-space/schema.json
-# (vedi docs/04-graph.md §6-bis: caricato, non ricreato).
+# (vedi docs/40-graph.md §6-bis: caricato, non ricreato).
 node_types = ["Person", "Organization", "Concept"]
 relationship_types = ["WORKS_FOR", "RELATED_TO"]
 patterns = [
@@ -110,11 +110,11 @@ patterns = [
     ["Concept", "RELATED_TO", "Concept"],
 ]
 
-# --- Retrieval (fase di ricerca, vedi docs/04-graph.md §14) ---
+# --- Retrieval (fase di ricerca, vedi docs/40-graph.md §14) ---
 # Metodo di ricerca GraphRAG usato dall'app per le query su questa base.
 # L'utente può specificare uno qualsiasi tra quelli supportati da
 # neo4j-graphrag; l'app istanzia il retriever corrispondente.
-retriever = "hybrid_cypher"   # vedi tabella in docs/04-graph.md §14
+retriever = "hybrid_cypher"   # vedi tabella in docs/40-graph.md §14
 top_k = 5                     # numero di risultati (default del retriever)
 # Nome del vector index Neo4j (Topic/Chunk) usato dai retriever vettoriali.
 vector_index = "chunk-embeddings"
@@ -134,7 +134,7 @@ RETURN node.id            AS chunk_id,
 # Proprietà dei nodi da ritornare inoltre (per i retriever vettoriali puri).
 return_properties = ["chunk_id", "text"]
 
-# --- Pipeline di retrieval (Step 8 docs/06-roadmap-fase1.md) ---
+# --- Pipeline di retrieval (Step 8 docs/91-roadmap-fase1.md) ---
 # Tre step sequenziali: pre-retrieval -> retrieval -> post-retrieval.
 # Ogni step accetta method = "identity" come NO-OP esplicito (i dati passano
 # through, senza istanziare LLM/reranker): pipeline sempre omogenea e
@@ -203,25 +203,11 @@ Ogni componente è identificato da un **nome** + eventuali **parametri**, in mod
 | `[post_retrieval]` | `reranker` / `compressor` | `"identity"` (no-op), `"cross_encoder"`, `"llm"` ; `"identity"`, `"llm_chain_extract"` |
 | `[graph]` | `schema`/`resolver`/`on_chunk_edit`/`retriever` | `"manuale"`/`"EXTRACTED"`/`"FREE"`, `"semantic"`/`"exact"`/`"fuzzy"`, `"eager"`/`"lazy"`, `"vector"`/`"vector_cypher"`/`"hybrid"`/`"hybrid_cypher"`/`"text2cypher"`/`"tools"` |
 
-La sezione `[graph]` è descritta in dettaglio in [04-graph.md](04-graph.md). Il campo `retriever` seleziona il metodo di ricerca GraphRAG (tabella dei valori in [04-graph.md §14](04-graph.md)); l'app istanzia solo il retriever specificato dall'utente. Il cambio del modello di `[embedding]` è **bloccato** se la collection Chroma non è vuota (vedi [04-graph.md §9](04-graph.md)). I chunk vivono in `<base>/.knowledge-space/chunks/<file_stem>/` (dotfolder, ownership dell'utente, editabili) — vedi la sezione [Filesystem](#filesystem) per la struttura completa.
+La sezione `[graph]` è descritta in dettaglio in [40-graph.md](40-graph.md). Il campo `retriever` seleziona il metodo di ricerca GraphRAG (tabella dei valori in [40-graph.md §14](40-graph.md)); l'app istanzia solo il retriever specificato dall'utente. Il cambio del modello di `[embedding]` è **bloccato** se la collection Chroma non è vuota (vedi [40-graph.md §9](40-graph.md)). I chunk vivono in `<base>/.knowledge-space/chunks/<file_stem>/` (dotfolder, ownership dell'utente, editabili) — vedi la sezione [Filesystem](#filesystem) per la struttura completa.
 
 #### Modelli di embedding supportati
 
-Il sistema supporta **molteplici modelli di embedding** via registry. Ogni modello registra metadati discoverable esposti poi dall'API e dal frontend (vedi [06-roadmap-fase1.md](06-roadmap-fase1.md) Step 6 e [09-roadmap-fase4.md](09-roadmap-fase4.md) Step 15):
-
-| Modello | `languages` | `dim` | `max_context_tokens` | Licenza | Note |
-|---|---|---|---|---|---|
-| `sentence-transformers/all-mpnet-base-v2` | EN | 768 | 384 | Apache 2.0 | Solo inglese; non adatto a documenti italiani. |
-| `sentence-transformers/all-MiniLM-L6-v2` | EN | 384 | 384 | Apache 2.0 | Leggero; solo EN. |
-| `Alibaba-NLP/gte-large-en-v1.5` | EN | 1024 | 8192 | Apache 2.0 | Top EN su MTEB (65.39); lungo contesto. |
-| `BAAI/bge-large-en-v1.5` | EN | 1024 | 512 | MIT | Buona qualità EN, ctx corto. |
-| `BAAI/bge-m3` | multilingua (100+, 🇮🇹) | 1024 | 8192 | MIT | SOTA MIRACL; dense+sparse+colbert; ideale per IT + terminologia tecnica. |
-| `intfloat/multilingual-e5-small` | multilingua (100+, 🇮🇹) | 384 | 512 | MIT | Leggero, ~470 MB; buon compromesso per studenti IT. |
-| `intfloat/multilingual-e5-large` | multilingua (100+, 🇮🇹) | 1024 | 512 | MIT | Più pesante ma migliore qualità di e5-small. |
-
-> **Avvertenza critica — contesto e lingue**:
-> - Ogni modello ha un `max_context_tokens` (es. 384 per `all-mpnet`, 8192 per `gte`/`bge-m3`). Se un chunk supera questo limite, il `KnowledgeBaseManager` deve **lanciare un errore esplicito** (non troncare silenziosamente) — vedi nota in [06-roadmap-fase1.md](06-roadmap-fase1.md) Step 6.
-> - I modelli solo-EN (`all-mpnet`, `all-MiniLM`, `gte-large-en`, `bge-large-en`) **non sono adatti a documenti italiani**: il frontend deve mostrarne le lingue supportate per evitare scelte errate (Step 15).
+La lista completa dei modelli di embedding supportati (con metadati: `languages`, `dim`, `max_context_tokens`, `license`) è in [70-embedding.md](70-embedding.md). Il registry è popolato all'avvio da `knowledge_base.strategies.embedding` e il frontend/Fase 4 espone l'endpoint `/api/v1/models/embeddings`.
 
 Il programma mantiene un **registro di strategie** per `ingestion`, `chunking`, `embedding`, e istanzia quella giusta in base al nome nel config. Aggiungere una nuova libreria di ingestion = registrare una nuova strategia, senza toccare il codice esistente.
 
@@ -256,89 +242,9 @@ def load_base_config(base_name: str, workspace_paths) -> BaseConfig:
     return config
 ```
 
----
-
 ### Pipeline di retrieval
 
-La ricerca è configurabile in tre step sequenziali:
-
-```
-query → [pre_retrieval] → [retrieval] → [post_retrieval] → contesto → LLM generatore
-```
-
-Ogni step accetta `"identity"` come **no-op esplicito**: i dati passano through senza chiamate a LLM/reranker. La pipeline resta omogenea e il file TOML **dichiara l'intento** dell'utente (utile per es. `legal`: "nessuna riscrittura, nessuna compression").
-
-#### `[pre_retrieval]` — query rewriting
-
-| Campo | Valori | Descrizione |
-|---|---|---|
-| `method` | `"identity"` \| `"hyde"` \| `"multi_query"` | `identity` = no-op (1:1); `hyde` genera documenti ipotetici; `multi_query` espande in N sub-query via LLM |
-| `params` | mappa (opzionale) | es. `{ n_queries = 3, llm = "..." }` per `multi_query` |
-
-Output: lista di query (`list[str]`) passate al retrieval.
-
-#### `[retrieval]` — ricerca
-
-| Campo | Valori | Descrizione |
-|---|---|---|
-| `method` | `"dense"` \| `"sparse"` \| `"hybrid"` | scelta esplicita utente |
-| `fusion` | `"rrf"` \| `"weighted_sum"` | usato solo se `method = "hybrid"`; `rrf` default (robusto, no tuning) |
-
-**Comportamento sparse**:
-- Se il modello embedding della base espone `embed_sparse` nativamente (es. `BAAI/bge-m3`), viene riusato.
-- **Altrimenti fallback automatico a BM25 esterno** (`rank_bm25` sul testo grezzo dei chunk), con **warning di log all'avviso** all'avvio. L'utente non deve fare nulla; il sistema sceglie la strategia better-available per il modello scelto.
-
-Compatibilità `method` × modello embedding:
-
-| Modello embedding | `dense` | `sparse` | `hybrid` |
-|---|---|---|---|
-| `BAAI/bge-m3` | ✓ | ✓ nativo | ✓ nativo |
-| `gte-large-en-v1.5`, `bge-large-en-v1.5`, `all-mpnet`, `all-MiniLM`, `multilingual-e5-*` | ✓ | ✓ via BM25 fallback | ✓ via BM25 fallback |
-
-#### `[post_retrieval]` — rerank e compress
-
-| Campo | Valori | Descrizione |
-|---|---|---|
-| `top_k` | intero | numero di risultati finali passati all'LLM (applicato **ultimi**, dopo ogni altra elaborazione) |
-| `reranker` | `"identity"` \| `"cross_encoder"` \| `"llm"` | riordino dei top-N; `identity` = no rerank |
-| `reranker_model` | stringa (opzionale) | es. `BAAI/bge-reranker-v2-m3`; solo se `reranker != "identity"` |
-| `compressor` | `"identity"` \| `"llm_chain_extract"` | compression/sintesi del contesto; `identity` = testo as-is |
-
-**Ordine fisso**: rerank **prima**, compress **dopo**. L'LLM generatore vede solo ciò che esce dal compressor.
-
-#### Esempio: profilo legale (nessuna manipolazione)
-
-```toml
-[pre_retrieval]
-method = "identity"                # query del legale è già precisa, non va riscritta
-
-[retrieval]
-method = "hybrid"
-fusion = "rrf"
-
-[post_retrieval]
-top_k = 20
-reranker = "identity"              # nessun rerank
-compressor = "identity"            # testo originale passato as-is, NESSUN riassunto
-```
-
-#### Esempio: profilo ricercatore (pipeline avanzata)
-
-```toml
-[pre_retrieval]
-method = "multi_query"
-params = { n_queries = 4 }
-
-[retrieval]
-method = "hybrid"
-fusion = "rrf"
-
-[post_retrieval]
-top_k = 8
-reranker = "cross_encoder"
-reranker_model = "BAAI/bge-reranker-v2-m3"
-compressor = "llm_chain_extract"   # compression contestualizzata del top-8 rerankato
-```
+Il dettaglio completo della pipeline di retrieval (pre-retrieval, retrieval, post-retrieval) è in [80-retrieval.md](80-retrieval.md). Qui la sintassi TOML; per specifiche e implementazione vedi il file dedicato.
 
 ---
 

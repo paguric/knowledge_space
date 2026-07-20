@@ -4,34 +4,34 @@
 
 Il lavoro è diviso in **4 fasi**:
 
-1. **Fase 1 — Logica di business completa**: tutta la logica di backend funzionante e testata (modelli, managers, configurazione, pipeline di ingestion/chunking/embedding/indicizzazione e retrieval). Al termine di questa fase `knowledge-base` è una libreria completa e testabile in isolamento. Dettagli: [06-roadmap-fase1.md](06-roadmap-fase1.md).
-2. **Fase 2 — Testing e validazione**: dataset sintetici e profili di configurazione predefiniti (ricercatore/legale/studente) per validare end-to-end la pipeline completa e confrontare le configurazioni. Dettagli: [07-roadmap-fase2.md](07-roadmap-fase2.md).
-3. **Fase 3 — MCP + CLI**: server MCP per interrogare i workspace e interfaccia a riga di comando. Entrambi si appoggiano ai manager già consolidati nella Fase 1. Dettagli: [08-roadmap-fase3.md](08-roadmap-fase3.md).
-4. **Fase 4 — REST + Frontend**: layer FastAPI sopra i manager e frontend React collegato alle API. Dettagli: [09-roadmap-fase4.md](09-roadmap-fase4.md).
+1. **Fase 1 — Logica di business completa**: tutta la logica di backend funzionante e testata (modelli, managers, configurazione, pipeline di ingestion/chunking/embedding/indicizzazione e retrieval). Al termine di questa fase `knowledge-base` è una libreria completa e testabile in isolamento. Dettagli: [91-roadmap-fase1.md](91-roadmap-fase1.md).
+2. **Fase 2 — Testing e validazione**: dataset sintetici e profili di configurazione predefiniti (ricercatore/legale/studente) per validare end-to-end la pipeline completa e confrontare le configurazioni. Dettagli: [92-roadmap-fase2.md](92-roadmap-fase2.md).
+3. **Fase 3 — MCP + CLI**: server MCP per interrogare i workspace e interfaccia a riga di comando. Entrambi si appoggiano ai manager già consolidati nella Fase 1. Dettagli: [93-roadmap-fase3.md](93-roadmap-fase3.md).
+4. **Fase 4 — REST + Frontend**: layer FastAPI sopra i manager e frontend React collegato alle API. Dettagli: [94-roadmap-fase4.md](94-roadmap-fase4.md).
 
 ## Mappa degli step per fase
 
 | Fase | Step | File |
 |---|---|---|
-| 1 | 0 — Modello di dominio e persistenza | 06-roadmap-fase1.md |
-| 1 | 1 — Workspace e sync FS | 06-roadmap-fase1.md |
-| 1 | 2 — Domini | 06-roadmap-fase1.md |
-| 1 | 3 — Configurazione delle basi (TOML) | 06-roadmap-fase1.md |
-| 1 | 4 — Strategie di ingestion | 06-roadmap-fase1.md |
-| 1 | 5 — Strategie di chunking | 06-roadmap-fase1.md |
-| 1 | 6 — Embedding configurabile per base | 06-roadmap-fase1.md |
-| 1 | 7 — KnowledgeBaseManager e indicizzazione | 06-roadmap-fase1.md |
-| 1 | 8 — Pipeline di retrieval (pre/retrieval/post) | 06-roadmap-fase1.md |
-| 1 | 8-bis — Pipeline GraphRAG + edit-aware re-embedding | 06-roadmap-fase1.md |
-| 1 | 8-ter — `AppContext` e bootstrap | 06-roadmap-fase1.md |
-| 2 | 9 — Dataset sintetici | 07-roadmap-fase2.md |
-| 2 | 10 — Profili di configurazione | 07-roadmap-fase2.md |
-| 2 | 11 — Test end-to-end e benchmark | 07-roadmap-fase2.md |
-| 3 | 12 — CLI con Typer | 08-roadmap-fase3.md |
-| 3 | 13 — Server MCP | 08-roadmap-fase3.md |
-| 4 | 14 — Backend REST | 09-roadmap-fase4.md |
-| 4 | 15 — Frontend React / GUI | 09-roadmap-fase4.md |
-| 4 | 16 — Polish e documentazione | 09-roadmap-fase4.md |
+| 1 | 0 — Modello di dominio e persistenza | 91-roadmap-fase1.md |
+| 1 | 1 — Workspace e sync FS | 91-roadmap-fase1.md |
+| 1 | 2 — Domini | 91-roadmap-fase1.md |
+| 1 | 3 — Configurazione delle basi (TOML) | 91-roadmap-fase1.md |
+| 1 | 4 — Strategie di ingestion | 91-roadmap-fase1.md |
+| 1 | 5 — Strategie di chunking | 91-roadmap-fase1.md |
+| 1 | 6 — Embedding configurabile per base | 91-roadmap-fase1.md |
+| 1 | 7 — KnowledgeBaseManager e indicizzazione | 91-roadmap-fase1.md |
+| 1 | 8 — Pipeline di retrieval (pre/retrieval/post) | 91-roadmap-fase1.md |
+| 1 | 8-bis — Pipeline GraphRAG + edit-aware re-embedding | 91-roadmap-fase1.md |
+| 1 | 8-ter — `AppContext` e bootstrap | 91-roadmap-fase1.md |
+| 2 | 9 — Dataset sintetici | 92-roadmap-fase2.md |
+| 2 | 10 — Profili di configurazione | 92-roadmap-fase2.md |
+| 2 | 11 — Test end-to-end e benchmark | 92-roadmap-fase2.md |
+| 3 | 12 — CLI con Typer | 93-roadmap-fase3.md |
+| 3 | 13 — Server MCP | 93-roadmap-fase3.md |
+| 4 | 14 — Backend REST | 94-roadmap-fase4.md |
+| 4 | 15 — Frontend React / GUI | 94-roadmap-fase4.md |
+| 4 | 16 — Polish e documentazione | 94-roadmap-fase4.md |
 
 ---
 
