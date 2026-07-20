@@ -56,7 +56,6 @@ Implementare secondo la specifica [50-ingestion.md](50-ingestion.md).
 - [ ] Strategy `docling` (PDF, profilo ricercatore) — parametri: `do_ocr`, `do_table_structure`, `table_mode`, `image_export`.
 - [ ] Strategy `pymupdf4llm` (PDF, profilo consulente) — parametri: `page_chunks`, `write_images`, `extract_mode`.
 - [ ] Strategy `markitdown` (PPTX, MD, profilo studente) — parametri minimi (estensione via plugin).
-- [ ] Strategy `pypdf` (fallback leggero, PDF semplice).
 - [ ] Validazione formati: estensione vs `supported_extensions` della strategy; rifiuto esplicito.
 - [ ] Test per ciascuna strategy con file in `tests/data/synthetic/`.
 

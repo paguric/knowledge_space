@@ -111,10 +111,7 @@ params.plugins = []                # percorsi a plugin custom opzionali
 
 **Quando usare**: slide PPTX, appunti Markdown, documenti Office, formati eterogenei. Profilo **studente**.
 
-### Alternative leggere (registrate come strategie, non default)
 
-- **`pypdf`** (MIT, puro Python, solo estrazione testo grezzo) — fallback per PDF senza layout complesso. Nessun parametro significativo.
-- **`pdfplumber`** (MIT, estrazione testo con coordinate) — alternativa per PDF con struttura basata su coordinate/layout. Parametri: `pages`, `laparams`, `extract_tables`.
 
 ## Mappa profili → library
 
@@ -131,8 +128,7 @@ params.plugins = []                # percorsi a plugin custom opzionali
 - **F1 — Docling strategy**: incapsulare `docling.document_converter.DocumentConverter` con opzioni `PipelineOptions`. Test con PDF di esempio.
 - **F2 — PyMuPDF4LLM strategy**: incapsulare `pymupdf4llm.to_markdown` con parametri. Test con PDF multi-colonna.
 - **F3 — markitdown strategy**: incapsulare `markitdown.MarkItDown.convert`. Test con PPTX.
-- **F4 — Fallback e alternative**: registrare `pypdf`, `pdfplumber` come strategie aggiuntive.
-- **F5 — Validazione formati**: in `KnowledgeBaseManager.add_file`, controllo estensione vs `[ingestion].library` supportate. Rifiuto esplicito per formati non supportati.
+- **F4 — Validazione formati**: in `KnowledgeBaseManager.add_file`, controllo estensione vs `[ingestion].library` supportate. Rifiuto esplicito per formati non supportati.
 - **F6 — Test**: test unit per ogni strategy con file di esempio in `tests/data/synthetic/`. Test di robustezza: file corrotto, PDF vuoto, estensione sconosciuta.
 
 ## Test
@@ -142,7 +138,6 @@ params.plugins = []                # percorsi a plugin custom opzionali
 | Docling PDF | Output Markdown non vuoto, testo preservato |
 | PyMuPDF4LLM multi-col | Output colonne non mescolate |
 | Markitdown PPTX | Titolo/bullet/tabelle preservati |
-| Pypdf fallback | Funziona su PDF semplice |
 | Estensione sconosciuta | Errore esplicito |
 | Libreria non registrata | Errore di config |
 

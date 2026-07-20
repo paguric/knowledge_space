@@ -193,15 +193,15 @@ Ogni componente è identificato da un **nome** + eventuali **parametri**, in mod
 
 | Sezione | Campo `library`/`method`/`model` | Esempi |
 |---|---|---|
-| `[ingestion]` | `library` | `"docling"`, `"pypdf"`, `"unstructured"`, `"markitdown"`, `"PyMuPDF4LLM"`, `"pdfplumber"` |
+| `[ingestion]` | `library` | `"docling"`, `"pymupdf4llm"`, `"markitdown"` |
 | `[chunking]` | `method` | `"fixed_size"` (con `chunk_overlap=0` no-overlap, `>0` sliding window), `"recursive"`, `"semantic"`, `"sentence"`, `"markdown"` |
-| `[retrieval]` | `expansion` (in pausa, Step 8) | `"none"` (default), `"parent_child"` con `parent_granularity = "section" \| "paragraph"` |
-| `[embedding]` | `mode` (in pausa, Step 6) | `"standard"` (default), `"late_chunking"` (richiede modello long-context ≥8192 tok; fallback automatico a `standard` se doc > `max_context_tokens`) |
 | `[embedding]` | `model` | qualsiasi modello HuggingFace locale o API (es. OpenAI) registrato |
 | `[pre_retrieval]` | `method` | `"identity"` (no-op), `"hyde"`, `"multi_query"` |
 | `[retrieval]` | `method` / `fusion` | `"dense"` / `"sparse"` / `"hybrid"` ; `"rrf"` / `"weighted_sum"` (solo se `hybrid`) |
 | `[post_retrieval]` | `reranker` / `compressor` | `"identity"` (no-op), `"cross_encoder"`, `"llm"` ; `"identity"`, `"llm_chain_extract"` |
 | `[graph]` | `schema`/`resolver`/`on_chunk_edit`/`retriever` | `"manuale"`/`"EXTRACTED"`/`"FREE"`, `"semantic"`/`"exact"`/`"fuzzy"`, `"eager"`/`"lazy"`, `"vector"`/`"vector_cypher"`/`"hybrid"`/`"hybrid_cypher"`/`"text2cypher"`/`"tools"` |
+| `[retrieval]` | `expansion` ⏸️ | `"none"` (default), `"parent_child"` con `parent_granularity = "section" \| "paragraph"` |
+| `[embedding]` | `mode` ⏸️ | `"standard"` (default), `"late_chunking"` (richiede modello long-context ≥8192 tok; fallback automatico a `standard` se doc > `max_context_tokens`) |
 
 La sezione `[graph]` è descritta in dettaglio in [40-graph.md](40-graph.md). Il campo `retriever` seleziona il metodo di ricerca GraphRAG (tabella dei valori in [40-graph.md §14](40-graph.md)); l'app istanzia solo il retriever specificato dall'utente. Il cambio del modello di `[embedding]` è **bloccato** se la collection Chroma non è vuota (vedi [40-graph.md §9](40-graph.md)). I chunk vivono in `<base>/.knowledge-space/chunks/<file_stem>/` (dotfolder, ownership dell'utente, editabili) — vedi la sezione [Filesystem](#filesystem) per la struttura completa.
 
