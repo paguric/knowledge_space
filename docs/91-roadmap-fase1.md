@@ -70,7 +70,6 @@ Implementare secondo la specifica [60-chunking.md](60-chunking.md).
 - [ ] Strategy `semantic` (richiede embedding, non default).
 - [ ] Strategy `sentence` (granularity = "sentence" | "paragraph").
 - [ ] Strategy `markdown` (MarkdownHeaderTextSplitter, code block intatto).
-- [ ] Contestualizzazione: riceve `max_context_tokens` per regolare chunk_size.
 - [ ] Registry con metadati discoverable (`params_schema`, `requires_embedding`).
 - [ ] Test per ciascuna strategy; test fixed_size overlap=0 vs >0.
 

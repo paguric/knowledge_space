@@ -28,7 +28,6 @@ class ChunkingStrategy(Protocol):
         ...
 ```
 
-Il chunker riceve inoltre `max_context_tokens` dal `BaseConfig.embedding` per regolare `chunk_size` quando possibile (vedi Strategie base → Contestualizzazione).
 
 ## Strategie base (priorità 1)
 
@@ -113,16 +112,6 @@ params.headers_to_split_on = [
 
 **Non è una strategy di chunking**: è una modalità di embedding che richiede un modello long-context (≥8192 token). Viene esposto in `[embedding].mode = "late_chunking"` con fallback automatico a `"standard"` se il documento supera `max_context_tokens`. Vedi [70-embedding.md](70-embedding.md).
 
-## Contestualizzazione col modello embedding
-
-Il chunker riceve `max_context_tokens` dal `BaseConfig.embedding` e, quando possibile, regola `chunk_size` di conseguenza per ridurre la probabilità di eccedere il limite del modello:
-
-```
-effective_chunk_size = min(config.chunk_size, max_context_tokens * 0.8)
-```
-
-Il `KnowledgeBaseManager` (Step 7) esegue comunque una **validazione esplicita** prima dell'embedding: se un chunk eccede `max_context_tokens`, viene lanciato un errore con nome base, file, indice chunk, lunghezza stimata e limite del modello.
-
 ## Registry metadati
 
 Ogni strategy registra (oltre al nome) uno schema dei parametri accettati. Il registry espone una lista discoverable che il frontend (Fase 4) userà per guidare la configurazione utente.
@@ -160,8 +149,7 @@ Ogni strategy registra (oltre al nome) uno schema dei parametri accettati. Il re
 - **F3 — `semantic`**: implementare con `SemanticChunker` di langchain (o custom). Aggiungere controllo su `requires_embedding`: il manager deve passare un embedder o rifiutare.
 - **F4 — `sentence`**: split per confini `.`/`?`/`!`. Attenzione: il boundary corretto richiede un tokenizer linguistico (NLTK `punkt` multilingua) o una regex. Test con testo italiano e inglese.
 - **F5 — `markdown`**: implementare con `MarkdownHeaderTextSplitter`. Test con code block, header annidati.
-- **F6 — Contestualizzazione**: il chunker riceve `max_context_tokens` e regola `chunk_size`. Validazione nel manager.
-- **F7 — Test**: test unit per ogni strategy; test specifici per `fixed_size` no-overlap vs sliding-window; test per errore se chunk eccede `max_context_tokens`.
+- **F6 — Test**: test unit per ogni strategy; test specifici per `fixed_size` no-overlap vs sliding-window.
 
 ## Test
 
@@ -173,7 +161,6 @@ Ogni strategy registra (oltre al nome) uno schema dei parametri accettati. Il re
 | `semantic` | Richiede embedding; non crasha |
 | `sentence` italiano | Boundary a `.`?`!` |
 | `markdown` code block | Code block intatto |
-| Eccede max_context_tokens | Errore esplicito |
 
 ---
 

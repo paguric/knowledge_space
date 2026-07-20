@@ -9,7 +9,7 @@ Questo documento è l'indice del piano di refactor. Ogni argomento è trattato i
 - [**30 — Gestione della configurazione**](30-configuration.md) — include il layout completo del filesystem del workspace e delle basi.
 - [**40 — Pipeline GraphRAG + edit-aware re-embedding**](40-graph.md)
 - [**50 — Strategie di ingestion**](50-ingestion.md) — librerie supportate, parametri e profili d'uso.
-- [**60 — Strategie di chunking**](60-chunking.md) — chunker base e avanzati, contestualizzazione con embedding.
+- [**60 — Strategie di chunking**](60-chunking.md) — chunker base e avanzati.
 - [**70 — Embedding configurabile per base**](70-embedding.md) — modelli, registry, metadati e validazione contesto.
 - [**80 — Pipeline di retrieval**](80-retrieval.md) — pre-retrieval (query rewriting), retrieval (dense/sparse/hybrid), post-retrieval (rerank/compress).
 
