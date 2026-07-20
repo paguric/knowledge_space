@@ -52,8 +52,8 @@ Implementare la configurazione per-base come da [30-configuration.md](30-configu
 
 Implementare secondo la specifica [50-ingestion.md](50-ingestion.md).
 
-- [ ] Interfaccia `IngestionStrategy` e registry (`knowledge_base/strategies/ingestion.py`).
-- [ ] Strategy `docling` (PDF, profilo ricercatore) — parametri: `do_ocr`, `do_table_structure`, `table_mode`, `image_export`.
+- [ ] Interfaccia `IngestionStrategy` e registry (`knowledge_base/strategies/ingestion.py`). Parametro globale `use_gpu` (default `false`).
+- [ ] Strategy `docling` (PDF, profilo ricercatore) — parametri: `use_gpu`, `do_ocr`, `do_table_structure`, `table_mode`, `image_export`.
 - [ ] Strategy `pymupdf4llm` (PDF, profilo consulente) — parametri: `page_chunks`, `write_images`, `extract_mode`.
 - [ ] Strategy `markitdown` (PPTX, MD, profilo studente) — parametri minimi (estensione via plugin).
 - [ ] Validazione formati: estensione vs `supported_extensions` della strategy; rifiuto esplicito.

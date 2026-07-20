@@ -78,7 +78,7 @@ Regole:
 
 [ingestion]
 library = "docling"
-# params = {}
+params.use_gpu = false       # true per accelerare con GPU (docling, embedding)
 
 [chunking]
 method = "fixed_size"

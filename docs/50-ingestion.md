@@ -17,6 +17,8 @@ L'insieme è **chiuso**: qualsiasi formato non in questa lista viene rifiutato c
 | Preventivi / contratti | `.docx` | `consulente` |
 | Appunti | `.md` | tutti (lettura diretta, nessuna libreria) |
 
+Parametro globale `use_gpu` (default `false`): se `true`, la strategia di ingestion tenta di usare la GPU (CUDA) per accelerare la conversione. Ogni libreria decide in base alle proprie capacità se e come usare la GPU (Docling la usa per OCR e table model; PyMuPDF4LLM e markitdown non beneficiano di GPU e ignorano il flag).
+
 ## Interfaccia `IngestionStrategy`
 
 ```python
@@ -54,6 +56,7 @@ Parametri TOML (`[ingestion]`):
 ```toml
 [ingestion]
 library = "docling"
+params.use_gpu = false             # true per accelerare con GPU (CUDA)
 params.do_ocr = false              # abilita OCR su immagini incorporate
 params.do_table_structure = true    # riconoscimento struttura tabelle
 params.table_mode = "accurate"     # "accurate" | "fast"
