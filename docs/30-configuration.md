@@ -138,7 +138,7 @@ return_properties = ["chunk_id", "text"]
 # Tre step sequenziali: pre-retrieval -> retrieval -> post-retrieval.
 # Ogni step accetta method = "identity" come NO-OP esplicito (i dati passano
 # through, senza istanziare LLM/reranker): pipeline sempre omogenea e
-# intento dell'utente dichiarato nel TOML (es. legal: nulla viene riassunto).
+# intento dell'utente dichiarato nel TOML (es. consulente: nulla viene riassunto).
 
 [pre_retrieval]
 # Query rewriting. "identity" = nessuna riscrittura (1:1).
@@ -165,7 +165,7 @@ reranker = "identity"
 # reranker_model = "BAAI/bge-reranker-v2-m3"   # solo se reranker != "identity"
 # Compression: sintesi/riduzione dei contenuti passati all'LLM.
 # "identity" = testo originale as-is (nessun riassunto).
-# Utile per il caso legale: passare le leggi non riassunte al LLM.
+# Utile per il profilo consulente: passare i documenti non riassunti al LLM.
 compressor = "identity"
 ```
 

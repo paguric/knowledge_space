@@ -137,7 +137,7 @@ reranker_model = "BAAI/bge-reranker-v2-m3"
 
 | Method | Descrizione | Richiede LLM |
 |--------|-------------|:---:|
-| `identity` | No-op: restituisce il testo dei chunk così com'è. Utile per profilo `legal` (le leggi non devono essere riassunte). | no |
+| `identity` | No-op: restituisce il testo dei chunk così com'è. Utile per profilo `consulente` (i documenti non devono essere riassunti). | no |
 | `llm_chain_extract` | Langchain `LLMChainExtractor`: estrae dal chunk solo le parti rilevanti per la query. | sì |
 
 ## Registry delle strategie
@@ -159,7 +159,7 @@ Tutte le strategy (query rewriter, retriever, reranker, compressor) sono registr
 
 ## Configurazione TOML completa (esempi)
 
-### Profilo legale (nessuna manipolazione)
+### Profilo consulente (nessuna manipolazione)
 
 ```toml
 [pre_retrieval]

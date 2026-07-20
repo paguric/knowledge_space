@@ -33,22 +33,22 @@ I **formati supportati** in produzione (e quindi da coprire nei dataset) sono ci
 
 Definire configurazioni TOML default per scenari d'uso rappresentativi. I profili sono **punti di partenza** copiabili dall'utente, non logica hardcoded.
 
-- [ ] **`researcher`** (paper accademici EN):
-  - ingestion: `docling` — test set ufficiale di docling è esplicitamente paper arXiv ([arXiv:2408.09869](https://arxiv.org/abs/2408.09869)). Alt: `PyMuPDF4LLM` per pipeline veloci senza GPU.
+- [ ] **`ricercatore`** (paper accademici EN):
+  - ingestion: `docling` — test set ufficiale di docling è esplicitamente paper arXiv ([arXiv:2408.09869](https://arxiv.org/abs/2408.09869)).
   - chunking: `recursive` con `chunk_size` ~1200, overlap 200. Il recursive supera il semantic su paper accademici ([arXiv:2607.01852](https://arxiv.org/abs/2607.01852); [Chroma TR](https://www.trychroma.com/research/evaluating-chunking)). Markdown-aware opzionale (qualitativo).
   - embedding: `gte-large-en-v1.5` (MTEB 65.39, ctx 8192) — [HF card](https://huggingface.co/Alibaba-NLP/gte-large-en-v1.5). Alt: `bge-large-en-v1.5` (ctx 512, MTEB 64.23). ⚠️ Entrambi EN-only: non adatti a documenti italiani.
   - pre-retrieval: `multi_query` (espansione LLM) o `hyde`.
   - retrieval: `ensemble` (dense + sparse).
   - post-retrieval: `llm_chain_extract` (compressione contestualizzata).
-- [ ] **`legal`** (testi legislativi/GDPR, multilingua IT+EN):
-  - ingestion: `pdfplumber` + `pdfminer.six` — ❌ **fonte specifica assente**: la preferenza è inferita dalle capacità di coordinate/layout ([pdfplumber README](https://github.com/jsvine/pdfplumber)). Da validare nel dataset sintetico Step 9. Alt robusto: `docling` (OCR + tabelle + layout).
+- [ ] **`consulente`** (testi normativi, GDPR, contratti — multilingua IT+EN):
+  - ingestion: `pymupdf4llm` — veloce, multi-colonna, TOC preservato ([docs](https://pymupdf.readthedocs.io/en/latest/pymupdf4llm/)). Alternativa: `docling` (OCR + tabelle) per PDF complessi.
   - chunking: `markdown`/structure-aware (chunk=articolo; header `§/Art.` riconosciuti). **Future** (in pausa, Step 8): `parent_child` come `[retrieval].expansion` (child=comma, parent=articolo intero). Il fixed-size causa **boundary fragmentation** su GDPR documentato in [SCAR, arXiv:2606.16661](https://arxiv.org/abs/2606.16661).
   - embedding: `BAAI/bge-m3` (multilingua 100+ lingue, ctx 8192, retrieval sparse+dense integrato tipo BM25 — utile per terminologia legale esatta) — [HF card](https://huggingface.co/BAAI/bge-m3), [paper arXiv:2402.03216](https://arxiv.org/pdf/2402.03216). Alt: `intfloat/multilingual-e5-large`.
-  - pre-retrieval: `identity` (query già precisa dal legale).
+  - pre-retrieval: `identity` (query già precisa dal consulente).
   - retrieval: `dense` (top-k alto) + filtro metadati per articolo; opzionale ensemble con sparse (bge-m3 lo supporta nativamente).
   - post-retrieval: `identity` (serve il testo originale, no compressione).
-- [ ] **`student`** (libri di testo, slide, appunti — italiano, leggero):
-  - ingestion: `PyMuPDF4LLM` per PDF (multi-colonna, TOC, veloce — [PyMuPDF4LLM docs](https://pymupdf.readthedocs.io/en/latest/pymupdf4llm/)) + `markitdown` per slide PPTX/EPUB ([markitdown](https://github.com/microsoft/markitdown)).
+- [ ] **`studente`** (slide PPTX, appunti MD, testi brevi — italiano, leggero):
+  - ingestion: `markitdown` — supporta PPTX, PDF semplici, MD, DOCX, HTML ([markitdown](https://github.com/microsoft/markitdown)).
   - chunking: `recursive` con `chunk_size` ~800, overlap 150 (leggero e robusto). **Future** (in pausa, Step 5/6): `parent_child` (genitore=sezione) come `[retrieval].expansion`, oppure `late_chunking` in `[embedding].mode` se si dispone di embedding long-context ([arXiv:2409.04701](https://arxiv.org/abs/2409.04701), [Jina blog](https://jina.ai/news/late-chunking-in-long-context-embedding-models/)).
   - embedding: `intfloat/multilingual-e5-small` (dim 384, ~470 MB, supporta IT — [HF card](https://huggingface.co/intfloat/multilingual-e5-small), Mr.TyDi MRR@10 64.4). Alt: `BAAI/bge-m3` su HW buono (più pesante ma migliore qualità e ctx 8192). ⚠️ `all-MiniLM-L6-v2` è solo-EN — NON adatto a documenti IT.
   - pre-retrieval: `identity`.
@@ -61,10 +61,10 @@ Definire configurazioni TOML default per scenari d'uso rappresentativi. I profil
 ##### Affidabilità delle evidenze per profilo
 
 | Profilo | Ingestion | Chunking | Embedding |
-|---|---|---|---|
-| `researcher` | Alta (arXiv test set) | Alta (recursive > semantic confermato) | Alta (MTEB + ctx 8192) |
-| `legal` | ❌ Bassa (fonte assente — da validare) | Alta (boundary fragmentation ✓ in SCAR) | Alta (SOTA MIRACL + IT + sparse) |
-| `student` | Media (feature doc, no benchmark diretto) | Alta (Late Chunking ✓) | Media (IT coperto ma non score Mr.TyDi) |
+|---|---|---|---|---|
+| `ricercatore` | Alta (arXiv test set) | Alta (recursive > semantic confermato) | Alta (MTEB + ctx 8192) |
+| `consulente` | Media (feature doc, no benchmark diretto) | Alta (boundary fragmentation ✓ in SCAR) | Alta (SOTA MIRACL + IT + sparse) |
+| `studente` | Media (feature doc, no benchmark diretto) | Media (recursive standard) | Media (IT coperto ma non score Mr.TyDi) |
 
 #### Scelta del retriever per profilo (GraphRAG)
 
@@ -81,14 +81,14 @@ Per abbinare la tipologia di retrieval sul grafo a ciascun profilo, usiamo come 
 
 Da confermare una volta implementati i retriever della Fase 1 (Step 8-bis):
 
-- [ ] **`researcher`** — question type prevalente: **exploratory / synthesis** → pipeline atomica candidate: `hybrid_cypher` (dense+sparse con augment di dati dal grafo) o `tools` se servono more-than-retrieval capabilities.
-- [ ] **`legal`** — question type prevalente: **specific / lookup** → pipeline atomica candidate: `vector_cypher` (filtri strutturali per articolo/sezione) o `text2cypher` se la domanda è già ben formalmente esprimibile come pattern di grafo.
-- [ ] **`student`** — question type prevalente: **specific** (definizioni, confronti diretti) → pipeline atomica candidate: `vector` (puro, leggero) o `vector_cypher` se lo studente filtra per esame/anno. Preferire il più economico compatibile con la recall attesa.
+- [ ] **`ricercatore`** — question type prevalente: **exploratory / synthesis** → pipeline atomica candidate: `hybrid_cypher` (dense+sparse con augment di dati dal grafo) o `tools` se servono more-than-retrieval capabilities.
+- [ ] **`consulente`** — question type prevalente: **specific / lookup** → pipeline atomica candidate: `vector_cypher` (filtri strutturali per articolo/sezione) o `text2cypher` se la domanda è già ben formalmente esprimibile come pattern di grafo.
+- [ ] **`studente`** — question type prevalente: **specific** (definizioni, confronti diretti) → pipeline atomica candidate: `vector` (puro, leggero) o `vector_cypher` se lo studente filtra per esame/anno. Preferire il più economico compatibile con la recall attesa.
 
 ### Step 11: Test end-to-end e benchmark
 
 - [ ] Test end-to-end (in `packages/knowledge-base/tests/e2e/`):
-  - Per ciascun profilo (researcher/legal/studente), eseguire la pipeline completa (ingest → chunk → embed → retrieve) sul dataset sintetico corrispondente.
+  - Per ciascun profilo (ricercatore/consulente/studente), eseguire la pipeline completa (ingest → chunk → embed → retrieve) sul dataset sintetico corrispondente.
   - Verificare che i chunk rilevanti per le query golden vengano recuperati (recall ≥ soglia).
   - Verificare che i flag `active` vengano rispettati (disattivare un dominio → nessun risultato da quelle basi).
 - [ ] Benchmark comparativo:

@@ -5,7 +5,7 @@
 Il lavoro è diviso in **4 fasi**:
 
 1. **Fase 1 — Logica di business completa**: tutta la logica di backend funzionante e testata (modelli, managers, configurazione, pipeline di ingestion/chunking/embedding/indicizzazione e retrieval). Al termine di questa fase `knowledge-base` è una libreria completa e testabile in isolamento. Dettagli: [91-roadmap-fase1.md](91-roadmap-fase1.md).
-2. **Fase 2 — Testing e validazione**: dataset sintetici e profili di configurazione predefiniti (ricercatore/legale/studente) per validare end-to-end la pipeline completa e confrontare le configurazioni. Dettagli: [92-roadmap-fase2.md](92-roadmap-fase2.md).
+2. **Fase 2 — Testing e validazione**: dataset sintetici e profili di configurazione predefiniti (ricercatore/consulente/studente) per validare end-to-end la pipeline completa e confrontare le configurazioni. Dettagli: [92-roadmap-fase2.md](92-roadmap-fase2.md).
 3. **Fase 3 — MCP + CLI**: server MCP per interrogare i workspace e interfaccia a riga di comando. Entrambi si appoggiano ai manager già consolidati nella Fase 1. Dettagli: [93-roadmap-fase3.md](93-roadmap-fase3.md).
 4. **Fase 4 — REST + Frontend**: layer FastAPI sopra i manager e frontend React collegato alle API. Dettagli: [94-roadmap-fase4.md](94-roadmap-fase4.md).
 
@@ -73,7 +73,7 @@ Il lavoro è diviso in **4 fasi**:
 | Modelli di dominio | Pydantic (`Workspace`, `Domain`, `KnowledgeBase`, `FileEntry`, `ChunkRef`) |
 | Logica operativa | Classi manager/service separate dai modelli di dominio |
 | Strategy pattern | Registry per ingestion, chunking, embedding, pre/post-retrieval |
-| Profili di config | `researcher` / `legal` / `student` in `configs/profiles/` |
+| Profili di config | `ricercatore` / `consulente` / `studente` in `configs/profiles/` |
 | Testing e2e | Dataset sintetici + query golden in `tests/data/synthetic/` |
 | Backend REST | FastAPI + Pydantic + uvicorn |
 | Server MCP | SDK ufficiale `mcp`, trasporto stdio (poi SSE) |

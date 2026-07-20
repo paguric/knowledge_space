@@ -10,10 +10,10 @@ L'insieme è **chiuso**: qualsiasi formato non in questa lista viene rifiutato c
 
 | Formato | Estensioni | Profilo d'uso prevalente |
 |---------|-----------|--------------------------|
-| Paper accademici | `.pdf` | `researcher` |
-| Testi legislativi | `.pdf`, `.txt` | `legal` |
-| Libri di testo | `.pdf` | `student` |
-| Slide | `.pptx` | `student` |
+| Paper accademici | `.pdf` | `ricercatore` |
+| Testi normativi | `.pdf`, `.txt` | `consulente` |
+| Libri di testo | `.pdf` | `consulente` |
+| Slide | `.pptx` | `studente` |
 | Appunti | `.md` | tutti (letteura diretta, nessuna libreria) |
 
 ## Interfaccia `IngestionStrategy`
@@ -60,7 +60,7 @@ params.generate_page_images = false
 params.image_export = "reference"  # "reference" | "embedded" | "none"
 ```
 
-**Quando usare**: paper accademici (layout a colonne, formule, tabelle), documenti PDF complessi. Profilo `researcher`.
+**Quando usare**: paper accademici (layout a colonne, formule, tabelle), documenti PDF complessi. Profilo **ricercatore**.
 
 ### PyMuPDF4LLM
 
@@ -85,7 +85,7 @@ params.margins = 5                 # margini in px per rilevamento colonne
 params.show_progress = false
 ```
 
-**Quando usare**: PDF lunghi a capitoli (libri di testo), multi-colonna. Profilo `student`.
+**Quando usare**: PDF lunghi a capitoli (libri di testo), multi-colonna, testi normativi. Profilo **consulente**.
 
 ### markitdown
 
@@ -109,21 +109,20 @@ library = "markitdown"
 params.plugins = []                # percorsi a plugin custom opzionali
 ```
 
-**Quando usare**: slide PPTX, documenti Office, formati eterogenei. Profilo `student` (per PPTX).
+**Quando usare**: slide PPTX, appunti Markdown, documenti Office, formati eterogenei. Profilo **studente**.
 
 ### Alternative leggere (registrate come strategie, non default)
 
 - **`pypdf`** (MIT, puro Python, solo estrazione testo grezzo) — fallback per PDF senza layout complesso. Nessun parametro significativo.
-- **`pdfplumber`** (MIT, estrazione testo con coordinate) — utile per profilo `legal` quando serve estrarre testo da PDF con struttura basata su coordinate/layout (es. articoli di legge). Parametri: `pages`, `laparams`, `extract_tables`.
+- **`pdfplumber`** (MIT, estrazione testo con coordinate) — alternativa per PDF con struttura basata su coordinate/layout. Parametri: `pages`, `laparams`, `extract_tables`.
 
 ## Mappa profili → library
 
 | Profilo | Library | Formato target | Note |
 |---------|---------|----------------|------|
-| `researcher` | `docling` | PDF (paper) | GPU raccomandata |
-| `legal` | `docling` | PDF/TXT | Docling copre OCR + tabelle. Alternativa: `pdfplumber` (layout coordinate) |
-| `student` | `pymupdf4llm` | PDF (testi) | Veloce, multi-colonna |
-| `student` | `markitdown` | PPTX (slide) | Unica opzione per PPTX |
+| `ricercatore` | `docling` | PDF (paper, legal) | GPU raccomandata per layout complesso |
+| `consulente` | `pymupdf4llm` | PDF (testi, norme) | Veloce, multi-colonna, TOC |
+| `studente` | `markitdown` | PDF semplici, PPTX, MD | Leggero, multi-formato |
 | tutti | — (lettura diretta) | MD | Nessuna libreria, copia del testo |
 
 ## Fasi di implementazione
