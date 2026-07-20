@@ -111,7 +111,7 @@ from typing import List, Dict, Optional
 
 class ChunkRef(BaseModel):
     """Riferimento a un chunk di un file. Il testo del chunk vive su disco
-    (``<base>/.chunks/<file_stem>/<file_stem>_chunk_<i>.md``), qui teniamo
+    (``<base>/.knowledge-space/chunks/<file_stem>/<file_stem>_chunk_<i>.md``), qui teniamo
     metadati per filtrare la ricerca e gestire l'edit-aware re-embedding.
     ``chunk_id`` è deterministico (``base::file::i``) e usato come chiave
     in Chroma e come ``Neo4jNode.id`` nel grafo (idempotenza del writer).

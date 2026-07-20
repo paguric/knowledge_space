@@ -40,36 +40,36 @@ Conviene tenere separati due concetti distinti:
 La struttura completa del filesystem (workspace, basi, chunk, graph) vive qui. La pipeline GraphRAG fa riferimento a questo layout — vedi anche [04-graph.md](04-graph.md) per le convenzioni specifiche del grafo.
 
 ```
-<base_path>/                          # base = cartella foglia (watch_dir sorgente)
-├── documento.pdf                      # file sorgente dell'utente
-├── appunti.md
-└── .chunks/                           # dotfolder, dati di proprietà dell'utente
-    └── documento/
-        ├── documento_chunk_0.md       # chunk editabili dall'utente
-        ├── documento_chunk_1.md
-        └── ...
-
-<workspace>/.knowledge-space/
-├── config.json                        # stato (albero Workspace -> Domain -> Base -> File -> Chunk)
-├── defaults.toml                      # default per tutte le basi del workspace
-├── bases/
-│   ├── test_kb1.toml                  # configurazione specifica della base test_kb1
-│   └── test_kb2.toml                  # configurazione specifica della base test_kb2
-├── snapshots/                         # originazione pre-edit per audit
-│   └── <base>/<file_stem>/<file_stem>_chunk_<i>.orig.md
-├── schema.json                        # schema del grafo (caricato, vedi 04-graph.md §6-bis)
-└── graph/                             # stato e connessione del grafo workspace
-    └── graph.json                     # bolt_uri, database, embedding_model, schema ref
+<workspace>/
+├── paper.pdf                              # file sorgente dell'utente (esempio)
+├── <base>/                                # base = cartella foglia dentro il workspace
+│   ├── documento.pdf                      # file sorgente dell'utente (appartenenti alla base)
+│   ├── appunti.md
+│   └── .knowledge-space/                  # dotfolder, dati e config di proprietà della base
+│       ├── base.toml                      # configurazione specifica della base
+│       └── chunks/                       # chunk su disco (fonte di verità, editabili)
+│           └── <file_stem>/
+│               ├── <file_stem>_chunk_0.md
+│               ├── <file_stem>_chunk_1.md
+│               └── ...
+└── .knowledge-space/                      # dotfolder, stato e config di proprietà del workspace
+    ├── config.json                       # stato (albero Workspace -> Domain -> Base -> File -> Chunk)
+    ├── defaults.toml                     # default per tutte le basi del workspace
+    └── graph/                            # stato e connessione del grafo workspace (uno per workspace)
+        ├── graph.json                    # bolt_uri, database, embedding_model, schema_ref
+        └── schema.json                   # schema del grafo (caricato, vedi 04-graph.md §6-bis)
 ```
 
 Regole:
+- **Niente basi fuori da un workspace**: una base è sempre una sottocartella di un workspace.
 - I chunk sono file markdown **plain**, editabili. L'utente "possiede" i propri dati.
-- `.chunks/` è dentro la base (così si sposta con la base), ignorato dal watcher sorgente (vedi [04-graph.md](04-graph.md) F0.4).
-- `graph.json` appartiene al workspace (un grafo per workspace), ma la **configurazione del comportamento** (schema, `on_chunk_edit`, `resolver`) è in `[graph]` del `BaseConfig` per-base — vedi [04-graph.md](04-graph.md).
-- `<workspace>/.knowledge-space/defaults.toml` → default di tutto il workspace.
-- `<workspace>/.knowledge-space/bases/<base_name>.toml` → configurazione specifica di una base.
-
-Se una base non ha il proprio `.toml`, usa i default del workspace. Se non esiste `defaults.toml`, usa i default hardcoded del programma.
+- Ogni base ha il proprio `.knowledge-space/` (chunk + `base.toml`): la base è **autocontenuta**, copiabile/spostabile con la sua config e i suoi chunk.
+- Il watcher sorgente della base ignora i path che iniziano con `.` (`.knowledge-space/`).
+- `graph/` appartiene al workspace (un grafo per workspace), ma la **configurazione del comportamento** (schema, `on_chunk_edit`, `resolver`) è in `[graph]` del `BaseConfig` per-base — vedi [04-graph.md](04-graph.md).
+- Cascata di configurazione: default hardcoded → `<workspace>/.knowledge-space/defaults.toml` → `<base>/.knowledge-space/base.toml`.
+- Se una base non ha `base.toml`, usa i default del workspace (comportamento legittimo, **nessun warning**).
+- Se `defaults.toml` manca, KS usa i default hardcoded del programma **con un warning all'avvio** (segnala intenzione/config persa); KS non riscrive mai il TOML.
+- KS **non ricrea** i file TOML eliminati (regola: TOML è human-written).
 
 ### Esempio di `defaults.toml`
 
@@ -169,10 +169,10 @@ reranker = "identity"
 compressor = "identity"
 ```
 
-### Esempio di `bases/test_kb1.toml`
+### Esempio di `<base>/.knowledge-space/base.toml`
 
 ```toml
-# Configurazione della base test_kb1
+# Configurazione della base (es. test_kb1)
 # I campi mancanti ereditano da defaults.toml
 
 [chunking]
@@ -203,7 +203,7 @@ Ogni componente è identificato da un **nome** + eventuali **parametri**, in mod
 | `[post_retrieval]` | `reranker` / `compressor` | `"identity"` (no-op), `"cross_encoder"`, `"llm"` ; `"identity"`, `"llm_chain_extract"` |
 | `[graph]` | `schema`/`resolver`/`on_chunk_edit`/`retriever` | `"manuale"`/`"EXTRACTED"`/`"FREE"`, `"semantic"`/`"exact"`/`"fuzzy"`, `"eager"`/`"lazy"`, `"vector"`/`"vector_cypher"`/`"hybrid"`/`"hybrid_cypher"`/`"text2cypher"`/`"tools"` |
 
-La sezione `[graph]` è descritta in dettaglio in [04-graph.md](04-graph.md). Il campo `retriever` seleziona il metodo di ricerca GraphRAG (tabella dei valori in [04-graph.md §14](04-graph.md)); l'app istanzia solo il retriever specificato dall'utente. Il cambio del modello di `[embedding]` è **bloccato** se la collection Chroma non è vuota (vedi [04-graph.md §9](04-graph.md)). I chunk vivono in `<base>/.chunks/<file_stem>/` (dotfolder, ownership dell'utente, editabili) — vedi la sezione [Filesystem](#filesystem) per la struttura completa.
+La sezione `[graph]` è descritta in dettaglio in [04-graph.md](04-graph.md). Il campo `retriever` seleziona il metodo di ricerca GraphRAG (tabella dei valori in [04-graph.md §14](04-graph.md)); l'app istanzia solo il retriever specificato dall'utente. Il cambio del modello di `[embedding]` è **bloccato** se la collection Chroma non è vuota (vedi [04-graph.md §9](04-graph.md)). I chunk vivono in `<base>/.knowledge-space/chunks/<file_stem>/` (dotfolder, ownership dell'utente, editabili) — vedi la sezione [Filesystem](#filesystem) per la struttura completa.
 
 #### Modelli di embedding supportati
 

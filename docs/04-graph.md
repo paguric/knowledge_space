@@ -21,21 +21,19 @@ Le decisioni consolidate a valle della discussione sono:
 | Resume da | Lexical graph + estrazione entità/relazioni + risoluzione |
 | Link embedding↔chunk | **ID deterministico `base::file::i` + metadata `chunk_index` in Chroma** |
 | Edit chunk da parte dell'utente | **Auto re-embedding via watcher** (`eager` cascade su grafo) |
-| Snapshot originale | **Sì**, in `.knowledge-space/snapshots/` per audit |
 | Cambio modello embedding | **Bloccato** se la collection non è vuota (serve re-index esplicito) |
-| Posizione chunk su disco | **`<base>/.chunks/<file_stem>/<file_stem>_chunk_<i>.md`** (dotfolder dentro la base) |
-| Schema del grafo | **Caricato** se `schema.json` esiste; estratto/costruito solo la prima volta |
+| Posizione chunk su disco | **`<base>/.knowledge-space/chunks/<file_stem>/<file_stem>_chunk_<i>.md`** (dotfolder dentro la base) |
+| Schema del grafo | **Caricato** se `graph/schema.json` esiste; estratto/costruito solo la prima volta |
 | Resolver entità | **Semantico (spaCy)** come default, con fallback automatico a exact |
 
 ## 1. Layout filesystem
 
-Il layout completo del filesystem del workspace e delle basi (inclusi `.chunks/`, `snapshots/`, `schema.json`, `graph/`) è specificato in un unico punto: [03-configuration.md § Filesystem](03-configuration.md#filesystem).
+Il layout completo del filesystem del workspace e delle basi (inclusi `<base>/.knowledge-space/chunks/`, `graph/`, `graph/schema.json`) è specificato in un unico punto: [03-configuration.md § Filesystem](03-configuration.md#filesystem).
 
 Per comodità, riassunto dei path rilevanti per la pipeline GraphRAG:
 
-- **Chunk su disco**: `<base>/.chunks/<file_stem>/<file_stem>_chunk_<i>.md` — dotfolder dentro la base, ignorato dal watcher sorgente (F0.4), editabile dall'utente.
-- **Snapshot originale**: `<workspace>/.knowledge-space/snapshots/<base>/<file_stem>/<file_stem>_chunk_<i>.orig.md` — per audit pre-edit.
-- **Schema del grafo**: `<workspace>/.knowledge-space/schema.json` — caricato, non ricreato (vedi §6-bis).
+- **Chunk su disco**: `<base>/.knowledge-space/chunks/<file_stem>/<file_stem>_chunk_<i>.md` — dotfolder dentro la base, ignorato dal watcher sorgente (F0.4), editabile dall'utente.
+- **Schema del grafo**: `<workspace>/.knowledge-space/graph/schema.json` — caricato, non ricreato (vedi §6-bis).
 - **Stato del grafo**: `<workspace>/.knowledge-space/graph/graph.json` — `bolt_uri`, `database`, `embedding_model`, riferimento allo schema.
 
 La **configurazione del comportamento** del grafo (schema, `on_chunk_edit`, `resolver`) resta in `[graph]` del `BaseConfig` per-base (vedi [03-configuration.md](03-configuration.md)).
@@ -55,8 +53,8 @@ La pipeline assembla un `neo4j_graphrag.experimental.pipeline.Pipeline` con i co
 
 1. **`KSChunkLoader`** (custom, vedi §4) — produce `TextChunks(...)` con `TextChunk(text, index, metadata={"embedding": <vettore Chroma>, "chunk_id": ...})` + `DocumentInfo(path, metadata)`.
 2. **Schema** (vedi §6-bis per dettagli critici):
-   - Se `.knowledge-space/schema.json` **esiste già** → `GraphSchema.from_file(...)` (no re-estrazione, no ricostruzione). È il caso normale dopo il primo run.
-   - Se non esiste e `[graph].schema = "manuale"` → `SchemaBuilder` con `node_types`/`relationship_types`/`patterns` dal TOML, quindi `save(".knowledge-space/schema.json")` per materializzarlo.
+   - Se `.knowledge-space/graph/schema.json` **esiste già** → `GraphSchema.from_file(...)` (no re-estrazione, no ricostruzione). È il caso normale dopo il primo run.
+   - Se non esiste e `[graph].schema = "manuale"` → `SchemaBuilder` con `node_types`/`relationship_types`/`patterns` dal TOML, quindi `save(".knowledge-space/graph/schema.json")` per materializzarlo.
    - Se non esiste e `[graph].schema = "EXTRACTED"` → `SchemaFromTextExtractor` (una tantum sul corpus), quindi `save(...)`.
    - Se `[graph].schema = "FREE"` → niente schema; estrazione libera.
    - Comando CLI per forzare re-estrazione: `ks graph re-extract-schema <workspace>`.
@@ -84,7 +82,7 @@ Input: `(base_name, file_path, mtime)` dal modello dominio.
 Output: `TextChunks` ordinate per `index`, con `TextChunk.metadata["embedding"]` preso da Chroma.
 
 Logica:
-- Legge `<base>/.chunks/<file_stem>/*_chunk_<i>.md` in ordine `i`.
+- Legge `<base>/.knowledge-space/chunks/<file_stem>/*_chunk_<i>.md` in ordine `i`.
 - Per ogni `i`, recupera l'embedding dal Chroma collection della base via `collection.get(where={"source": file_path, "chunk_index": i}, include=["embeddings"])`.
 - Propaga `chunk_id = f"{base_name}::{file_stem}::{i}"` (lo stesso id usato in Chroma e come `Neo4jNode.id` nel writer).
 - Salta chunk/ file/ basi inattivi scorrendo `WorkspaceConfigData`.
@@ -93,14 +91,16 @@ Espone inoltre `upsert_chunk(base, file, index, new_text)`:
 1. Ricalcola embedding via `EmbeddingStrategy` (modello corretto per la base).
 2. `collection.upsert(ids=[chunk_id], documents=[new_text], embeddings=[emb], metadatas=[...])` preservando i metadata esistenti.
 3. Setta `edited=true`, `edited_mtime=now`, ricalcola `content_hash`.
-4. Scrive lo snapshot originale in `.knowledge-space/snapshots/<base>/<file_stem>/<file_stem>_chunk_<i>.orig.md` **solo se non esiste già** (è l'originale pre-edit, da preservare una tantum). Il file chunk su disco non va scritto qui: è l'utente che ha editato il file, KS riflette.
+4. Il file chunk su disco non va scritto qui: è l'utente che ha editato il file, KS riflette lo stato su Chroma/grafo.
+
+> **Snapshot pre-edit**: rimandato a sviluppi futuri (vedi §15). Per ora KS non mantiene copia originale del chunk pre-edit; l'utente che vuole auditabilità può affidarsi a git/versionamento esterno della base.
 
 ## 5. Edit handler (eager cascade)
 
-`ChunkWatcher` dedicato: osserva `<base>/.chunks/**/*.md` con **debounce ~500ms** e confronto `content_hash` (skip se hash invariato, per evitare re-embed su save identici o stati intermedi dell'editor).
+`ChunkWatcher` dedicato: osserva `<base>/.knowledge-space/chunks/**/*.md` con **debounce ~500ms** e confronto `content_hash` (skip se hash invariato, per evitare re-embed su save identici o stati intermedi dell'editor).
 
 Su `modified` di `..._chunk_<i>.md`:
-1. `KSChunkLoader.upsert_chunk` → snapshot + upsert Chroma.
+1. `KSChunkLoader.upsert_chunk` → upsert Chroma.
 2. Cascade `on_chunk_edit = "eager"` (default): rilancia il pipeline §3 sul singolo chunk, con `filter_query` mirato `WHERE (entity)-[:MENTIONS]->(:Chunk {id: '<chunk_id>'})` per il resolver scope (non tocca altre entità).
 3. Marcatore `:Resolved` sulle entità nuove/mergeate.
 
@@ -120,7 +120,7 @@ La scelta consolidata: **non eseguire `LexicalGraphBuilder` separato**. Passare 
 
 Lo schema (lista di `node_types`/`relationship_types`/`patterns` che grounda l'LLM) **non va ricreato a ogni run** della pipeline. È una decisione di dominio stabile.
 
-Stati possibili di `.knowledge-space/schema.json`:
+Stati possibili di `.knowledge-space/graph/schema.json`:
 
 | Stato file | `[graph].schema` | Azione |
 |---|---|---|
@@ -129,9 +129,9 @@ Stati possibili di `.knowledge-space/schema.json`:
 | Mancante | `"EXTRACTED"` | `SchemaFromTextExtractor` (una tantum, una chiamata LLM sul corpus/titoli) e `save(...)`. |
 | Mancante | `"FREE"` | niente schema, niente file. |
 
-Per forzare la re-estrazione (utente che cambia idea sui tipi dopo aver visto il grafo): comando CLI `ks graph re-extract-schema <workspace>` che cancella `schema.json` e ripristina `[graph].schema` al valore voluto. Il re-run completo del pipeline viene lanciato esplicitamente (non è automatico: le entità già estratte col vecchio schema non vengono automaticamente migrate; vanno rimosse o lasciate coesistere).
+Per forzare la re-estrazione (utente che cambia idea sui tipi dopo aver visto il grafo): comando CLI `ks graph re-extract-schema <workspace>` che cancella `graph/schema.json` e ripristina `[graph].schema` al valore voluto. Il re-run completo del pipeline viene lanciato esplicitamente (non è automatico: le entità già estratte col vecchio schema non vengono automaticamente migrate; vanno rimosse o lasciate coesistere).
 
-Nota: lo schema manuale è **statico per definizione** (l'utente lo ha scritto una volta nel TOML). La "materializzazione" su `schema.json` serve solo per uniformare il path di caricamento di tutti i casi; potenzialmente si potrebbe anche non salvare e ricostruire dall'oggetto `SchemaBuilder` ogni volta, ma materializzare rende il tavolo di debug ispettabile e il flusso uniforme con il caso `EXTRACTED`.
+Nota: lo schema manuale è **statico per definizione** (l'utente lo ha scritto una volta nel TOML). La "materializzazione" su `graph/schema.json` serve solo per uniformare il path di caricamento di tutti i casi; potenzialmente si potrebbe anche non salvare e ricostruire dall'oggetto `SchemaBuilder` ogni volta, ma materializzare rende il tavolo di debug ispettabile e il flusso uniforme con il caso `EXTRACTED`.
 
 ## 7. Entity resolution: resolver semantico come default
 
@@ -162,7 +162,7 @@ Validazione all'avvio: se `[graph].resolver = "semantic"` ma l'extra `[nlp]` non
 ## 8. Grafo Neo4j uno per workspace
 
 - Il workspace possiede un solo DB Neo4j (o una sola istanza con `database` separato per workspace).
-- `graph.json` (`<workspace>/.knowledge-space/graph/graph.json`) registra `bolt_uri`, `database`, `schema_ref`, `embedding_model` per coerenza.
+- `graph.json` (`<workspace>/.knowledge-space/graph/graph.json`) registra `bolt_uri`, `database`, `schema_ref` (path a `graph/schema.json`), `embedding_model` per coerenza.
 - Ogni entità/chunk ha `base_name` come property; le `Domain` KS possono diventare property aggiuntiva (`domain_name`) per query GraphRAG cross-base. Scelta conservativa: usare property (più flessibile, niente label proliferanti).
 - `[graph]` nel `BaseConfig` per-base gestisce: schema (manuale/EXTRACTED/FREE), `resolver`, `on_chunk_edit`, `chunk_embedding_property`. I **parametri di connessione** (bolt_uri, credenziali) sono a livello workspace in `graph.json` (perché il DB è uno per workspace), non per-base.
 
@@ -187,10 +187,10 @@ ks reindex <base> --model-change
 Ordine consigliato (bloccanti dall'alto in basso):
 
 - **F0 — Prerequisiti su ingest esistente**
-  - F0.1 Spostare i chunk da `chunks_dir` globale a `<base>/.chunks/<file_stem>/<file_stem>_chunk_<i>.md`. Rimuovere la variabile globale `chunks_dir` (legacy cleanup Step 13).
+  - F0.1 Spostare i chunk da `chunks_dir` globale a `<base>/.knowledge-space/chunks/<file_stem>/<file_stem>_chunk_<i>.md`. Rimuovere la variabile globale `chunks_dir` (legacy cleanup Step 13).
   - F0.2 ID deterministico `base::file::i` in Chroma e come `Neo4jNode.id`.
   - F0.3 Estensione metadata Chroma + upsert (no `add_documents(uuid4())`).
-  - F0.4 Watcher sorgente ignora i path che iniziano con `.` (`.chunks/`, `.knowledge-space/`).
+  - F0.4 Watcher sorgente ignora i path che iniziano con `.` (`.knowledge-space/` dentro la base).
   - F0.5 `ChunkRef`/`FileEntry`/`KnowledgeBase` Pydantic estesi (vedi §2).
   - F0.6 `EmbeddingStrategy` (Step 6 roadmap) usata sia in indicizzazione sia come Embedder GraphRAG.
   - F0.7 Test idempotenza: riesecuzione di `add_file` non duplica record Chroma né chunk su disco.
@@ -220,7 +220,7 @@ Ordine consigliato (bloccanti dall'alto in basso):
   - F4.4 Configurabilità via `[graph].resolver` (vedi §7).
 
 - **F5 — ChunkWatcher (eager cascade)**
-  - F5.1 Watcher su `<base>/.chunks/**/*.md` con debounce + hash check.
+  - F5.1 Watcher su `<base>/.knowledge-space/chunks/**/*.md` con debounce + hash check.
   - F5.2 Workflow `upsert_chunk` -> pipeline §3 con scope mirato (§5).
   - F5.3 `on_chunk_edit` eager/lazy da `[graph]`.
   - F5.4 Delete/rename handling.
@@ -246,7 +246,7 @@ Ordine consigliato (bloccanti dall'alto in basso):
 ## 13. Test
 
 - **F7.1 Unit `KSChunkLoader`**: `TextChunks` ordinate, embedding coerenti con Chroma reale (fixture), idempotenza su run ripetuti.
-- **F7.2 Unit edit**: modifica `..._chunk_1.md` -> `upsert` Chroma (niente duplicato), `edited=true`, snapshot scritto una sola volta.
+- **F7.2 Unit edit**: modifica `..._chunk_1.md` -> `upsert` Chroma (niente duplicato), `edited=true`, `content_hash` aggiornato.
 - **F7.3 Integrazione Neo4j** (test container o DB locale): end-to-end su 2 file, verifica `NEXT_CHUNK`/`FROM_DOCUMENT`/`MENTIONS`, idempotenza, dedup resolver (semantic + exact fallback).
 - **F7.4 Eager cascade**: edit chunk -> entità ri-estratte, grafo allineato, `filter_query` non tocca altri chunk.
 - **F7.5 Blocco modello**: cambio `model` con collection non vuota -> errore atteso.
@@ -320,6 +320,11 @@ La creazione degli indici va fatta una sola volta per workspace (idempotente) du
 - `tools` ha costo di una chiamata LLM per il routing; preferire per query complesse.
 
 Fonti: [User Guide: RAG](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html), [repo neo4j-graphrag-python](https://github.com/neo4j/neo4j-graphrag-python).
+
+## 15. Sviluppi futuri
+
+- **Snapshot pre-edit per audit**: KS potrebbe mantenere una copia originale del chunk in `<workspace>/.knowledge-space/snapshots/<base>/<file_stem>/<file_stem>_chunk_<i>.orig.md` al primo edit rilevato dal ChunkWatcher. Renderlo opzionale via `[graph].keep_snapshots = true|false` (default `false` per non duplicare storage; l'utente che vuole auditabilità può attivarlo, oppure affidarsi a git/versionamento esterno della base).
+- **Comando CLI `ks config init`**: rigenera `<workspace>/.knowledge-space/defaults.toml` come template dai valori hardcoded. KS non riscrive mai i TOML a runtime, ma il comando esplicito può fornire un punto di partenza all'utente.
 
 ---
 
