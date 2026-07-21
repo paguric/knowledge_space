@@ -87,6 +87,14 @@ Da confermare una volta implementati i retriever della Fase 1 (Step 8-bis):
 - [ ] **`consulente`** — question type prevalente: **specific / lookup** → pipeline atomica candidate: `vector_cypher` (filtri strutturali per articolo/sezione) o `text2cypher` se la domanda è già ben formalmente esprimibile come pattern di grafo.
 - [ ] **`studente`** — question type prevalente: **specific** (definizioni, confronti diretti) → pipeline atomica candidate: `vector` (puro, leggero) o `vector_cypher` se lo studente filtra per esame/anno. Preferire il più economico compatibile con la recall attesa.
 
+> **Nota — `configs/profiles/` da ridefinire**: la collocazione `configs/profiles/<name>.toml` (nella radice del progetto) non è definitiva. Alternative da valutare in Fase 2:
+> - `<workspace>/.knowledge-space/profiles/<name>.toml` (per-workspace, segue layout di `.knowledge-space/`)
+> - `~/.config/knowledge-space/profiles/<name>.toml` (system-wide, riutilizzabile tra workspace)
+> - Sezioni incorporate in `defaults.toml` (es. `[profile.ricercatore]`)
+> - Repository Git esterno di profili condivisi (community-driven)
+>
+> **Comandi CLI profili** (`profiles list`, `profile apply`, ...) sono progettati e implementati in Fase 2, non in Fase 1. `95-cli.md` li elenca come "da definire in Fase 2".
+
 ### Step 11: Test end-to-end e benchmark
 
 - [ ] Test end-to-end (in `packages/knowledge-base/tests/e2e/`):

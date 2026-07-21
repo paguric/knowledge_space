@@ -22,7 +22,7 @@ Le classi funzionali ricevono le istanze di dominio e le manipolano: caricano, s
 Scelta concordata: **indice globale + file di configurazione per workspace**.
 
 - **Indice globale**: `~/.local/state/KnowledgeSpace/workspaces.json` contiene l'elenco dei path dei workspace registrati e metadati dell'applicazione, come l'ultimo workspace utilizzato (`last_workspace`).
-- **Configurazione per workspace**: `<workspace>/.knowledge-space/config.json` contiene domini, basi, file, chunk e flag `active`.
+- **Configurazione per workspace**: `<workspace>/.knowledge-space/state.json` contiene domini, basi, file, chunk e flag `active`.
 
 **Vantaggi**:
 - La configurazione segue il workspace se viene spostato.
@@ -31,7 +31,7 @@ Scelta concordata: **indice globale + file di configurazione per workspace**.
 
 ## Schema JSON del singolo workspace
 
-File: `<workspace>/.knowledge-space/config.json`
+File: `<workspace>/.knowledge-space/state.json`
 
 ```json
 {
@@ -50,6 +50,7 @@ File: `<workspace>/.knowledge-space/config.json`
       "embedding_model": "sentence-transformers/all-mpnet-base-v2",
       "files": {
         "descrizione_progtes.pdf": {
+          "file_id": "8f1c2d3e-4a5b-6c7d-8e9f-0a1b2c3d4e5f",
           "mtime": 1783699858.842,
           "added": "2026-07-13T20:04:44",
           "active": true,
@@ -57,17 +58,13 @@ File: `<workspace>/.knowledge-space/config.json`
             {
               "index": 0,
               "active": true,
-              "chunk_id": "test_kb1::descrizione_progtes::0",
-              "edited": false,
-              "edited_mtime": null,
+              "chunk_id": "test_kb1::8f1c2d3e-4a5b-6c7d-8e9f-0a1b2c3d4e5f::0",
               "content_hash": "a1b2c3d4..."
             },
             {
               "index": 1,
               "active": true,
-              "chunk_id": "test_kb1::descrizione_progtes::1",
-              "edited": true,
-              "edited_mtime": "2026-07-15T11:22:33",
+              "chunk_id": "test_kb1::8f1c2d3e-4a5b-6c7d-8e9f-0a1b2c3d4e5f::1",
               "content_hash": "e5f6a7b8..."
             }
           ]
@@ -85,7 +82,7 @@ File: `<workspace>/.knowledge-space/config.json`
 }
 ```
 
-I nuovi campi (`chunk_id`, `edited`, `edited_mtime`, `content_hash`, `embedding_model`, `graph`) supportano la pipeline GraphRAG e l'edit-aware re-embedding. Il `graph.retriever` è il **valore di default workspace-level** per il metodo di ricerca (può essere sovrascritto per-base da `[graph].retriever` nel TOML della base — vedi [40-graph.md §14](40-graph.md)).
+I nuovi campi (`file_id`, `chunk_id`, `content_hash`, `embedding_model`, `chunking_method`, `ingestion_library`, `graph`) supportano la pipeline GraphRAG e l'indicizzazione incrementale. Il `graph.retriever` è il **valore di default workspace-level** per il metodo di ricerca (può essere sovrascritto per-base da `[graph].retriever` nel TOML della base — vedi [40-graph.md §14](40-graph.md)). `file_id` (UUID stabile) disaccoppia il `chunk_id` dal nome del file, abilitando move/rename senza recompute (vedi [45-indexing-incrementale.md](45-indexing-incrementale.md) trigger 2). I chunk non sono editabili dall'utente — Chroma è la fonte di verità.
 
 ## Schema JSON dell'indice globale
 
@@ -111,17 +108,20 @@ from typing import List, Dict, Optional
 
 class ChunkRef(BaseModel):
     """Riferimento a un chunk di un file. Il testo del chunk vive su disco
-    (``<base>/.knowledge-space/chunks/<file_stem>/<file_stem>_chunk_<i>.md``), qui teniamo
-    metadati per filtrare la ricerca e gestire l'edit-aware re-embedding.
-    ``chunk_id`` è deterministico (``base::file::i``) e usato come chiave
-    in Chroma e come ``Neo4jNode.id`` nel grafo (idempotenza del writer).
-    ``content_hash`` rileva edit effettivi (skip re-embed su save identici)."""
+    (``<base>/.knowledge-space/chunks/<file_id>/<file_id>_chunk_<i>.md``), qui
+    teniamo metadati per filtrare la ricerca e gestire l'indicizzazione
+    incrementale. ``chunk_id`` è deterministico (``base::file_id::i``) e
+    usato come chiave in Chroma e come ``Neo4jNode.id`` nel grafo
+    (idempotenza del writer). ``content_hash`` rileva cambiamenti effettivi
+    del testo (skip re-embed su re-ingest identica, vedi
+    [45-indexing-incrementale.md](45-indexing-incrementale.md) trigger 1).
+    I chunk **non** sono editabili dall'utente: Chroma è la fonte di
+    verità, i file ``.md`` su disco sono un prodotto derivato del
+    documento sorgente."""
 
     index: int
     active: bool = True
     chunk_id: str
-    edited: bool = False
-    edited_mtime: Optional[str] = None
     content_hash: str
 
 
@@ -129,6 +129,9 @@ class FileEntry(BaseModel):
     mtime: float
     added: str
     active: bool = True
+    file_id: str   # UUID4 stabile per la vita del file; disaccoppia chunk_id
+                   # dal nome del file (abilita move/rename senza recompute,
+                   # vedi 45-indexing-incrementale.md trigger 2)
     chunks: List[ChunkRef] = Field(default_factory=list)
 
 
@@ -137,8 +140,14 @@ class KnowledgeBase(BaseModel):
     active: bool = True
     files: Dict[str, FileEntry] = Field(default_factory=dict)
     # Modello usato per indicizzare la collection Chroma. Serve a bloccare
-    # il cambio modello embedding su collection non vuota (vedi docs/40-graph.md §8).
+    # il cambio modello embedding su collection non vuota (vedi
+    # docs/45-indexing-incrementale.md trigger 3 e docs/40-graph.md §9).
     embedding_model: Optional[str] = None
+    # Strategia di chunking e libreria di ingestion usate per indicizzare
+    # la collection. Servono a bloccare il cambio config su collection non
+    # vuota (vedi docs/45-indexing-incrementale.md trigger 4/5).
+    chunking_method: Optional[str] = None
+    ingestion_library: Optional[str] = None
 
 
 class Domain(BaseModel):
@@ -181,7 +190,7 @@ Rispetto a `to_dict()`/`from_dict()` manuali, Pydantic offre validazione automat
 ## Piano preliminare
 
 1. Definire i modelli Pydantic in `knowledge_base/models.py`.
-2. Creare `WorkspaceConfig` per caricare/salvare `<workspace>/.knowledge-space/config.json`.
+2. Creare `WorkspaceConfig` per caricare/salvare `<workspace>/.knowledge-space/state.json`.
 3. Creare `GlobalIndex` per caricare/salvare `~/.local/state/KnowledgeSpace/workspaces.json`, includendo `last_workspace`.
 4. Implementare `sync_workspace()` per allineare il modello con il filesystem.
 5. Aggiornare `last_workspace` quando un workspace viene aperto/usato.

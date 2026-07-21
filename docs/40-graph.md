@@ -1,6 +1,6 @@
 # Pipeline GraphRAG da chunk/embeddings esistenti
 
-Questo documento descrive come Knowledge Space costruisce il grafo della conoscenza su Neo4j **riprendendo** la pipeline ufficiale `neo4j-graphrag` a partire dallo **Lexical Graph Builder**, senza rifare data loading, splitting ed embedding (già calcolati e persistenti in KS).
+Questo documento descrive come Knowledge Space costruisce il grafo della conoscenza su Neo4j **riprendendo** la pipeline ufficiale `neo4j-graphrag` a partire dallo **Lexical Graph Builder**, senza rifare data loading, splitting ed embedding (già calcolati e persistenti in KS). La **propagazione al grafo** su cambiamenti (content change, move/rename, cambio modello/strategia/libreria) è gestita secondo [45-indexing-incrementale.md](45-indexing-incrementale.md).
 
 ## Obiettivo e contesto
 
@@ -19,10 +19,11 @@ Le decisioni consolidate a valle della discussione sono:
 |---|---|
 | Grafo Neo4j | **Uno per workspace** (non per base) |
 | Resume da | Lexical graph + estrazione entità/relazioni + risoluzione |
-| Link embedding↔chunk | **ID deterministico `base::file::i` + metadata `chunk_index` in Chroma** |
-| Edit chunk da parte dell'utente | **Auto re-embedding via watcher** (`eager` cascade su grafo) |
-| Cambio modello embedding | **Bloccato** se la collection non è vuota (serve re-index esplicito) |
-| Posizione chunk su disco | **`<base>/.knowledge-space/chunks/<file_stem>/<file_stem>_chunk_<i>.md`** (dotfolder dentro la base) |
+| Link embedding↔chunk | **ID deterministico `base::file_id::i` + metadata `chunk_index` in Chroma** |
+| Chunk editabili dall'utente | **No** — Chroma è la fonte di verità; i chunk su disco sono prodotto derivato (vedi [45-indexing-incrementale.md](45-indexing-incrementale.md)) |
+| Cambio modello embedding / strategia chunking / libreria ingestion | **Bloccato** se la collection non è vuota (serve `ks reindex <base> --<reason>` esplicito, vedi [45-indexing-incrementale.md](45-indexing-incrementale.md)) |
+| Propagazione al grafo su cambi | `[graph].on_chunk_change = "eager"` (default) o `"lazy"` — triggerata da eventi sorgente, non da edit manuali |
+| Posizione chunk su disco | **`<base>/.knowledge-space/chunks/<file_id>/<file_id>_chunk_<i>.md`** (dotfolder dentro la base, `file_id` = UUID del `FileEntry`) |
 | Schema del grafo | **Caricato** se `graph/schema.json` esiste; estratto/costruito solo la prima volta |
 | Resolver entità | **Semantico (spaCy)** come default, con fallback automatico a exact |
 
@@ -32,20 +33,21 @@ Il layout completo del filesystem del workspace e delle basi (inclusi `<base>/.k
 
 Per comodità, riassunto dei path rilevanti per la pipeline GraphRAG:
 
-- **Chunk su disco**: `<base>/.knowledge-space/chunks/<file_stem>/<file_stem>_chunk_<i>.md` — dotfolder dentro la base, ignorato dal watcher sorgente (F0.4), editabile dall'utente.
+- **Chunk su disco**: `<base>/.knowledge-space/chunks/<file_id>/<file_id>_chunk_<i>.md` — dotfolder dentro la base, ignorato dal watcher sorgente (F0.4). I chunk sono un **prodotto derivato** del documento sorgente via ingestion + chunking; **non sono editabili dall'utente** (vedi [45-indexing-incrementale.md](45-indexing-incrementale.md)). Chroma è la fonte di verità per il testo dei chunk.
 - **Schema del grafo**: `<workspace>/.knowledge-space/graph/schema.json` — caricato, non ricreato (vedi §6-bis).
 - **Stato del grafo**: `<workspace>/.knowledge-space/graph/graph.json` — `bolt_uri`, `database`, `embedding_model`, riferimento allo schema.
 
-La **configurazione del comportamento** del grafo (schema, `on_chunk_edit`, `resolver`) resta in `[graph]` del `BaseConfig` per-base (vedi [30-configuration.md](30-configuration.md)).
+La **configurazione del comportamento** del grafo (schema, `on_chunk_change`, `resolver`) resta in `[graph]` del `BaseConfig` per-base (vedi [30-configuration.md](30-configuration.md)).
 
 ## 2. Modello dati (estensioni)
 
 Vedi [20-data-model.md](20-data-model.md) per i modelli Pydantic. Riassunto delle estensioni:
 
-- `ChunkRef`: aggiunge `chunk_id: str` (deterministico `base::file::i`), `edited: bool = False`, `edited_mtime: Optional[str] = None`, `content_hash: str` (sha1 del testo).
-- `KnowledgeBase`: aggiunge `embedding_model: Optional[str]` (modello usato per indicizzare la collection Chroma; serve §9 per blocco cambio modello).
+- `ChunkRef`: aggiunge `chunk_id: str` (deterministico `base::file_id::i`), `content_hash: str` (sha1 del testo). I campi `edited`/`edited_mtime` sono stati **rimossi**: i chunk non sono editabili dall'utente (vedi [45-indexing-incrementale.md](45-indexing-incrementale.md)).
+- `FileEntry`: aggiunge `file_id: str` (UUID4 stabile per la vita del file, disaccoppiato dal nome — vedi [45-indexing-incrementale.md](45-indexing-incrementale.md) per il trigger move/rename).
+- `KnowledgeBase`: aggiunge `embedding_model: Optional[str]` (modello usato per indicizzare la collection Chroma; serve §9 per blocco cambio modello), `chunking_method: Optional[str]` e `ingestion_library: Optional[str]` (per blocco cambio config, vedi [45-indexing-incrementale.md](45-indexing-incrementale.md) trigger 4/5).
 - `WorkspaceConfigData`: aggiunge `graph: Optional[GraphConfigData]` con `bolt_uri`, `database`, `schema_ref` (path a `schema.json`), `embedding_model` per coerenza.
-- Metadata Chroma di ogni chunk: `source`, `chunk_index`, `base_name`, `file_name`, `file_mtime`, `edited`, `edited_mtime`, `content_hash`.
+- Metadata Chroma di ogni chunk: `source`, `chunk_index`, `base_name`, `file_name`, `file_id`, `file_mtime`, `content_hash`.
 
 ## 3. Pipeline di resume
 
@@ -77,38 +79,47 @@ await pipeline.run_async(file_path=..., document_metadata={"base_name":..., "fil
 
 Sostituisce data loader + text splitter + chunk embedder della `SimpleKGPipeline`.
 
-Input: `(base_name, file_path, mtime)` dal modello dominio.
+Input: `(base_name, file_id, file_path, mtime)` dal modello dominio.
 
 Output: `TextChunks` ordinate per `index`, con `TextChunk.metadata["embedding"]` preso da Chroma.
 
 Logica:
-- Legge `<base>/.knowledge-space/chunks/<file_stem>/*_chunk_<i>.md` in ordine `i`.
-- Per ogni `i`, recupera l'embedding dal Chroma collection della base via `collection.get(where={"source": file_path, "chunk_index": i}, include=["embeddings"])`.
-- Propaga `chunk_id = f"{base_name}::{file_stem}::{i}"` (lo stesso id usato in Chroma e come `Neo4jNode.id` nel writer).
+- Legge `<base>/.knowledge-space/chunks/<file_id>/<file_id>_chunk_<i>.md` in ordine `i`.
+- Per ogni `i`, recupera l'embedding dal Chroma collection della base via `collection.get(where={"file_id": file_id, "chunk_index": i}, include=["embeddings"])`.
+- Propaga `chunk_id = f"{base_name}::{file_id}::{i}"` (lo stesso id usato in Chroma e come `Neo4jNode.id` nel writer).
 - Salta chunk/ file/ basi inattivi scorrendo `WorkspaceConfigData`.
 
-Espone inoltre `upsert_chunk(base, file, index, new_text)`:
-1. Ricalcola embedding via `EmbeddingStrategy` (modello corretto per la base).
+Espone inoltre `upsert_chunks(base, file_id, changed_chunks: list[ChangedChunk])` per la propagazione incrementale (vedi [45-indexing-incrementale.md](45-indexing-incrementale.md) trigger 1):
+
+1. Ricalcola embedding via `EmbeddingStrategy` (modello corretto per la base) solo per i chunk in `changed_chunks`.
 2. `collection.upsert(ids=[chunk_id], documents=[new_text], embeddings=[emb], metadatas=[...])` preservando i metadata esistenti.
-3. Setta `edited=true`, `edited_mtime=now`, ricalcola `content_hash`.
-4. Il file chunk su disco non va scritto qui: è l'utente che ha editato il file, KS riflette lo stato su Chroma/grafo.
+3. Ricalcola `content_hash` per i chunk cambiati.
+4. I file chunk su disco vengono riscritti dal `KnowledgeBaseManager` (Step 7) prima di chiamare `upsert_chunks`; `KSChunkLoader` non tocca il filesystem.
 
-> **Snapshot pre-edit**: rimandato a sviluppi futuri (vedi §15). Per ora KS non mantiene copia originale del chunk pre-edit; l'utente che vuole auditabilità può affidarsi a git/versionamento esterno della base.
+## 5. Propagazione al grafo (eager cascade su source change)
 
-## 5. Edit handler (eager cascade)
+La propagazione al grafo è **triggerata da eventi sorgente** (file modificato, reindex comandato), non da edit manuali sui chunk. Il flusso è orchestrato dal `KnowledgeBaseManager` in coordinazione con `KSChunkLoader` e la pipeline §3.
 
-`ChunkWatcher` dedicato: osserva `<base>/.knowledge-space/chunks/**/*.md` con **debounce ~500ms** e confronto `content_hash` (skip se hash invariato, per evitare re-embed su save identici o stati intermedi dell'editor).
+Su content change di un file sorgente (trigger 1 di [45-indexing-incrementale.md](45-indexing-incrementale.md)):
 
-Su `modified` di `..._chunk_<i>.md`:
-1. `KSChunkLoader.upsert_chunk` → upsert Chroma.
-2. Cascade `on_chunk_edit = "eager"` (default): rilancia il pipeline §3 sul singolo chunk, con `filter_query` mirato `WHERE (entity)-[:MENTIONS]->(:Chunk {id: '<chunk_id>'})` per il resolver scope (non tocca altre entità).
+1. `KnowledgeBaseManager` re-ingeest + re-chunk + `KSChunkLoader.upsert_chunks` → Chroma aggiornato per i chunk cambiati.
+2. Cascade `[graph].on_chunk_change = "eager"` (default): rilancia il pipeline §3 solo sui chunk cambiati, con `filter_query` mirato `WHERE (entity)-[:MENTIONS]->(:Chunk {id: '<chunk_id>'})` per il resolver scope (non tocca altre entità).
 3. Marcatore `:Resolved` sulle entità nuove/mergeate.
 
-`[graph].on_chunk_edit = "lazy"` (alternativa): esegue solo lo step 1; il grafo si riallinea al prossimo run esplicito.
+`[graph].on_chunk_change = "lazy"` (alternativa): esegue solo lo step 1; il grafo si riallinea al prossimo `ks graph sync <workspace>` esplicito.
 
-Eventi:
-- `deleted`: `Chroma.delete(ids=[chunk_id])` + Cypher di cleanup su Document/Chunk orfani (custom `KGWriter` o script separato).
-- `moved`/`renamed`: gestito come delete+create del chunk, propagando il nuovo `chunk_id`.
+Altri trigger e relative propagazioni (riassunti, dettagli in [45-indexing-incrementale.md](45-indexing-incrementale.md)):
+
+| Trigger | Propagazione al grafo |
+|---|---|
+| 1 — content change | eager: re-estrazione LLM mirata su chunk cambiati |
+| 2 — move/rename | property-only: update `file_name`/`path` sui nodi `Chunk`/`Document`, niente re-estrazione |
+| 3 — cambio embedding model | property-only: update `embedding` sui nodi `Chunk` con i nuovi vettori, niente re-estrazione |
+| 4 — cambio chunking | full: delete nodi `Chunk`/`Document` del file + re-inserimento completo |
+| 5 — cambio ingestion | full: come trigger 4 (il testo dei chunk può essere diverso) |
+
+Eventi delete file:
+- `Chroma.delete(ids=[chunk_id...])` per tutti i chunk del `file_id` + Cypher di cleanup su Document/Chunk orfani (custom `KGWriter` o script separato).
 
 ## 6. Decisione tecnica: evitare il lexical graph due volte
 
@@ -164,17 +175,21 @@ Validazione all'avvio: se `[graph].resolver = "semantic"` ma l'extra `[nlp]` non
 - Il workspace possiede un solo DB Neo4j (o una sola istanza con `database` separato per workspace).
 - `graph.json` (`<workspace>/.knowledge-space/graph/graph.json`) registra `bolt_uri`, `database`, `schema_ref` (path a `graph/schema.json`), `embedding_model` per coerenza.
 - Ogni entità/chunk ha `base_name` come property; le `Domain` KS possono diventare property aggiuntiva (`domain_name`) per query GraphRAG cross-base. Scelta conservativa: usare property (più flessibile, niente label proliferanti).
-- `[graph]` nel `BaseConfig` per-base gestisce: schema (manuale/EXTRACTED/FREE), `resolver`, `on_chunk_edit`, `chunk_embedding_property`. I **parametri di connessione** (bolt_uri, credenziali) sono a livello workspace in `graph.json` (perché il DB è uno per workspace), non per-base.
+- `[graph]` nel `BaseConfig` per-base gestisce: schema (manuale/EXTRACTED/FREE), `resolver`, `on_chunk_change`, `chunk_embedding_property`. I **parametri di connessione** (bolt_uri, credenziali) sono a livello workspace in `graph.json` (perché il DB è uno per workspace), non per-base.
 
-## 9. Blocco cambio modello embedding
+## 9. Blocco cambio config (modello embedding, chunking, ingestion)
 
-Al caricamento di `BaseConfig`, se `[embedding].model` differisce da `bases[<base>].embedding_model` registrato in `config.json` **e** la collection Chroma non è vuota → errore che suggerisce il comando di re-index completa:
+Il blocco per il cambio modello embedding è descritto qui; il quadro completo dei 5 trigger di reindex (inclusi cambio chunking e cambio ingestion) è in [45-indexing-incrementale.md](45-indexing-incrementale.md).
+
+Al caricamento di `BaseConfig`, KS confronta i valori configurati con quelli registrati in `state.json` per la base (`KnowledgeBase.embedding_model`, `chunking_method`, `ingestion_library`). Se differiscono **e** la collection Chroma non è vuota → errore esplicito che suggerisce il comando di re-index corrispondente:
 
 ```
-ks reindex <base> --model-change
+ks reindex <base> --model-change       # trigger 3
+ks reindex <base> --chunking-change    # trigger 4
+ks reindex <base> --ingestion-change   # trigger 5
 ```
 
-`ks reindex <base> --model-change`: crea una nuova collection, re-embed dei chunk letti da disco, aggiorna `embedding_model` registrato, invalida/sostituisce la vector search finché completato. Fuori scope del primo sviluppo; prerequisito del blocco è solo il check + errore.
+`ks reindex <base> --model-change`: crea una nuova collection, re-embed dei chunk letti da disco, aggiorna `embedding_model` registrato, propaga i nuovi vettori al grafo (property `embedding` sui nodi `Chunk`). Fuori scope del primo sviluppo; prerequisito del blocco è solo il check + errore.
 
 ## 10. Dipendenze
 
@@ -187,11 +202,11 @@ ks reindex <base> --model-change
 Ordine consigliato (bloccanti dall'alto in basso):
 
 - **F0 — Prerequisiti su ingest esistente**
-  - F0.1 Spostare i chunk da `chunks_dir` globale a `<base>/.knowledge-space/chunks/<file_stem>/<file_stem>_chunk_<i>.md`. Rimuovere la variabile globale `chunks_dir` (legacy cleanup Step 13).
-  - F0.2 ID deterministico `base::file::i` in Chroma e come `Neo4jNode.id`.
-  - F0.3 Estensione metadata Chroma + upsert (no `add_documents(uuid4())`).
+  - F0.1 Spostare i chunk da `chunks_dir` globale a `<base>/.knowledge-space/chunks/<file_id>/<file_id>_chunk_<i>.md`. Rimuovere la variabile globale `chunks_dir` (legacy cleanup Step 13). `file_id` è UUID stabile su `FileEntry` (vedi [45-indexing-incrementale.md](45-indexing-incrementale.md)).
+  - F0.2 ID deterministico `base::file_id::i` in Chroma e come `Neo4jNode.id`.
+  - F0.3 Estensione metadata Chroma + upsert (no `add_documents(uuid4())`). Metadati: `chunk_id`, `chunk_index`, `base_name`, `file_name`, `file_id`, `file_mtime`, `content_hash` (no `edited`/`edited_mtime`).
   - F0.4 Watcher sorgente ignora i path che iniziano con `.` (`.knowledge-space/` dentro la base).
-  - F0.5 `ChunkRef`/`FileEntry`/`KnowledgeBase` Pydantic estesi (vedi §2).
+  - F0.5 `ChunkRef`/`FileEntry`/`KnowledgeBase` Pydantic estesi (vedi §2). `FileEntry` guadagna `file_id: str` (UUID). `ChunkRef` perde `edited`/`edited_mtime`.
   - F0.6 `EmbeddingStrategy` (Step 6 roadmap) usata sia in indicizzazione sia come Embedder GraphRAG.
   - F0.7 Test idempotenza: riesecuzione di `add_file` non duplica record Chroma né chunk su disco.
 
@@ -203,7 +218,7 @@ Ordine consigliato (bloccanti dall'alto in basso):
 
 - **F2 — `KSChunkLoader`**
   - F2.1 Implementazione del loader (§4).
-  - F2.2 Espone `upsert_chunk` (§4).
+  - F2.2 Espone `upsert_chunks(base, file_id, changed_chunks)` per la propagazione incrementale (§4).
   - F2.3 Rispetto dei flag `active`.
   - F2.4 Test unit con fixture Chroma temporanea: `TextChunks` ordinate e embedding coerenti.
 
@@ -219,40 +234,41 @@ Ordine consigliato (bloccanti dall'alto in basso):
   - F4.3 Fallback automatico a `exact` se extra `[nlp]` mancante.
   - F4.4 Configurabilità via `[graph].resolver` (vedi §7).
 
-- **F5 — ChunkWatcher (eager cascade)**
-  - F5.1 Watcher su `<base>/.knowledge-space/chunks/**/*.md` con debounce + hash check.
-  - F5.2 Workflow `upsert_chunk` -> pipeline §3 con scope mirato (§5).
-  - F5.3 `on_chunk_edit` eager/lazy da `[graph]`.
-  - F5.4 Delete/rename handling.
-  - F5.5 Test: edit chunk -> Chroma aggiornato, grafo allineato, idempotenza su re-save identico.
+- **F5 — Propagazione al grafo (eager/lazy su source change)**
+  - F5.1 `KnowledgeBaseManager` orchestra: source change → `upsert_chunks` su Chroma → cascade grafo (§5).
+  - F5.2 `on_chunk_change = "eager"` (default): pipeline §3 con scope mirato `WHERE (entity)-[:MENTIONS]->(:Chunk {id: '<chunk_id>'})` per i chunk cambiati.
+  - F5.3 `on_chunk_change = "lazy"`: solo Chroma update; grafo si rialinea al prossimo `ks graph sync <workspace>`.
+  - F5.4 Gestione delete file: `Chroma.delete` + cleanup nodi `Chunk`/`Document` orfani.
+  - F5.5 Move/rename: update property `file_name`/`path` sui nodi `Chunk`/`Document`, niente re-estrazione (vedi [45-indexing-incrementale.md](45-indexing-incrementale.md) trigger 2).
+  - F5.6 Test: content change mirato → grafo allineato solo sui chunk cambiati; move/rename → property update; full re-index su trigger 4/5.
 
-- **F6 — Blocco cambio modello**
-  - F6.1 Errore se `model` differisce da `embedding_model` registrato e collection non vuota.
-  - F6.2 (deferred) `ks reindex <base> --model-change`.
+- **F6 — Blocco cambio config**
+  - F6.1 Errore se `[embedding].model` / `[chunking].method` / `[ingestion].library` differisce da registrato e collection non vuota (vedi [45-indexing-incrementale.md](45-indexing-incrementale.md) trigger 3/4/5).
+  - F6.2 (deferred) `ks reindex <base> --model-change|--chunking-change|--ingestion-change`.
 
-- **F7 — Test di integrazione** (vedi §12).
+- **F7 — Test di integrazione** (vedi §13).
 
 - **F8 — Documentazione** (questo file + aggiornamenti).
 
 ## 12. Rischi e limiti noti
 
-- **Resolver semantico non è magico**: `SpaCySemanticMatchResolver` collassa nomi simili per significato;Near misses come "OpenAI" ≈ "CloseAI" potrebbero in teoria essere sbagliati ma la cosine similarity ha una soglia. Possibile regolare la soglia o passare a `fuzzy` se si vedono falsi positivi. L'exact resta fallback sicuro.
-- **Ri-estrazione su edit (eager)**: costa una chiamata LLM per chunk editato. Mitigato dal debounce + hash check.
-- **Edit che espande un chunk oltre `chunk_size`**: si rispetta l'edit manuale, niente ri-chunking automatico (cancellerebbe le modifiche). Warning opzionale se la lunghezza diverge molto dal config.
-- **Race conditions watcher**: Chroma PersistentClient è safe per singolo processo; il `ChunkWatcher` deve condividere la stessa istanza collection del watcher sorgente. Per più processi (REST + MCP) serve sincronizzazione (vedi [90-roadmap-overview.md](90-roadmap-overview.md) Considerazioni e rischi).
+- **Resolver semantico non è magico**: `SpaCySemanticMatchResolver` collassa nomi simili per significato; near miss come "OpenAI" ≈ "CloseAI" potrebbero in teoria essere sbagliati ma la cosine similarity ha una soglia. Possibile regolare la soglia o passare a `fuzzy` se si vedono falsi positivi. L'exact resta fallback sicuro.
+- **Ri-estrazione su content change (eager)**: costa una chiamata LLM per chunk cambiato. Mitigato dal diff via `content_hash` (re-embed solo chunk effettivamente cambiati, vedi [45-indexing-incrementale.md](45-indexing-incrementale.md) trigger 1).
+- **Race conditions watcher**: Chroma PersistentClient è safe per singolo processo; il `KnowledgeBaseManager` deve condividere la stessa istanza collection del watcher sorgente. Per più processi (REST + MCP) serve sincronizzazione (vedi [90-roadmap-overview.md](90-roadmap-overview.md) Considerazioni e rischi).
 - **Neo4j non embedded**: serve un'istanza Neo4j in esecuzione (locale o remota). Documentare requisiti runtime in una sezione "Prerequisiti" del README o in `docs/97-rest-api.md`.
 - **Re-estrazione schema non migra le entità vecchie**: cambiare schema non riscrive le entità estratte col vecchio; l'utente deve cancellarle Cypher-side o accettare coesistenza.
 
 ## 13. Test
 
 - **F7.1 Unit `KSChunkLoader`**: `TextChunks` ordinate, embedding coerenti con Chroma reale (fixture), idempotenza su run ripetuti.
-- **F7.2 Unit edit**: modifica `..._chunk_1.md` -> `upsert` Chroma (niente duplicato), `edited=true`, `content_hash` aggiornato.
+- **F7.2 Unit `upsert_chunks` (content change)**: chunks cambiati → `upsert` Chroma (niente duplicato), `content_hash` aggiornato; chunk invariati non toccati.
 - **F7.3 Integrazione Neo4j** (test container o DB locale): end-to-end su 2 file, verifica `NEXT_CHUNK`/`FROM_DOCUMENT`/`MENTIONS`, idempotenza, dedup resolver (semantic + exact fallback).
-- **F7.4 Eager cascade**: edit chunk -> entità ri-estratte, grafo allineato, `filter_query` non tocca altri chunk.
-- **F7.5 Blocco modello**: cambio `model` con collection non vuota -> errore atteso.
-- **F7.6 Fallback resolver**: `[graph].resolver = "semantic"` senza extra `[nlp]` installato -> warning + fallback a `exact`.
-- **F7.7 Schema reload**: secondo run con `schema.json` esistente -> nessuna chiamata LLM allo `SchemaFromTextExtractor` (verificato con mock counter).
+- **F7.4 Eager cascade su source change**: content change di un file → entità ri-estratte solo sui chunk cambiati, grafo allineato, `filter_query` non tocca altri chunk.
+- **F7.5 Blocco config**: cambio `[embedding].model` / `[chunking].method` / `[ingestion].library` con collection non vuota → errore atteso (vedi [45-indexing-incrementale.md](45-indexing-incrementale.md) trigger 3/4/5).
+- **F7.6 Fallback resolver**: `[graph].resolver = "semantic"` senza extra `[nlp]` installato → warning + fallback a `exact`.
+- **F7.7 Schema reload**: secondo run con `schema.json` esistente → nessuna chiamata LLM allo `SchemaFromTextExtractor` (verificato con mock counter).
 - **F7.8 Mock LLM**: per non spendere token nei test di estrazione.
+- **F7.9 Move/rename**: file rinominato → `chunk_id` immutato, property `file_name` aggiornate su nodi `Chunk`/`Document`, niente re-estrazione (vedi [45-indexing-incrementale.md](45-indexing-incrementale.md) trigger 2).
 
 ## 14. Retrieval: metodo di ricerca configurabile dall'utente
 
@@ -323,9 +339,9 @@ Fonti: [User Guide: RAG](https://neo4j.com/docs/neo4j-graphrag-python/current/us
 
 ## 15. Sviluppi futuri
 
-- **Snapshot pre-edit per audit**: KS potrebbe mantenere una copia originale del chunk in `<workspace>/.knowledge-space/snapshots/<base>/<file_stem>/<file_stem>_chunk_<i>.orig.md` al primo edit rilevato dal ChunkWatcher. Renderlo opzionale via `[graph].keep_snapshots = true|false` (default `false` per non duplicare storage; l'utente che vuole auditabilità può attivarlo, oppure affidarsi a git/versionamento esterno della base).
+- **Backup chunk pre-reindex**: il comando `ks reindex <base> --chunking-change --keep-old` può preservare i chunk vecchi in `<base>/.knowledge-space/chunks/<file_id>__<timestamp>/` per audit. Opzionale (vedi [45-indexing-incrementale.md](45-indexing-incrementale.md) trigger 4).
 - **Comando CLI `ks config init`**: rigenera `<workspace>/.knowledge-space/defaults.toml` come template dai valori hardcoded. KS non riscrive mai i TOML a runtime, ma il comando esplicito può fornire un punto di partenza all'utente.
 
 ---
 
-*Ultimo aggiornamento: 17 luglio 2026*
+*Ultimo aggiornamento: 21 luglio 2026*

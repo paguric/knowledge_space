@@ -39,19 +39,64 @@ Il registry (`knowledge_base.strategies.embedding`) contiene tutte le strategie 
 
 ### Modelli di embedding supportati
 
-| Modello | `languages` | `dim` | `max_context_tokens` | Licenza | Note |
-|---|---|---|---|---|---|
-| `sentence-transformers/all-mpnet-base-v2` | EN | 768 | 384 | Apache 2.0 | Solo inglese; non adatto a documenti italiani. |
-| `sentence-transformers/all-MiniLM-L6-v2` | EN | 384 | 384 | Apache 2.0 | Leggero; solo EN. |
-| `Alibaba-NLP/gte-large-en-v1.5` | EN | 1024 | 8192 | Apache 2.0 | Top EN su MTEB (65.39); lungo contesto. |
-| `BAAI/bge-large-en-v1.5` | EN | 1024 | 512 | MIT | Buona qualità EN, ctx corto. |
-| `BAAI/bge-m3` | multilingua (100+, 🇮🇹) | 1024 | 8192 | MIT | SOTA MIRACL; dense+sparse+colbert; ideale per IT + terminologia tecnica. |
-| `intfloat/multilingual-e5-small` | multilingua (100+, 🇮🇹) | 384 | 512 | MIT | Leggero, ~470 MB; buon compromesso per studenti IT. |
-| `intfloat/multilingual-e5-large` | multilingua (100+, 🇮🇹) | 1024 | 512 | MIT | Più pesante ma migliore qualità di e5-small. |
+| Modello | `languages` | `dim` | `max_context_tokens` | Licenza | Require API | Note |
+|---|---|---|---|---|---|---|
+| `sentence-transformers/all-mpnet-base-v2` | EN | 768 | 384 | Apache 2.0 | No | Solo inglese; non adatto a documenti italiani. |
+| `sentence-transformers/all-MiniLM-L6-v2` | EN | 384 | 384 | Apache 2.0 | No | Leggero; solo EN. |
+| `Alibaba-NLP/gte-large-en-v1.5` | EN | 1024 | 8192 | Apache 2.0 | No | Top EN su MTEB (65.39); lungo contesto. |
+| `BAAI/bge-large-en-v1.5` | EN | 1024 | 512 | MIT | No | Buona qualità EN, ctx corto. |
+| `BAAI/bge-m3` | multilingua (100+, 🇮🇹) | 1024 | 8192 | MIT | No | SOTA MIRACL; dense+sparse+colbert; ideale per IT + terminologia tecnica. |
+| `intfloat/multilingual-e5-small` | multilingua (100+, 🇮🇹) | 384 | 512 | MIT | No | Leggero, ~470 MB; buon compromesso per studenti IT. |
+| `intfloat/multilingual-e5-large` | multilingua (100+, 🇮🇹) | 1024 | 512 | MIT | No | Più pesante ma migliore qualità di e5-small. |
+| `openai/text-embedding-3-small` | multilingua | 1536 | 8191 | Proprietaria | Sì (OpenAI) | Economico, buon rapporto qualità/prezzo. |
+| `openai/text-embedding-3-large` | multilingua | 3072 | 8191 | Proprietaria | Sì (OpenAI) | Massima qualità OpenAI. |
+| `cohere/embed-multilingual-v3.0` | multilingua (100+, 🇮🇹) | 1024 | 512 | Proprietaria | Sì (Cohere) | Ottimo multilingua, include embed_sparse nativo. |
+| `voyage/voyage-3` | multilingua | 1024 | 32000 | Proprietaria | Sì (Voyage) | Contesto lungo 32k, ideale per documenti grandi. |
+| `voyage/voyage-3-lite` | multilingua | 1024 | 32000 | Proprietaria | Sì (Voyage) | Versione leggera di voyage-3. |
 
 > **Avvertenza critica — contesto e lingue**:
 > - Ogni modello ha un `max_context_tokens` (es. 384 per `all-mpnet`, 8192 per `gte`/`bge-m3`). Se un chunk supera questo limite, il `KnowledgeBaseManager` deve **lanciare un errore esplicito** (non troncare silenziosamente).
 > - I modelli solo-EN (`all-mpnet`, `all-MiniLM`, `gte-large-en`, `bge-large-en`) **non sono adatti a documenti italiani**: il frontend deve mostrarne le lingue supportate per evitare scelte errate (Step 15).
+
+### Modelli remoti con chiave API
+
+I modelli con `requires_api = true` (OpenAI, Cohere, Voyage) richiedono una chiave API per funzionare. La chiave **non** va mai nel TOML della base: viene passata via variabile d'ambiente o file di credenziali separato.
+
+| Provider | Variabile d'ambiente | Modelli registrati |
+|---|---|---|
+| OpenAI | `OPENAI_API_KEY` | `openai/text-embedding-3-small`, `openai/text-embedding-3-large` |
+| Cohere | `COHERE_API_KEY` | `cohere/embed-multilingual-v3.0` |
+| Voyage | `VOYAGE_API_KEY` | `voyage/voyage-3`, `voyage/voyage-3-lite` |
+
+Regole:
+- La chiave può essere fornita via variabile d'ambiente (es. `OPENAI_API_KEY`) oppure scritta in `~/.config/KnowledgeSpace/config.json` (UserSettings, machine-writable via `config set`). Se presente in entrambi, la env var ha precedenza.
+- L'API key **non** viene mai scritta nei file TOML né nello `state.json` del workspace.
+- Supporto futuro (Fase 4): gestione API key via UI criptata (keyring/browser storage), mai in chiaro su disco.
+- Il registry può essere esteso con altri provider remoti aggiungendo una nuova strategia che implementi `EmbeddingStrategy` e legga la propria env var (o il corrispondente campo in UserSettings).
+
+#### Override endpoint
+
+Per provider che supportano endpoint personalizzati (es. OpenAI-compatible, Ollama), il `base.toml` può specificare un URL alternativo:
+
+```toml
+[embedding]
+model = "openai/text-embedding-3-small"
+api_base = "https://api.openai.com/v1"      # default, ereditato dalla strategia
+```
+
+Il campo `api_base` è opzionale e per-base. Se omesso, la strategia usa l'endpoint di default del provider. Le env var specifiche del provider (es. `OPENAI_BASE_URL`) hanno precedenza sul TOML.
+
+#### Modelli locali via provider remoto
+
+Alcuni provider (es. Ollama, vLLM, llamafile) espongono API compatibile con OpenAI su host locale. Si configurano come modello remoto con `api_base` puntato all'istanza locale:
+
+```toml
+[embedding]
+model = "openai/text-embedding-3-small"      # nome registro (usa client OpenAI-compat)
+api_base = "http://localhost:11434/v1"        # Ollama
+```
+
+In questo caso `OPENAI_API_KEY` può essere una stringa fittizia o omessa (dipende dal provider). La strategia OpenAI si comporta come client HTTP generico.
 
 ## Collection Chroma per base
 
@@ -91,7 +136,7 @@ Al momento della configurazione di una base, l'utente vede il confronto tra `chu
 ## Fasi di implementazione
 
 - **F0 — Interfaccia e registry**: definire `EmbeddingStrategy` e `EmbeddingMetadata`, modulo `knowledge_base/strategies/embedding.py`.
-- **F1 — Registry model table**: popolare il registry con i 7 modelli sopra, ciascuno con i propri metadati.
+- **F1 — Registry model table**: popolare il registry con tutti i modelli supportati (locali + remoti), ciascuno con i propri metadati.
 - **F2 — Collection per base**: creazione collection Chroma con `dim` dal modello; isolamento per nome base.
 - **F3 — Context validation**: validatore chunk-size vs `max_context_tokens` prima dell'embedding.
 - **F4 — Test**: embedding della stessa query con modelli diversi produce vettori di dimensioni diverse; errore atteso su chunk troppo grande.
