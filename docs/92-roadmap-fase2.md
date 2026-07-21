@@ -58,7 +58,7 @@ Definire configurazioni TOML default per scenari d'uso rappresentativi. I profil
   - post-retrieval: `identity`.
 - [ ] Salvare i profili in `configs/profiles/<name>.toml` (cartella del repo, non del workspace).
 - [ ] Documentare come applicare un profilo a un workspace (`defaults.toml` del workspace = copia del profilo).
-- [ ] **Per ciascun profilo, documentare nel commento TOML quali lingue supporta l'embedding scelto** (EN / multilingua incl. IT / etc.) e `max_context_tokens`, così l'utente può scegliere consapevolmente (vedi Step 6 e requisito frontend Step 15).
+- [ ] **Per ciascun profilo, documentare nel commento TOML quali lingue supporta l'embedding scelto** (EN / multilingua incl. IT / etc.) e `max_context_tokens`, così l'utente può scegliere consapevolmente (vedi Step 6 e requisito frontend Step 16).
 
 ##### Affidabilità delle evidenze per profilo
 
@@ -107,6 +107,33 @@ Da confermare una volta implementati i retriever della Fase 1 (Step 8-bis):
 - [ ] **Strategy LLM-based**: usare stub/mock per query rewriting e compression nei test CI; opzionale un test manuale con LLM reale (skip di default).
 
 > **Da definire**: modello LLM da usare nei test con LLM reale (locale come `llama-cpp` o API come OpenAI/Anthropic),soglie di recall target, peso delle metriche nel benchmark.
+
+### Step 12: Logging su file
+
+Aggiungere un sistema di logging su file così che, quando l'utente usa la CLI (Fase 3) e qualcosa si rompe, il traceback e il contesto siano disponibili su disco senza dover rilanciare con `-v`. Sostituisce il vecchio `ks_logging.py` legacy (rimosso nello Step 3) con un'implementazione app-level che rispetta `RuntimePaths` (XDG) e non usa variabili globali.
+
+> **Collocazione**: in Fase 2 perché serve ai test E2E (Step 11) per ispezionare i failure e alla CLI (Fase 3) per il debug utente. `knowledge-base` **non** ha dipendenze da logging config: usa già `logging.getLogger(__name__)` ovunque (vedi `base_config.py`, `strategies/*`); basta che l'app configuri il root logger una volta all'avvio.
+
+- [ ] Creare `knowledge_space/logging.py` con `setup_logging(runtime_paths: RuntimePaths, *, verbose: bool = False, log_level: str | None = None) -> Path`:
+  - **File handler** (sempre attivo, livello DEBUG): `RotatingFileHandler` su `<runtime_paths.state_home>/logs/ks.log`, max 5 MB × 3 backup, encoding UTF-8. Crea la directory `logs/` se mancante (`runtime_paths.ensure_dirs()` già esiste).
+  - **Console handler** (stderr): livello INFO di default, DEBUG se `verbose=True` (flag `--verbose`/`-v` della CLI, vedi [95-cli.md](95-cli.md)).
+  - `log_level` (da `KS_LOG_LEVEL` env, vedi [30-configuration.md](30-configuration.md)) ha precedenza e imposta il livello **del root logger** (sia file che console). Valori ammessi: `DEBUG|INFO|WARNING|ERROR|CRITICAL` (case-insensitive); valore non riconosciuto → warning + fallback a INFO.
+  - Formato: `%(asctime)s %(levelname)-8s %(name)s %(message)s` (data ISO-8601 con millisecondi).
+  - Evita handler duplicati: se il root logger ha già un `RotatingFileHandler` per lo stesso path, non ne aggiunge un secondo (idempotente — importante perché la CLI standalone crea un `AppContext` per ogni comando).
+  - Ritorna il path del file di log (utile per stampare "Log: <path>" all'utente in caso di errore).
+- [ ] **Uncaught exception hook**: installare `sys.excepthook` che logga il traceback completo su file ( livello `ERROR`) prima di delegare al hook di default. così i crash della CLI finiscono nel log anche quando l'utente non ha `-v`.
+- [ ] **Silenzio librerie verbose**: impostare `WARNING` sui logger di dipendenze note (es. `chromadb`, `sentence_transformers`, `urllib3`, `httpx`, `watchdog`) per non saturare il log di rumore; il logger `knowledge_base` resta al livello del root (DEBUG quando attivo).
+- [ ] Integrare `setup_logging()` in `build_app_context()` ([11-app-lifecycle.md](11-app-lifecycle.md), Step 8-ter): chiamata come **prima cosa**, prima di istanziare i manager, così i warning di caricamento config (Step 3) finiscono nel log. Il `RuntimePaths` è già disponibile; `verbose` e `log_level` sono parametri opzionali della `build_app_context` (la CLI li passerà dai flag).
+- [ ] **Entry point CLI** (Fase 3): il comando `ks` chiama `setup_logging()` subito dopo il parse dei flag globali (`--verbose`, `KS_LOG_LEVEL` env), prima di qualsiasi operazione. In caso di errore fatale, il messaggio finale all'utente include: `Errore: <msg>. Dettagli in: <log_path>`.
+- [ ] Esportare `setup_logging` da `knowledge_space` (usato anche da MCP server e REST API in Fasi successive).
+- [ ] Scrivere test in `tests/test_logging.py`:
+  - File di log viene creato in `<state_home>/logs/ks.log`.
+  - Messaggi a vari livelli (DEBUG/INFO/WARNING/ERROR) finiscono nel file (file sempre DEBUG).
+  - Console handler rispetta `verbose` (INFO di default, DEBUG con `verbose=True`) — verificabile catturando stderr con `caplog` o `capsys`.
+  - `KS_LOG_LEVEL="WARNING"` silenzia DEBUG e INFO sia su file che console.
+  - Valore non riconosciuto di `KS_LOG_LEVEL` → warning + fallback INFO.
+  - Idempotenza: chiamare `setup_logging()` due volte non duplica gli handler.
+  - Uncaught exception: simulare un'eccezione non catturata e verificare che il traceback finisca nel file di log.
 
 ---
 

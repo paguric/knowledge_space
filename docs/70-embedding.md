@@ -56,7 +56,7 @@ Il registry (`knowledge_base.strategies.embedding`) contiene tutte le strategie 
 
 > **Avvertenza critica — contesto e lingue**:
 > - Ogni modello ha un `max_context_tokens` (es. 384 per `all-mpnet`, 8192 per `gte`/`bge-m3`). Se un chunk supera questo limite, il `KnowledgeBaseManager` deve **lanciare un errore esplicito** (non troncare silenziosamente).
-> - I modelli solo-EN (`all-mpnet`, `all-MiniLM`, `gte-large-en`, `bge-large-en`) **non sono adatti a documenti italiani**: il frontend deve mostrarne le lingue supportate per evitare scelte errate (Step 15).
+> - I modelli solo-EN (`all-mpnet`, `all-MiniLM`, `gte-large-en`, `bge-large-en`) **non sono adatti a documenti italiani**: il frontend deve mostrarne le lingue supportate per evitare scelte errate (Step 16).
 
 ### Modelli remoti con chiave API
 

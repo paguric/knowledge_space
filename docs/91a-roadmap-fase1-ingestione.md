@@ -122,7 +122,7 @@ Implementare la logica operativa sulle basi di conoscenza, orchestrando ingestio
 
 ### Step 8-ter: `AppContext` e bootstrap dell'applicazione
 
-`knowledge-base` è una libreria pura senza alcuna conoscenza di XDG, APP_NAME o variabili globali. Il **wiring** avviene in `knowledge-space`, che costruisce un `AppContext` e lo passa esplicitamente a CLI, MCP server e REST API. Questo step introduce l'unico punto dell'app in cui le dipendenze vengono assemblate; tutti gli entrypoint (Step 12 CLI, Step 13 MCP, Step 14 REST) ricevono un `AppContext` già pronto (o un factory che lo costruisce da `RuntimePaths`).
+`knowledge-base` è una libreria pura senza alcuna conoscenza di XDG, APP_NAME o variabili globali. Il **wiring** avviene in `knowledge-space`, che costruisce un `AppContext` e lo passa esplicitamente a CLI, MCP server e REST API. Questo step introduce l'unico punto dell'app in cui le dipendenze vengono assemblate; tutti gli entrypoint (Step 13 CLI, Step 14 MCP, Step 15 REST) ricevono un `AppContext` già pronto (o un factory che lo costruisce da `RuntimePaths`).
 
 - [ ] Definire `RuntimePaths` (Pydantic) in `knowledge_space`: path XDG (`data_home`, `state_home`, `config_home`) + convenzione `<workspace>/.knowledge-space/`. Costruito da `APP_NAME` + env (default XDG spec, overridable per test).
 - [ ] Definire `AppContext` (Pydantic o dataclass) in `knowledge_space.context`:

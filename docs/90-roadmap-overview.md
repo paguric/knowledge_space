@@ -31,11 +31,12 @@ Al termine della Fase 1 `knowledge-base` è una libreria completa e testabile in
 | 2 | 9 — Dataset sintetici | [92-roadmap-fase2.md](92-roadmap-fase2.md) |
 | 2 | 10 — Profili di configurazione | 92 |
 | 2 | 11 — Test end-to-end e benchmark | 92 |
-| 3 | 12 — CLI con Typer | [93-roadmap-fase3.md](93-roadmap-fase3.md) |
-| 3 | 13 — Server MCP | 93 |
-| 4 | 14 — Backend REST | [94-roadmap-fase4.md](94-roadmap-fase4.md) |
-| 4 | 15 — Frontend React / GUI | 94 |
-| 4 | 16 — Polish e documentazione | 94 |
+| 2 | 12 — Logging su file | 92 |
+| 3 | 13 — CLI con Typer | [93-roadmap-fase3.md](93-roadmap-fase3.md) |
+| 3 | 14 — Server MCP | 93 |
+| 4 | 15 — Backend REST | [94-roadmap-fase4.md](94-roadmap-fase4.md) |
+| 4 | 16 — Frontend React / GUI | 94 |
+| 4 | 17 — Polish e documentazione | 94 |
 
 ---
 
