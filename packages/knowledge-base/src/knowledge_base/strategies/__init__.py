@@ -89,13 +89,29 @@ class IngestionStrategy(Protocol):
 
 
 class ChunkingStrategy(Protocol):
-    """Interfaccia per le strategie di chunking (Step 5)."""
+    """Interfaccia per le strategie di chunking (Step 5).
+
+    Una strategia suddivide il testo Markdown (proveniente dall'ingestion)
+    in frammenti. I parametri sono passati al costruttore dal
+    ``BaseConfig.chunking``; :meth:`split` riceve solo il testo.
+
+    Ogni strategia registra ``params_schema`` (mappa nome → tipo) e
+    ``requires_embedding`` per la discoverability (il frontend li userà
+    per guidare la configurazione utente).
+    """
 
     name: str
+    params_schema: Dict[str, type]
     requires_embedding: bool = False
 
-    def split(self, text: str) -> List[str]:
-        """Divide un testo in chunk."""
+    def split(self, text: str) -> List[Dict[str, Any]]:
+        """Divide un testo in chunk.
+
+        Returns:
+            lista di dict, ciascuno con almeno ``"text"`` (str) e
+            ``"index"`` (int). Strategie avanzate (es. ``markdown``)
+            possono aggiungere metadata (es. ``"header_1"``).
+        """
         ...
 
 

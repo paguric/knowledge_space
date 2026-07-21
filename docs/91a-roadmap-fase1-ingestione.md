@@ -76,14 +76,14 @@ Implementare secondo la specifica [50-ingestion.md](50-ingestion.md).
 
 Implementare secondo la specifica [60-chunking.md](60-chunking.md).
 
-- [ ] Interfaccia `ChunkingStrategy` e registry (`knowledge_base/strategies/chunking.py`).
-- [ ] Strategy `fixed_size` (chunk_overlap=0 no-overlap, >0 sliding window — unica classe, due comportamenti).
-- [ ] Strategy `recursive` (separatori gerarchici `["\n\n", "\n", " ", ""]`).
-- [ ] Strategy `semantic` (richiede embedding, non default).
-- [ ] Strategy `sentence` (granularity = "sentence" | "paragraph").
-- [ ] Strategy `markdown` (MarkdownHeaderTextSplitter, code block intatto).
-- [ ] Registry con metadati discoverable (`params_schema`, `requires_embedding`).
-- [ ] Test per ciascuna strategy; test fixed_size overlap=0 vs >0.
+- [x] Interfaccia `ChunkingStrategy` e registry (`knowledge_base/strategies/chunking.py`).
+- [x] Strategy `fixed_size` (chunk_overlap=0 no-overlap, >0 sliding window — unica classe, due comportamenti).
+- [x] Strategy `recursive` (separatori gerarchici `["\n\n", "\n", " ", ""]`).
+- [x] Strategy `semantic` (richiede embedding, non default).
+- [x] Strategy `sentence` (granularity = "sentence" | "paragraph").
+- [x] Strategy `markdown` (MarkdownHeaderTextSplitter, code block intatto).
+- [x] Registry con metadati discoverable (`params_schema`, `requires_embedding`).
+- [x] Test per ciascuna strategy; test fixed_size overlap=0 vs >0.
 
 ### Step 6: Embedding configurabile per base
 

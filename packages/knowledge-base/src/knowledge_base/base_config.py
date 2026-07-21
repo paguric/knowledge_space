@@ -37,6 +37,7 @@ class ChunkingConfig(BaseModel):
     chunk_size: int = 1000
     chunk_overlap: int = 200
     separator: str = "\n\n"
+    params: Dict[str, Any] = Field(default_factory=dict)
 
 
 class EmbeddingConfig(BaseModel):
@@ -132,13 +133,16 @@ class BaseConfig(BaseModel):
 
         if "chunking" in data:
             section = data["chunking"]
-            known = {"method", "chunk_size", "chunk_overlap", "separator"}
+            known = {"method", "chunk_size", "chunk_overlap", "separator", "params"}
             for key in section:
                 if key not in known:
                     logger.warning(
                         "[chunking] campo sconosciuto '%s' ignorato", key
                     )
             kwargs = {k: v for k, v in section.items() if k in known}
+            if "params" in kwargs and not isinstance(kwargs["params"], dict):
+                logger.warning("[chunking].params non è un dict, ignorato")
+                del kwargs["params"]
             try:
                 chunking = ChunkingConfig(**kwargs)
             except ValidationError as exc:

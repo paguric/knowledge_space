@@ -164,4 +164,4 @@ Ogni strategy registra (oltre al nome) uno schema dei parametri accettati. Il re
 
 ---
 
-*Ultimo aggiornamento: 21 luglio 2026*
+*Ultimo aggiornamento: 21 luglio 2026 (Step 5 implementato: 5 strategy con registry, params_schema discoverable, semantic custom con EmbeddingStrategy, 46 test)*
