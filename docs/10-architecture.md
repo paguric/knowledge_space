@@ -108,7 +108,7 @@ Questa sezione descrive come l'applicazione viene eseguita: entry point, modalit
 
 ### Entry point (`main.py`)
 
-Il pacchetto `knowledge-space` espone il comando `knowledge-space` (alias `ks`) via Typer. Entry point: `knowledge_space.main:main`.
+Il pacchetto `knowledge-space` espone il comando `knowledge-space` (alias `ks`) via Typer. Il vecchio `main.py` legacy (con `setup()` e variabili globali) è stato rimosso nello Step 3; il nuovo entry point (`build_app_context()` in `knowledge_space.bootstrap`) sarà introdotto nello [Step 8-ter](91a-roadmap-fase1-ingestione.md), e la CLI Typer nella Fase 3. Vedi [11-app-lifecycle.md](11-app-lifecycle.md) per la specifica del ciclo di vita.
 
 In tutte le fasi, l'AppContext viene costruito da `build_app_context()` (vedi [91a-roadmap-fase1-ingestione.md Step 8-ter](91a-roadmap-fase1-ingestione.md)).
 

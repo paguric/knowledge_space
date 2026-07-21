@@ -1,19 +1,21 @@
 # Gestione della configurazione
 
-## Stato attuale e problemi
+## Stato legacy (rimosso nello Step 3)
 
-- `settings.py` calcola i path XDG come costanti globali.
-- `config.py` gestisce un file JSON con le preferenze utente (es. `hf_key`).
-- `knowledge_space/main.py` chiama `setup()` e imposta **variabili globali** dentro `knowledge_base.base`, `knowledge_base.domain`, `knowledge_base.workspace`.
-- I moduli di `knowledge-base` leggono queste variabili globali.
+Il vecchio codice legacy è stato rimosso durante il refactor (Step 3, Fase 1A). Restava come problema storico:
 
-### Problemi
+- `settings.py` calcolava i path XDG come costanti globali.
+- `config.py` gestiva un file JSON con le preferenze utente (es. `hf_key`).
+- `knowledge_space/main.py` chiamava `setup()` e impostava **variabili globali** dentro `knowledge_base.base`, `knowledge_base.domain`, `knowledge_base.workspace`.
+- I moduli di `knowledge-base` leggevano queste variabili globali.
 
-1. Test difficili: i test devono resettare manualmente le variabili globali.
+### Problemi (risolti dal refactor)
+
+1. Test difficili: i test dovevano resettare manualmente le variabili globali.
 2. Non thread-safe.
-3. `knowledge-base` non è riutilizzabile in modo isolato.
-4. Inversione di controllo: la libreria dipende da come il chiamante imposta le globali.
-5. La configurazione di ingestion/chunking/embedding è hardcoded nel codice.
+3. `knowledge-base` non era riutilizzabile in modo isolato.
+4. Inversione di controllo: la libreria dipendeva da come il chiamante impostava le globali.
+5. La configurazione di ingestion/chunking/embedding era hardcoded nel codice.
 
 ---
 
