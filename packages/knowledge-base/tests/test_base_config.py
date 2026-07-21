@@ -215,6 +215,7 @@ def test_malformed_toml_raises(tmp_path):
 
 def test_registries_populated_at_import():
     assert set(ingestion_registry.list_names()) == {
+        "identity",
         "docling",
         "pymupdf4llm",
         "markitdown",

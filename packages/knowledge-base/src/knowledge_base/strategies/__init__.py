@@ -9,6 +9,7 @@ all'avvio con le strategie built-in.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Protocol, Type, TypeVar
 
 logger = logging.getLogger(__name__)
@@ -67,13 +68,23 @@ class StrategyRegistry:
 
 
 class IngestionStrategy(Protocol):
-    """Interfaccia per le strategie di ingestion (Step 4)."""
+    """Interfaccia per le strategie di ingestion (Step 4).
+
+    Una strategia converte un file sorgente in testo Markdown. I parametri
+    della libreria sottostante sono passati al costruttore e memorizzati
+    nell'istanza; :meth:`convert` riceve solo il path del file.
+    """
 
     name: str
+    library: str
     supported_extensions: List[str]
 
-    def convert(self, source_path: str) -> str:
-        """Converte un file sorgente in markdown."""
+    def convert(self, source_path: Path) -> str:
+        """Converte un file sorgente in markdown.
+
+        Solleva :class:`UnsupportedFormatError` se l'estensione del file non
+        è in ``supported_extensions``.
+        """
         ...
 
 

@@ -65,12 +65,12 @@ Implementare la configurazione per-base come da [30-configuration.md](30-configu
 
 Implementare secondo la specifica [50-ingestion.md](50-ingestion.md).
 
-- [ ] Interfaccia `IngestionStrategy` e registry (`knowledge_base/strategies/ingestion.py`). Parametro globale `use_gpu` (default `false`).
-- [ ] Strategy `docling` (PDF, profilo ricercatore) — parametri: `use_gpu`, `do_ocr`, `do_table_structure`, `table_mode`, `image_export`.
-- [ ] Strategy `pymupdf4llm` (PDF, profilo consulente) — parametri: `page_chunks`, `write_images`, `extract_mode`.
-- [ ] Strategy `markitdown` (PPTX, MD, profilo studente) — parametri minimi (estensione via plugin).
-- [ ] Validazione formati: estensione vs `supported_extensions` della strategy; rifiuto esplicito.
-- [ ] Test per ciascuna strategy con file in `tests/data/synthetic/`.
+- [x] Interfaccia `IngestionStrategy` e registry (`knowledge_base/strategies/ingestion.py`). Parametro globale `use_gpu` (default `false`).
+- [x] Strategy `docling` (PDF, profilo ricercatore) — parametri: `use_gpu`, `do_ocr`, `do_table_structure`, `table_mode`, `image_export`.
+- [x] Strategy `pymupdf4llm` (PDF, profilo consulente) — parametri: `page_chunks`, `write_images`, `extract_mode`.
+- [x] Strategy `markitdown` (PPTX, MD, profilo studente) — parametri minimi (estensione via plugin).
+- [x] Validazione formati: estensione vs `supported_extensions` della strategy; rifiuto esplicito.
+- [x] Test per ciascuna strategy con file in `tests/data/synthetic/`.
 
 ### Step 5: Strategie di chunking
 

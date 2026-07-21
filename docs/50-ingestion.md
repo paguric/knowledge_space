@@ -147,4 +147,4 @@ params.plugins = []                # percorsi a plugin custom opzionali
 
 ---
 
-*Ultimo aggiornamento: 21 luglio 2026*
+*Ultimo aggiornamento: 21 luglio 2026 (Step 4 implementato: identity, docling, pymupdf4llm, markitdown con registry, validazione estensioni, 30 test)*
