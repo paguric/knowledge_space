@@ -34,7 +34,7 @@ Thin layer FastAPI sopra i manager già testati.
 
 ### Step 18: Imballaggio e distribuzione (Docker + Windows .exe) — *provvisorio*
 
-> **Scelte da definire.** Questo step è solo un segnaposto: le tecnologie concrete, la struttura delle immagini e i flussi di build sono ancora da valutare. Vedi anche [11-app-lifecycle.md §Packaging](11-app-lifecycle.md#packaging) per il bundle GUI (pywebview/Tauri/Electron), che è ortogonale a questo step.
+> **Scelte da definire.** Questo step è solo un segnaposto: le tecnologie concrete, la struttura delle immagini e i flussi di build sono ancora da valutare. Dettagli operativi in [12-deployment.md](12-deployment.md). Vedi anche [11-app-lifecycle.md §Packaging](11-app-lifecycle.md#packaging) per il bundle GUI (pywebview/Tauri/Electron), che è ortogonale a questo step.
 
 - [ ] **Immagine Docker** del backend REST (`ks serve`):
   - Base image: da definire (es. `python:3.12-slim` vs `python:3.12-alpine` vs base con CUDA per embedding GPU).
