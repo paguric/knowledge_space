@@ -32,6 +32,25 @@ Thin layer FastAPI sopra i manager già testati.
 - [ ] Aggiungere test end-to-end.
 - [ ] Valutare la versione minima di Python: `>=3.14` è molto restrittiva. Considerare `>=3.11` o `>=3.12`.
 
+### Step 18: Imballaggio e distribuzione (Docker + Windows .exe) — *provvisorio*
+
+> **Scelte da definire.** Questo step è solo un segnaposto: le tecnologie concrete, la struttura delle immagini e i flussi di build sono ancora da valutare. Vedi anche [11-app-lifecycle.md §Packaging](11-app-lifecycle.md#packaging) per il bundle GUI (pywebview/Tauri/Electron), che è ortogonale a questo step.
+
+- [ ] **Immagine Docker** del backend REST (`ks serve`):
+  - Base image: da definire (es. `python:3.12-slim` vs `python:3.12-alpine` vs base con CUDA per embedding GPU).
+  - Gestione dei modelli locali sentence-transformers: pre-bundled nell'immagine vs mount esterno vs download all'avvio.
+  - Gestione dei secrets (API keys): env vars vs Docker secrets vs mount di `~/.config/KnowledgeSpace/config.json`.
+  - Persistenza: volumi per `XDG_STATE_HOME` (Chroma, `state.json`, log) e workspace utente.
+  - Esposizione: porta REST + (opzionale) MCP SSE.
+- [ ] **Eseguibile Windows `.exe`** (utente desktop, bundle GUI):
+  - Tool da definire: PyInstaller vs Nuitka vs pyoxidizer vs Briefcase.
+  - Bundle di Python + dipendenze + frontend React compilato + (opzionale) runtime Neo4j/Chroma embedded.
+  - Gestione dei modelli locali pesanti: scaricamento al primo avvio vs incluso nel `.exe` (dimensione).
+  - Firma del binario (code signing) — opzionale per tesi.
+  - Destinazione: `dist/KnowledgeSpace.exe` + cartella `data/` o installer (NSIS/Inno Setup) — da definire.
+- [ ] **CI/CD** (opzionale): workflow GitHub Actions che builda entrambi gli artifact su tag.
+- [ ] Documentare i flussi di build e i prerequisiti nel `README.md` principale.
+
 ---
 
 *Ultimo aggiornamento: 21 luglio 2026*

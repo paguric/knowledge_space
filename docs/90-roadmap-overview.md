@@ -37,6 +37,7 @@ Al termine della Fase 1 `knowledge-base` è una libreria completa e testabile in
 | 4 | 15 — Backend REST | [94-roadmap-fase4.md](94-roadmap-fase4.md) |
 | 4 | 16 — Frontend React / GUI | 94 |
 | 4 | 17 — Polish e documentazione | 94 |
+| 4 | 18 — Imballaggio e distribuzione (Docker + Windows .exe) — *provvisorio* | 94 |
 
 ---
 
