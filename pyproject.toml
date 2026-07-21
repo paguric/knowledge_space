@@ -30,8 +30,20 @@ knowledge-space = "knowledge_space:main"
 requires = ["uv_build>=0.11.17,<0.12.0"]
 build-backend = "uv_build"
 
+[project.optional-dependencies]
+remote = [
+    "openai>=1.0.0",
+    "cohere>=5.0.0",
+    "voyageai>=0.1.0",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "api: test di integrazione con API remote (richiede API key env var: COHERE_API_KEY, VOYAGE_API_KEY)",
 ]
 

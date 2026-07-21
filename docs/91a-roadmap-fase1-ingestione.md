@@ -89,11 +89,11 @@ Implementare secondo la specifica [60-chunking.md](60-chunking.md).
 
 Implementare secondo la specifica [70-embedding.md](70-embedding.md).
 
-- [ ] Interfaccia `EmbeddingStrategy`, `EmbeddingMetadata` e registry (`knowledge_base/strategies/embedding.py`).
-- [ ] Popolare registry con tutti i modelli di embedding supportati (locali + remoti: OpenAI, Cohere, Voyage) — ciascuno con metadati: `languages`, `dim`, `max_context_tokens`, `license`, `requires_api`.
-- [ ] Collection Chroma separata per base, creata con `dim` dal modello configurato.
-- [ ] Validatore chunk vs `max_context_tokens`: errore esplicito se un chunk eccede il limite.
-- [ ] Test: embedding con modelli diversi → vettori di dimensioni diverse; errore atteso su chunk troppo grande.
+- [x] Interfaccia `EmbeddingStrategy`, `EmbeddingMetadata` e registry (`knowledge_base/strategies/embedding.py`).
+- [x] Popolare registry con tutti i modelli di embedding supportati (7 locali + 5 remoti: OpenAI, Cohere, Voyage) — ciascuno con metadati: `languages`, `dim`, `max_context_tokens`, `license`, `requires_api`.
+- [ ] Collection Chroma separata per base, creata con `dim` dal modello configurato. *(Step 7)*
+- [x] Validatore chunk vs `max_context_tokens`: errore esplicito se un chunk eccede il limite.
+- [x] Test: embedding con modelli diversi → vettori di dimensioni diverse; errore atteso su chunk troppo grande.
 
 ### Step 7: KnowledgeBaseManager e indicizzazione
 

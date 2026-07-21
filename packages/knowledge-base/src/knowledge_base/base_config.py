@@ -45,6 +45,8 @@ class EmbeddingConfig(BaseModel):
 
     model: str = "sentence-transformers/all-mpnet-base-v2"
     device: Optional[str] = None
+    api_base: Optional[str] = None
+    params: Dict[str, Any] = Field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------- #
@@ -152,13 +154,16 @@ class BaseConfig(BaseModel):
 
         if "embedding" in data:
             section = data["embedding"]
-            known = {"model", "device"}
+            known = {"model", "device", "api_base", "params"}
             for key in section:
                 if key not in known:
                     logger.warning(
                         "[embedding] campo sconosciuto '%s' ignorato", key
                     )
             kwargs = {k: v for k, v in section.items() if k in known}
+            if "params" in kwargs and not isinstance(kwargs["params"], dict):
+                logger.warning("[embedding].params non è un dict, ignorato")
+                del kwargs["params"]
             try:
                 embedding = EmbeddingConfig(**kwargs)
             except ValidationError as exc:

@@ -153,4 +153,4 @@ Al momento della configurazione di una base, l'utente vede il confronto tra `chu
 
 ---
 
-*Ultimo aggiornamento: 21 luglio 2026*
+*Ultimo aggiornamento: 21 luglio 2026 (Step 6 implementato: 12 modelli con registry e metadati discoverable, LocalEmbedding + OpenAI/Cohere/Voyage con import lazy, estimate_tokens + validate_chunk_context con ChunkTooLongError, 46 test unitari + 6 test integrazione opzionali con marker @api)*
