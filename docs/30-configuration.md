@@ -1,24 +1,5 @@
 # Gestione della configurazione
 
-## Stato legacy (rimosso nello Step 3)
-
-Il vecchio codice legacy è stato rimosso durante il refactor (Step 3, Fase 1A). Restava come problema storico:
-
-- `settings.py` calcolava i path XDG come costanti globali.
-- `config.py` gestiva un file JSON con le preferenze utente (es. `hf_key`).
-- `knowledge_space/main.py` chiamava `setup()` e impostava **variabili globali** dentro `knowledge_base.base`, `knowledge_base.domain`, `knowledge_base.workspace`.
-- I moduli di `knowledge-base` leggevano queste variabili globali.
-
-### Problemi (risolti dal refactor)
-
-1. Test difficili: i test dovevano resettare manualmente le variabili globali.
-2. Non thread-safe.
-3. `knowledge-base` non era riutilizzabile in modo isolato.
-4. Inversione di controllo: la libreria dipendeva da come il chiamante impostava le globali.
-5. La configurazione di ingestion/chunking/embedding era hardcoded nel codice.
-
----
-
 ## Stato vs configurazione
 
 Conviene tenere separati due concetti distinti:
