@@ -93,7 +93,7 @@ L'accesso in scrittura alla configurazione TOML è diviso in due fasi:
 **Fase 2 (Step 13, Fase 3) — scrittura via CLI:**
 - La CLI ottiene il comando `config set` per modificare le preferenze nei TOML.
 - Il programma scrive solo i file TOML delle basi e `defaults.toml`, mai il config dell'app (`config.json` gestito da `auth set`).
-- Le restrizioni sui campi bloccanti restano valide: il cambio di `embedding.model`, `chunking.method` o `ingestion.library` su una base con collection Chroma non vuota richiede `--reason` esplicito (trigger reindex 3/4/5, vedi [45-indexing-incrementale.md](45-indexing-incrementale.md)).
+- Il comando rileva automaticamente se la chiave modificata impatta l'indice esistente (`embedding.model` → re-embed, `chunking.method` → re-chunk, `ingestion.library` → re-ingest) e chiede conferma prima di procedere.
 
 ---
 
