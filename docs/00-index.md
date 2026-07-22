@@ -9,8 +9,9 @@ Questo documento è l'indice del piano di refactor. Ogni argomento è trattato i
 - [**12 — Deployment e imballaggio**](12-deployment.md) — immagine Docker del backend REST, eseguibile Windows `.exe` con bundle GUI. *Provvisorio.*
 - [**20 — Modello di dominio e persistenza**](20-data-model.md)
 - [**30 — Gestione della configurazione**](30-configuration.md) — include il layout completo del filesystem del workspace e delle basi.
-  - [**31 — Esempio di `defaults.toml`**](31-defaults-toml.md)
-  - [**32 — Esempio di `<base>/.knowledge-space/base.toml`**](32-base-toml.md)
+  - [**31 — Configurazione dell'applicazione (RuntimePaths, AppConfig, env)**](31-configurazione-app.md)
+  - [**32 — Esempio di `defaults.toml`**](32-defaults-toml.md)
+  - [**33 — Esempio di `<base>/.knowledge-space/base.toml`**](33-base-toml.md)
 - [**40 — Pipeline GraphRAG**](40-graph.md)
 - [**45 — Indicizzazione incrementale e ciclo di vita dell'indice**](45-indexing-incrementale.md) — 5 trigger di reindex (content change, move/rename, cambio modello/strategia/libreria), `file_id` stabile.
 - [**50 — Strategie di ingestion**](50-ingestion.md) — librerie supportate, parametri e profili d'uso.

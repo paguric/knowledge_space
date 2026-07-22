@@ -1,4 +1,4 @@
-# 31 — Esempio di `defaults.toml`
+# 32 — Esempio di `defaults.toml`
 
 Configurazione predefinita per tutte le basi del workspace. Vedi [30-configuration.md](30-configuration.md) per la struttura completa.
 

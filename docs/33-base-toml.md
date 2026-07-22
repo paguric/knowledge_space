@@ -1,6 +1,6 @@
-# 32 — Esempio di `<base>/.knowledge-space/base.toml`
+# 33 — Esempio di `<base>/.knowledge-space/base.toml`
 
-Configurazione specifica di una base di conoscenza. I campi mancanti ereditano da [`defaults.toml`](31-defaults-toml.md). Vedi [30-configuration.md](30-configuration.md) per la struttura completa.
+Configurazione specifica di una base di conoscenza. I campi mancanti ereditano da [`defaults.toml`](32-defaults-toml.md). Vedi [30-configuration.md](30-configuration.md) per la struttura completa.
 
 ```toml
 # Configurazione della base (es. test_kb1)
