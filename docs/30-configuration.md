@@ -175,25 +175,19 @@ params = { n_queries = 4 }
 
 Ogni componente è identificato da un **nome** + eventuali **parametri**, in modo da poter aggiungere nuove librerie/metodi senza riscrivere il codice:
 
-| Sezione | Campo `library`/`method`/`model` | Esempi |
-|---|---|---|
-| `[ingestion]` | `library` | `"docling"`, `"pymupdf4llm"`, `"markitdown"` |
-| `[chunking]` | `method` | `"fixed_size"` (con `chunk_overlap=0` no-overlap, `>0` sliding window), `"recursive"`, `"semantic"`, `"sentence"`, `"markdown"` |
-| `[embedding]` | `model` | qualsiasi modello HuggingFace locale o API (es. OpenAI) registrato |
-| `[pre_retrieval]` | `method` | `"identity"` (no-op), `"hyde"`, `"multi_query"` |
-| `[retrieval]` | `method` / `fusion` | `"dense"` / `"sparse"` / `"hybrid"` ; `"rrf"` / `"weighted_sum"` (solo se `hybrid`) |
-| `[post_retrieval]` | `reranker` / `compressor` | `"identity"` (no-op), `"cross_encoder"`, `"llm"` ; `"identity"`, `"llm_chain_extract"` |
-| `[graph]` | `schema`/`resolver`/`on_chunk_change`/`retriever` | `"manuale"`/`"EXTRACTED"`/`"FREE"`, `"semantic"`/`"exact"`/`"fuzzy"`, `"eager"`/`"lazy"`, `"vector"`/`"vector_cypher"`/`"hybrid"`/`"hybrid_cypher"`/`"text2cypher"`/`"tools"` |
-| `[retrieval]` | `expansion` ⏸️ | `"none"` (default), `"parent_child"` con `parent_granularity = "section" \| "paragraph"` |
-| `[embedding]` | `mode` ⏸️ | `"standard"` (default), `"late_chunking"` (richiede modello long-context ≥8192 tok; fallback automatico a `standard` se doc > `max_context_tokens`) |
-
-La sezione `[graph]` è descritta in dettaglio in [40-graph.md](40-graph.md). Il campo `retriever` seleziona il metodo di ricerca GraphRAG (tabella dei valori in [40-graph.md §14](40-graph.md)); l'app istanzia solo il retriever specificato dall'utente. Il cambio di `[embedding].model`, `[chunking].method` o `[ingestion].library` su una base con collection Chroma non vuota è **bloccato** (serve `ks reindex <base> --<reason>` esplicito, vedi [45-indexing-incrementale.md](45-indexing-incrementale.md) trigger 3/4/5). I chunk vivono in `<base>/.knowledge-space/chunks/<file_id>/` (dotfolder, prodotto derivato del sorgente, non editabili) — vedi la sezione [Filesystem](#filesystem) per la struttura completa.
-
-#### Modelli di embedding supportati
-
-La lista completa dei modelli di embedding supportati (con metadati: `languages`, `dim`, `max_context_tokens`, `license`) è in [70-embedding.md](70-embedding.md). Il registry è popolato all'avvio da `knowledge_base.strategies.embedding` e il frontend/Fase 4 espone l'endpoint `/api/v1/models/embeddings`.
+| Sezione | Campo `library`/`method`/`model` | Esempi | Specifiche |
+|---|---|---|---|
+| `[ingestion]` | `library` | `"docling"`, `"pymupdf4llm"`, `"markitdown"` | [50-ingestion.md](50-ingestion.md) |
+| `[chunking]` | `method` | `"fixed_size"`, `"recursive"`, `"semantic"`, `"sentence"`, `"markdown"` | [60-chunking.md](60-chunking.md) |
+| `[embedding]` | `model` | qualsiasi modello HuggingFace locale o API | [70-embedding.md](70-embedding.md) |
+| `[pre_retrieval]` | `method` | `"identity"`, `"hyde"`, `"multi_query"` | [80-retrieval.md](80-retrieval.md) |
+| `[retrieval]` | `method` / `fusion` | `"dense"` / `"sparse"` / `"hybrid"`; `"rrf"` / `"weighted_sum"` | 80 |
+| `[post_retrieval]` | `reranker` / `compressor` | `"identity"`, `"cross_encoder"`, `"llm"` | 80 |
+| `[graph]` | `schema`/`resolver`/`on_chunk_change`/`retriever` | `"manuale"`/`"EXTRACTED"`/`"FREE"`, `"semantic"`/`"exact"`/`"fuzzy"`, `"eager"`/`"lazy"` | [40-graph.md](40-graph.md) |
 
 Il programma mantiene un **registro di strategie** per `ingestion`, `chunking`, `embedding`, e istanzia quella giusta in base al nome nel config. Aggiungere una nuova libreria di ingestion = registrare una nuova strategia, senza toccare il codice esistente.
+
+Il cambio di `[embedding].model`, `[chunking].method` o `[ingestion].library` su una base con collection Chroma non vuota è **bloccato** (serve `ks reindex <base> --<reason>` esplicito, vedi [45-indexing-incrementale.md](45-indexing-incrementale.md) trigger 3/4/5). I chunk vivono in `<base>/.knowledge-space/chunks/<file_id>/` (dotfolder, prodotto derivato del sorgente, non editabili) — vedi la sezione [Filesystem](#filesystem) per la struttura completa.
 
 ### Regole di modifica
 
@@ -201,10 +195,6 @@ Il programma mantiene un **registro di strategie** per `ingestion`, `chunking`, 
 - La **CLI non deve poter scrivere** i file TOML: li legge soltanto.
 - In futuro l'interfaccia grafica potrà modificarli, ma per ora no.
 - Il programma deve **validare** il TOML all'avvio: se un valore non è riconosciuto, loggare un warning e usare il default.
-
-### Pipeline di retrieval
-
-Il dettaglio completo della pipeline di retrieval (pre-retrieval, retrieval, post-retrieval) è in [80-retrieval.md](80-retrieval.md). Qui la sintassi TOML; per specifiche e implementazione vedi il file dedicato.
 
 ---
 
