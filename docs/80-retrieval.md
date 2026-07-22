@@ -11,23 +11,26 @@ query → [pre-retrieval] → [retrieval] → [post-retrieval] → chunk rilevan
 
 Orderine fisso: **retrieve → rerank → compress** (l'LLM generatore vede solo ciò che esce dal compressor).
 
-## Pre-retrieval: query rewriting
+## Pre-retrieval: espansione testuale
 
-Sezione `[pre_retrieval]`. Modifica la query dell'utente prima di passarla al retrieval, per migliorare la recall.
+Sezione `[pre_retrieval]`. Espande la query dell'utente in più varianti testuali prima del retrieval, per migliorare la recall. Gli stadi si concatenano: ognuno riceve le query prodotte dallo stadio precedente e produce nuove varianti.
 
 ```toml
 [pre_retrieval]
-method = "identity"   # "identity" | "hyde" | "multi_query"
-params = {}           # parametri specifici del metodo
+stages = [
+  { method = "identity" },
+]
 ```
 
 ### Interfaccia `QueryRewriter`
 
+Ogni stadio implementa la stessa interfaccia: prende N query, restituisce M query.
+
 ```python
 class QueryRewriter(Protocol):
     name: str
-    def rewrite(self, query: str, **params) -> list[str]:
-        """Restituisce una o più query riscritte."""
+    def rewrite(self, queries: list[str], **params) -> list[str]:
+        """Prende N query, restituisce M query riscritte/ampliate."""
         ...
 ```
 
@@ -35,9 +38,24 @@ class QueryRewriter(Protocol):
 
 | Method | Descrizione | Parametri | Richiede LLM |
 |--------|-------------|-----------|:---:|
-| `identity` | No-op: restituisce `[query]` così com'è. | — | no |
-| `hyde` | Hypothetical Document Embeddings: genera un documento ipotetico che risponderebbe alla query, usa il suo embedding per cercare. | — | sì |
-| `multi_query` | Espande la query in N sotto-query con LLM (es. diverse prospettive) e unisce i risultati. | `n_queries: int = 3`, `llm: str` | sì |
+| `identity` | No-op: restituisce le query in ingresso così come sono. | — | no |
+| `multi_query` | Per ogni query genera N sotto-query (diverse prospettive) con LLM. | `n_queries: int = 3` | sì |
+| `step_back` | Per ogni query genera una domanda astratta/concettuale (primo principio) con LLM. Restituisce `[q_originale, q_astratta]`. | — | sì |
+| `least_to_most` | Decompone la query in sottoproblemi con LLM e restituisce una query per ciascuno + la query originale. Non risolve sequenzialmente: è l'agente downstream che si organizza coi documenti ricevuti. | — | sì |
+
+### Componibilità
+
+Stadi multipli si concatenano. Esempio — step-back + multi-query su ogni variante:
+
+```toml
+[pre_retrieval]
+stages = [
+  { method = "step_back" },
+  { method = "multi_query", params = { n_queries = 2 } },
+]
+```
+
+Flusso: `query originale → [q_orig, q_astratta] → [q1a, q1b, q2a, q2b]`. Ogni variante viene poi passata al retrieval.
 
 ## Retrieval
 
@@ -45,10 +63,33 @@ Sezione `[retrieval]`. Esegue la ricerca vera e propria sul vector store (dense)
 
 ```toml
 [retrieval]
-method = "dense"         # "dense" | "sparse" | "hybrid"
-fusion = "rrf"           # "rrf" (default, robusto) | "weighted_sum" (richiede pesi)
-expansion = "none"       # "none" | "parent_child" (in pausa)
+method = "dense"              # "dense" | "sparse" | "hybrid"
+fusion = "rrf"                # "rrf" (default, robusto) | "weighted_sum" (richiede pesi)
+expansion = "none"            # "none" | "parent_child" (in pausa)
+query_mode = "original"       # "original" | "hyde"
 ```
+
+### Query mode
+
+`query_mode` controlla **come** la query viene vettorizzata prima della ricerca, ortogonalmente al pre-retrieval e al metodo di retrieval.
+
+| Mode | Descrizione | Richiede LLM |
+|------|-------------|:---:|
+| `original` | Embedda la query così come arriva dal pre-retrieval usando `embed_query()`. | no |
+| `hyde` | Hypothetical Document Embeddings: per ogni query genera un documento ipotetico via LLM, lo embedda con `embed_documents()` (stessa funzione usata per i chunk), e usa quel vettore per la ricerca. La similarità coseno è calcolata nello stesso spazio dei chunk. | sì |
+
+HyDE è ortogonale all'espansione testuale: il pre-retrieval produce N varianti testuali, poi il retrieval embedda ciascuna secondo `query_mode`. Esempio — step-back + HyDE:
+
+```toml
+[pre_retrieval]
+stages = [{ method = "step_back" }]
+
+[retrieval]
+method = "dense"
+query_mode = "hyde"
+```
+
+Flusso: `query → pre-retrieval → [q_orig, q_astratta] → HyDE su ciascuna → 2 ipotetici documenti → 2 embedding → retrieve → merge risultati`.
 
 ### Interfaccia `RetrievalStrategy`
 
@@ -72,10 +113,20 @@ class RetrievalStrategy(Protocol):
 
 **Hybrid** — ensemble di dense + sparse con fusione configurabile:
 
-| Fusion | Descrizione |
-|--------|-------------|
-| `rrf` (default) | Reciprocal Rank Fusion. Robusto, non richiede tuning di pesi. |
-| `weighted_sum` | Somma pesata di score dense e sparse. Richiede peso esplicito (`dense_weight`, `sparse_weight`). |
+| Fusion | Descrizione | Config |
+|--------|-------------|--------|
+| `rrf` (default) | Reciprocal Rank Fusion. Robusto, non richiede tuning di pesi. | — |
+| `weighted_sum` | Somma pesata di score dense e sparse normalizzati. Richiede pesi espliciti. | `dense_weight`, `sparse_weight` (default 0.5/0.5, devono sommare a 1.0) |
+
+Per `weighted_sum` gli score dense e sparse sono normalizzati in [0, 1] con min-max scaling prima della fusione, per renderli confrontabili su scale diverse. I pesi sono validati al caricamento del TOML (errore se non sommano a 1.0).
+
+```toml
+[retrieval]
+method = "hybrid"
+fusion = "weighted_sum"
+dense_weight = 0.7
+sparse_weight = 0.3
+```
 
 ### Parent-Child expansion (in pausa)
 
@@ -146,14 +197,22 @@ Tutte le strategy (query rewriter, retriever, reranker, compressor) sono registr
 
 ```python
 {
-    "identity": {"requires_llm": False, "params_schema": {}},
-    "hyde": {"requires_llm": True, "params_schema": {}},
-    "multi_query": {"requires_llm": True, "params_schema": {"n_queries": int}},
-    "dense": {"requires_embedder": True, "requires_sparse_model": False},
-    "sparse": {"requires_embedder": False, "can_fallback_bm25": True},
-    "hybrid": {"requires_embedder": True, "can_fallback_bm25": True},
-    "cross_encoder": {"requires_model": True},
-    "llm_chain_extract": {"requires_llm": True},
+    # Pre-retrieval (espansione testuale)
+    "identity": {"type": "query_rewriter", "requires_llm": False, "params_schema": {}},
+    "multi_query": {"type": "query_rewriter", "requires_llm": True, "params_schema": {"n_queries": int}},
+    "step_back": {"type": "query_rewriter", "requires_llm": True, "params_schema": {}},
+    "least_to_most": {"type": "query_rewriter", "requires_llm": True, "params_schema": {}},
+    # Retrieval
+    "dense": {"type": "retriever", "requires_embedder": True, "requires_sparse_model": False},
+    "sparse": {"type": "retriever", "requires_embedder": False, "can_fallback_bm25": True},
+    "hybrid": {"type": "retriever", "requires_embedder": True, "can_fallback_bm25": True},
+    # Query mode (retrieval)
+    "query_mode/original": {"type": "query_mode", "requires_llm": False},
+    "query_mode/hyde": {"type": "query_mode", "requires_llm": True},
+    # Post-retrieval
+    "cross_encoder": {"type": "reranker", "requires_model": True},
+    "llm": {"type": "reranker", "requires_llm": True},
+    "llm_chain_extract": {"type": "compressor", "requires_llm": True},
 }
 ```
 
@@ -163,10 +222,11 @@ Tutte le strategy (query rewriter, retriever, reranker, compressor) sono registr
 
 ```toml
 [pre_retrieval]
-method = "identity"
+stages = [{ method = "identity" }]
 
 [retrieval]
 method = "dense"
+query_mode = "original"
 
 [post_retrieval]
 top_k = 10
@@ -178,12 +238,15 @@ compressor = "identity"
 
 ```toml
 [pre_retrieval]
-method = "multi_query"
-params = { n_queries = 3 }
+stages = [
+  { method = "step_back" },
+  { method = "multi_query", params = { n_queries = 2 } },
+]
 
 [retrieval]
 method = "hybrid"
 fusion = "rrf"
+query_mode = "hyde"
 
 [post_retrieval]
 top_k = 10
@@ -194,14 +257,15 @@ compressor = "llm_chain_extract"
 
 ## Fasi di implementazione
 
-- **F0 — Interfacce e registry**: definire `QueryRewriter`, `RetrievalStrategy`, `Reranker`, `Compressor` (Protocol). Registry separati per ciascuno.
+- **F0 — Interfacce e registry**: definire `QueryRewriter` (con input `list[str]`, output `list[str]`), `RetrievalStrategy`, `Reranker`, `Compressor` (Protocol). Registry separati per ciascuno.
 - **F1 — Identity per tutti**: implementare `identity` per pre/post-retrieval e `dense` per retrieval. Pipeline completa minimale funzionante.
 - **F2 — Sparse retrieval**: BM25 fallback con `rank_bm25`. Test su modello solo-dense (es. `all-mpnet-base-v2`) che verifica il warning + fallback.
 - **F3 — Hybrid retrieval**: dense + sparse + `rrf` / `weighted_sum`.
-- **F4 — Pre-retrieval avanzato**: `hyde` (mock LLM nei test) e `multi_query`.
-- **F5 — Post-retrieval**: `cross_encoder` e `llm_chain_extract`.
-- **F6 — Filtri attivi**: rispettare i flag `active` (workspace, dominio, base, file, chunk) durante la ricerca.
-- **F7 — Test**: pipeline completa con mock per strategie LLM; test specifici per `identity` pass-through; test hybrid con fallback BM25.
+- **F4 — Pre-retrieval: espansione testuale**: `multi_query`, `step_back`, `least_to_most` (mock LLM nei test). Orchestrazione stadi concatenati.
+- **F5 — HyDE**: `retrieval.query_mode = "hyde"`. Generazione documento ipotetico + `embed_documents()` invece di `embed_query()`.
+- **F6 — Post-retrieval**: `cross_encoder` e `llm_chain_extract`.
+- **F7 — Filtri attivi**: rispettare i flag `active` (workspace, dominio, base, file, chunk) durante la ricerca.
+- **F8 — Test**: pipeline completa con mock per strategie LLM; test specifici per `identity` pass-through; test hybrid con fallback BM25; test composizione stadi; test HyDE.
 
 ## Test
 
@@ -212,6 +276,10 @@ compressor = "llm_chain_extract"
 | Hybrid RRF | Risultati fusi da dense + sparse |
 | Identity pass-through | Input = output identico per tutti i componenti |
 | Multi-query espansione | N query generate, risultati unificati |
+| Step-back espansione | Query astratta + originale restituite |
+| Least-to-most decomposizione | Sottoproblemi estratti dalla query |
+| Composizione stadi | Due stadi concatenati producono più varianti |
+| HyDE retrieval | Documento ipotetico generato ed embeddato |
 | Cross-encoder rerank | Ordine modificato dal reranker |
 | Lazy/eager filtering | Flag `active` rispettati |
 
