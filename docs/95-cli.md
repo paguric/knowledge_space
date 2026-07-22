@@ -126,6 +126,10 @@ Comandi per la gestione del grafo Neo4j (Fase 1C). Richiedono Neo4j configurato 
 | `config show [<base>]` | Mostra la configurazione effettiva (cascata resolved: hardcoded → `defaults.toml` → `base.toml`). Se base omessa, mostra quella del workspace (`defaults.toml`). |
 | `config validate [<base>]` | Valida la sintassi TOML del `base.toml` o del `defaults.toml`. Segnala campi sconosciuti e valori fuori range. |
 | `config init` | Genera `<workspace>/.knowledge-space/defaults.toml` come template dai valori hardcoded di KS (one-shot; KS non riscrive TOML a runtime). |
+| `config set <base\|defaults> <key> <value>` | Imposta una preferenza nel TOML specificato. `key` è un percorso dotted (es. `chunking.chunk_size`, `embedding.model`, `ingestion.library`). I valori booleani accettano `true`/`false`, i numerici vengono parsati automaticamente, le stringhe richiedono quoting solo se contengono spazi. **Vincoli**: il cambio di `embedding.model`, `chunking.method` o `ingestion.library` su una base con collection Chroma non vuota richiede `--reason model-change\|chunking-change\|ingestion-change`; senza `--reason` il comando fallisce con un messaggio esplicito. |
+| `config unset <base\|defaults> <key>` | Rimuove una chiave dal TOML (la base tornerà a ereditare da `defaults.toml` o dal valore hardcoded). |
+| `config edit <base\|defaults>` | Apre il file TOML nell'editor predefinito (`$EDITOR` / `$VISUAL`) — utility per la modifica manuale senza uscire dalla CLI. |
+
 ### Auth
 
 Opera su `~/.config/KnowledgeSpace/config.json` (secrets, chiavi API). File machine-writable ma anche editabile manualmente dall'utente.

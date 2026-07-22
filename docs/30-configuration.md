@@ -83,10 +83,17 @@ Il cambio di `[embedding].model`, `[chunking].method` o `[ingestion].library` su
 
 ### Regole di modifica
 
+L'accesso in scrittura alla configurazione TOML è diviso in due fasi:
+
+**Fase 1 (Step 3, Fase 1A) — sola lettura:**
 - I file TOML sono pensati per essere **modificati a mano** dall'utente (file aperto in un editor).
-- La **CLI non deve poter scrivere** i file TOML: li legge soltanto.
-- In futuro l'interfaccia grafica potrà modificarli, ma per ora no.
-- Il programma deve **validare** il TOML all'avvio: se un valore non è riconosciuto, loggare un warning e usare il default.
+- Il programma **legge** ma non scrive i file TOML.
+- Il programma **valida** il TOML all'avvio: se un valore non è riconosciuto, logga un warning e usa il default.
+
+**Fase 2 (Step 13, Fase 3) — scrittura via CLI:**
+- La CLI ottiene il comando `config set` per modificare le preferenze nei TOML.
+- Il programma scrive solo i file TOML delle basi e `defaults.toml`, mai il config dell'app (`config.json` gestito da `auth set`).
+- Le restrizioni sui campi bloccanti restano valide: il cambio di `embedding.model`, `chunking.method` o `ingestion.library` su una base con collection Chroma non vuota richiede `--reason` esplicito (trigger reindex 3/4/5, vedi [45-indexing-incrementale.md](45-indexing-incrementale.md)).
 
 ---
 
