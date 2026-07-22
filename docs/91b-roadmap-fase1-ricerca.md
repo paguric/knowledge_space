@@ -1,9 +1,10 @@
 # Fase 1B — Ricerca sui documenti processati
 
-Pipeline di retrieval su vettori Chroma (dense/sparse/hybrid) con pre-retrieval (query rewriting) e post-retrieval (reranking, compression). Opera sui chunk già indicizzati dalla Fase 1A. **Nessuna dipendenza dal grafo Neo4j**: la ricerca è puramente vettoriale su Chroma, con fallback BM25 per sparse retrieval.
+Pipeline di retrieval su vettori Chroma (dense/sparse/hybrid) con pre-retrieval (espansione testuale) e post-retrieval (reranking, compression). Opera sui chunk già indicizzati dalla Fase 1A. **Nessuna dipendenza dal grafo Neo4j**: la ricerca è puramente vettoriale su Chroma, con fallback BM25 per sparse retrieval.
 
 Al termine di questa sottofase `knowledge-base` sa:
-- Riscrivere la query utente (identità, HyDE, multi-query)
+- Espandere la query utente in più varianti testuali tramite stadi componibili (multi_query, step_back, least_to_most)
+- Cambiare la rappresentazione della query per il retrieval (original / HyDE)
 - Cercare chunk simili via dense/sparse/hybrid retrieval su Chroma (con fallback BM25 automatico)
 - Riordinare e comprimere i risultati (identity, cross_encoder reranker, llm_chain_extract compressor)
 - Rispettare i flag `active` durante la ricerca
@@ -16,13 +17,15 @@ Al termine di questa sottofase `knowledge-base` sa:
 
 Implementare secondo la specifica [80-retrieval.md](80-retrieval.md). La pipeline ha tre step sequenziali: pre-retrieval → retrieval → post-retrieval. Ogni step accetta `method = "identity"` come no-op esplicito.
 
-#### Pre-retrieval (query rewriting)
+#### Pre-retrieval (espansione testuale)
 
-- [ ] Interfaccia `QueryRewriter` (Protocol) e registry (`knowledge_base/strategies/retrieval/pre_retrieval.py`).
-- [ ] Strategy `identity`: pass-through, nessuna riscrittura.
-- [ ] Strategy `hyde`: `HypotheticalDocumentEmbedder` — genera un documento fittizio via LLM, ne calcola l'embedding, lo usa per la ricerca.
-- [ ] Strategy `multi_query`: genera N varianti della query via LLM, recupera chunk per ciascuna, unisce i risultati (dedup).
-- [ ] Test con LLM mock: query identity restituisce la stessa query; HyDE/multi_query generano output coerenti.
+- [ ] Interfaccia `QueryRewriter` (Protocol) con input `list[str]` e output `list[str]` e registry (`knowledge_base/strategies/retrieval/pre_retrieval.py`).
+- [ ] Orchestrazione stadi concatenati: ogni stadio riceve le query del precedente e produce nuove varianti. Config a `stages = [{method = ..., params = ...}, ...]`.
+- [ ] Strategy `identity`: pass-through, nessuna espansione.
+- [ ] Strategy `multi_query`: per ogni query genera N sotto-query via LLM (diverse prospettive). Parametro `n_queries = 3`.
+- [ ] Strategy `step_back`: per ogni query genera una domanda astratta/concettuale via LLM. Restituisce `[q_originale, q_astratta]`.
+- [ ] Strategy `least_to_most`: decompone la query in sottoproblemi via LLM e restituisce una query per ciascuno + la query originale. L'agente downstream si organizza coi documenti ricevuti (nessuna risoluzione sequenziale qui).
+- [ ] Test con LLM mock: identity pass-through; multi_query/step_back/least_to_most generano output coerenti; composizione di due stadi produce più varianti.
 
 #### Retrieval (dense / sparse / hybrid)
 
@@ -31,9 +34,10 @@ Implementare secondo la specifica [80-retrieval.md](80-retrieval.md). La pipelin
 - [ ] Strategy `sparse`: BM25-like. Se il modello di embedding usato per la base espone `embed_sparse` (es. `BAAI/bge-m3`), usato nativamente. Altrimenti, **fallback automatico**: il `KnowledgeBaseManager` monta un BM25 esterno (`rank_bm25`) sul testo grezzo dei chunk della base, con un warning di log all'avvio.
 - [ ] Strategy `hybrid`: ensemble dense + sparse. Fusione controllata da `fusion`:
   - `rrf` (default): Reciprocal Rank Fusion — robusto, nessun peso da configurare.
-  - `weighted_sum`: media ponderata dei punteggi normalizzati (richiede pesi configurabili in TOML, da definire).
+  - `weighted_sum`: somma pesata di score normalizzati (min-max in [0,1]). Pesi `dense_weight` e `sparse_weight` (default 0.5/0.5, validati a somma 1.0).
+- [ ] **Query mode** (`retrieval.query_mode`): `"original"` (default, embedding diretto con `embed_query()`) o `"hyde"` (genera documento ipotetico via LLM e lo embedda con `embed_documents()`). Ortogonale al pre-retrieval: gli stadi di espansione producono N varianti testuali, poi ciascuna viene embeddata secondo `query_mode`.
 - [ ] Rispetto flag `active` durante la ricerca.
-- [ ] Test: dense restituisce chunk con embedding simile; sparse recupera per match testuale; hybrid combina entrambi; fallback BM25 funziona senza modello native-sparse.
+- [ ] Test: dense restituisce chunk con embedding simile; sparse recupera per match testuale; hybrid combina entrambi; fallback BM25 funziona senza modello native-sparse; HyDE genera documento ipotetico e lo embedda correttamente.
 
 #### Post-retrieval (reranking / compression)
 
@@ -52,14 +56,16 @@ Implementare secondo la specifica [80-retrieval.md](80-retrieval.md). La pipelin
 - [ ] Se un metodo richiede LLM ma nessun LLM è configurato → **fallback automatico a `identity`** con warning (la base è comunque funzionante in degrado).
 - [ ] Integrazione con `AppContext` (Fase 1A): il `SearchService` riceve `KnowledgeBaseManager` e `llm_factory` dall'`AppContext`.
 
-> **Da definire**: integrazione LLM per query rewriting, reranking e compression (locale vs API), pesi della `weighted_sum`, supporto metadati di filtraggio al retrieval.
+> **Da definire**: integrazione LLM per query rewriting, reranking e compression (locale vs API), supporto metadati di filtraggio al retrieval.
 
 ## Scelte consolidate per questa sottofase
 
 | Aspetto | Scelta |
 |---|---|
 | Repository di retrieval | Chroma (vector store) + `rank_bm25` fallback per sparse |
-| Fusione hybrid | RRF (default, nessun peso) + `weighted_sum` opzionale |
+| Espansione testuale | Stadi concatenati: `multi_query`, `step_back`, `least_to_most` |
+| Query mode (retrieval) | `"original"` (embed_query) / `"hyde"` (documento ipotetico → embed_documents) |
+| Fusione hybrid | RRF (default, nessun peso) + `weighted_sum` (min-max + peso esplicito) |
 | LLM per pre/post | Configurabile per-base; fallback a `identity` se LLM non disponibile |
 | Reranking | Identity (default), cross_encoder (locale), LLM (API) |
 | Compressione | Identity (default), llm_chain_extract (LLM) |
