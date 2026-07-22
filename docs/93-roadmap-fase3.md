@@ -14,6 +14,7 @@ Esporre i manager consolidati nella Fase 1 tramite MCP e CLI.
 - [ ] La CLI opera in **modalità standalone**: ogni comando è un processo separato, crea `AppContext` temporaneo, opera su `state.json`/Chroma, termina. Niente watcher in background, niente backend process. Vedi [11-app-lifecycle.md](11-app-lifecycle.md).
 - [ ] La CLI chiama `setup_logging()` (Step 12) subito dopo il parse dei flag globali (`--verbose`, `KS_LOG_LEVEL`), prima di qualsiasi operazione.
 - [ ] **Scrittura TOML** (`config set`/`unset`): la CLI scrive nei file TOML (`defaults.toml`, `base.toml`) — questo completa la transizione dalla Fase 1 (sola lettura) alla Fase 2 (modifica via CLI). Il comando rileva automaticamente se la chiave modificata impatta l'indice esistente (embedding.model → re-embed, chunking.method → re-chunk, ingestion.library → re-ingest) e chiede conferma prima di procedere.
+- [ ] **Autocompletamento**: implementare shell completion (Typer nativa) per tutti i comandi; in particolare per `config set`/`unset` completare `<TAB>` sui percorsi dotted (`key`) e sui valori ammissibili (`value`) ricavati dal registry delle strategie.
 - [ ] I comandi `serve` e `stop` (backend process, Fase 4) sono **solo elencati** in `95-cli.md` come riferimento; la loro implementazione è differita a Fase 4 (Step 15 — REST, vedi [94-roadmap-fase4.md](94-roadmap-fase4.md) e [11-app-lifecycle.md](11-app-lifecycle.md)).
 - [ ] Scrivere test di integrazione per i comandi CLI (standalone mode).
 

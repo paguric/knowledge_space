@@ -126,8 +126,8 @@ Comandi per la gestione del grafo Neo4j (Fase 1C). Richiedono Neo4j configurato 
 | `config show [<base>]` | Mostra la configurazione effettiva (cascata resolved: hardcoded → `defaults.toml` → `base.toml`). Se base omessa, mostra quella del workspace (`defaults.toml`). |
 | `config validate [<base>]` | Valida la sintassi TOML del `base.toml` o del `defaults.toml`. Segnala campi sconosciuti e valori fuori range. |
 | `config init` | Genera `<workspace>/.knowledge-space/defaults.toml` come template dai valori hardcoded di KS (one-shot; KS non riscrive TOML a runtime). |
-| `config set <base\|defaults> <key> <value>` | Imposta una preferenza nel TOML specificato. `key` è un percorso dotted (es. `chunking.chunk_size`, `embedding.model`, `ingestion.library`). I valori booleani accettano `true`/`false`, i numerici vengono parsati automaticamente, le stringhe richiedono quoting solo se contengono spazi. Se la chiave modifica `embedding.model`, `chunking.method` o `ingestion.library` su una base con collection Chroma non vuota, il comando chiede conferma e avvia automaticamente il reindex appropriato (re-embed, re-chunk, re-ingest). |
-| `config unset <base\|defaults> <key>` | Rimuove una chiave dal TOML (la base tornerà a ereditare da `defaults.toml` o dal valore hardcoded). |
+| `config set <base\|defaults> <key> <value>` | Imposta una preferenza nel TOML specificato. `key` è un percorso dotted (es. `chunking.chunk_size`, `embedding.model`, `ingestion.library`). I valori booleani accettano `true`/`false`, i numerici vengono parsati automaticamente, le stringhe richiedono quoting solo se contengono spazi. Se la chiave modifica `embedding.model`, `chunking.method` o `ingestion.library` su una base con collection Chroma non vuota, il comando chiede conferma e avvia automaticamente il reindex appropriato (re-embed, re-chunk, re-ingest). **Autocompletamento**: `<TAB>` sul parametro `key` suggerisce i percorsi dotted validi (es. `chunking.` → `chunking.chunk_size`, `chunking.chunk_overlap`, `chunking.method`); sul parametro `value` suggerisce i valori ammissibili per la chiave corrente (es. `ingestion.library ` → `docling`, `pymupdf4llm`, `markitdown`; `chunking.method ` → `fixed_size`, `recursive`, `semantic`, `sentence`, `markdown`). |
+| `config unset <base\|defaults> <key>` | Rimuove una chiave dal TOML (la base tornerà a ereditare da `defaults.toml` o dal valore hardcoded). **Autocompletamento** come per `config set`. |
 | `config edit <base\|defaults>` | Apre il file TOML nell'editor predefinito (`$EDITOR` / `$VISUAL`) — utility per la modifica manuale senza uscire dalla CLI. |
 
 ### Auth
@@ -173,7 +173,21 @@ I comandi relativi ai profili (`profiles list`, `profile apply <name> <base>`, .
 
 ## Struttura Typer
 
-La CLI è implementata con Typer, usando `AppContext` come dipendenza (vedi [91a-roadmap-fase1-ingestione.md Step 8-ter](91a-roadmap-fase1-ingestione.md) per il wiring).
+La CLI è implementata con Typer, usando `AppContext` come dipendenza (vedi [91a-roadmap-fase1-ingestione.md Step 8-ter](91a-roadmap-fase1-ingestione.md) per il wiring). Typer fornisce shell completion nativa (`--install-completion`, `--show-completion`).
+
+### Autocompletamento per `config set` e `config unset`
+
+I parametri `key` e `value` dei comandi `config set`/`unset` implementano shell completion custom:
+
+- **`key`**: suggerisce i percorsi dotted validi ricavati dal registry delle strategie e dallo schema di configurazione. Esempi:
+  - `chunking.` → `chunking.chunk_size`, `chunking.chunk_overlap`, `chunking.method`, `chunking.separator`
+  - `embedding.` → `embedding.model`, `embedding.device`
+  - `ingestion.` → `ingestion.library`
+- **`value`**: una volta fornita la `key`, suggerisce i valori ammissibili:
+  - `ingestion.library ` → `docling`, `pymupdf4llm`, `markitdown`, `identity`
+  - `chunking.method ` → `fixed_size`, `recursive`, `semantic`, `sentence`, `markdown`
+  - Valori booleani → `true`, `false`
+  - Per campi generici (es. `chunking.chunk_size`) nessun suggerimento (valore numerico libero).
 
 ```python
 import typer
