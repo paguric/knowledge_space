@@ -97,15 +97,11 @@ Retrieval-only (nessuna generazione). Opera sui chunk indicizzati in Chroma.
 
 ### Reindex
 
-Rileva automaticamente cosa è cambiato (confronta TOML attuale vs stato registrato nella base) e reindicizza di conseguenza. Escape hatch `--reason` per forzare un trigger specifico.
+Rileva automaticamente il trigger di reindex confrontando la configurazione attuale (`[embedding].model`, `[chunking].method`, `[ingestion].library`) con i valori registrati in `state.json`. Il reindex può anche essere attivato implicitamente da `config set` quando modifica una delle chiavi sensibili.
 
 | Comando | Descrizione |
 |---|---|
-| `reindex <base>` | Auto-detect: confronta `[embedding].model`, `[chunking].method`, `[ingestion].library` con i valori registrati in `state.json`. Decide il trigger e reindicizza (parte vettoriale + grafo). |
-| `reindex <base> --reason model-change` | Forza re-embed completo (cambio modello) |
-| `reindex <base> --reason chunking-change` | Forza re-chunk + re-embed + ri-estrazione grafo |
-| `reindex <base> --reason ingestion-change` | Forza re-ingest + tutto downstream |
-| `reindex <base> --keep-old` | Preserva chunk vecchi in `<file_id>__<ts>/` prima di sovrascrivere |
+| `reindex <base>` | Auto-detect del trigger: confronta i valori attuali (dalla cascata TOML) con quelli registrati in `state.json`. Decide il trigger (model-change, chunking-change, ingestion-change) e reindicizza. |
 | `reindex --all` | Reindex tutte le basi del workspace |
 
 ### Graph

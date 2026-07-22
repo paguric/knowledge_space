@@ -95,6 +95,22 @@ L'accesso in scrittura alla configurazione TOML è diviso in due fasi:
 - Il programma scrive solo i file TOML delle basi e `defaults.toml`, mai il config dell'app (`config.json` gestito da `auth set`).
 - Il comando rileva automaticamente se la chiave modificata impatta l'indice esistente (`embedding.model` → re-embed, `chunking.method` → re-chunk, `ingestion.library` → re-ingest) e chiede conferma prima di procedere.
 
+### Trigger di reindex
+
+Il cambio di alcune chiavi di configurazione su una base con collection Chroma non vuota attiva un trigger di reindex. I trigger sono rilevati automaticamente:
+
+| Trigger | Chiave config | Impatto |
+|---|---|---|
+| `model-change` | `embedding.model` | Nuova collection Chroma con `dim` del nuovo modello, re-embed da disco. |
+| `chunking-change` | `chunking.method` | Re-chunk + re-embed + riscrittura chunk su disco. Delete+insert in Chroma. |
+| `ingestion-change` | `ingestion.library` | Re-ingest + re-chunk + re-embed. Come chunking-change ma parte da ingestion. |
+
+Il rilevamento avviene in due punti:
+- **All'avvio**: se la configurazione TOML differisce da quella registrata in `state.json` e la collection non è vuota, il caricamento fallisce con un messaggio che invita a usare `ks reindex`.
+- **In scrittura via CLI** (`config set`): il comando rileva il trigger dalla chiave modificata, chiede conferma, e avvia automaticamente il reindex appropriato.
+
+Vedi [45-indexing-incrementale.md](45-indexing-incrementale.md) per la specifica completa dei 5 trigger (inclusi content-change e move/rename, che non dipendono dalla configurazione).
+
 ---
 
 ## Configurazione dell'applicazione

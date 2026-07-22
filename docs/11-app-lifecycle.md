@@ -23,7 +23,7 @@ Ogni comando CLI (`ks workspace add`, `ks search`, `ks reindex`, ...) è un **pr
 4. Termina.
 
 Non ci sono processi in background. I watcher watchdog **non sono attivi**. La sincronizzazione col filesystem è esplicita:
-- `ks reindex <base>` — reindicizza (auto-detect se config cambiata, oppure forzatura con `--reason`).
+- `ks reindex <base>` — reindicizza (auto-detect del trigger: model-change, chunking-change, ingestion-change).
 - `ks sync <base>` — allinea `state.json` col filesystem (mtime check).
 
 **Limiti**:
@@ -238,7 +238,7 @@ La CLI comunica con il backend tramite REST API nello stesso formato usato dal f
 | `workspace remove <path>` | `/api/v1/workspaces/{id}` | DELETE |
 | ... | ... | ... |
 | `search <query>` | `/api/v1/bases/{base_id}/search` | GET |
-| `reindex <base> --reason X` | `/api/v1/bases/{base_id}/reindex` | POST |
+| `reindex <base>` | `/api/v1/bases/{base_id}/reindex` | POST |
 | ... | ... | ... |
 
 Risposte standard:

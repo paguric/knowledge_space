@@ -143,15 +143,7 @@ Implementare la logica operativa sulle basi di conoscenza, orchestrando ingestio
 
 > **Modalità esecuzione**: in Fase 1–3 la CLI opera in **modalità standalone** (ogni comando è un processo separato, crea un `AppContext` temporaneo, opera su `state.json`/Chroma, termina). Non ci sono watcher in background. Il backend process (watcher+REST+MCP) e la modalità CLI client saranno introdotti in Fase 4. Vedi [11-app-lifecycle.md](11-app-lifecycle.md).
 
-## Comandi CLI (da implementare in Fase 3, progettati qui)
-
-| Comando | Trigger | Cosa fa (parte vettoriale) |
-|---|---|---|
-| `ks reindex <base> --model-change` | 3 | Nuova collection Chroma con `dim` del nuovo modello, re-embed da disco. Aggiorna `embedding_model` in stato. La propagazione al grafo è differita a Fase 1C. |
-| `ks reindex <base> --chunking-change` | 4 | Re-chunk + re-embed + riscrittura chunk su disco. Delete+insert in Chroma. Backup opzionale in `<file_id>__<ts>/`. La propagazione al grafo è differita a Fase 1C. |
-| `ks reindex <base> --ingestion-change` | 5 | Re-ingest + re-chunk + re-embed + riscrittura chunk. Come trigger 4 ma parte da ingestion. La propagazione al grafo è differita a Fase 1C. |
-
-Il blocco (errore all'avvio se config cambiata) è implementato in Step 3 + Step 7. I comandi `ks reindex` implementano solo la parte vettoriale in questa sottofase; la propagazione al grafo verrà aggiunta in Fase 1C.
+I trigger (model-change, chunking-change, ingestion-change) sono rilevati automaticamente dal comando `config set` quando modifica la chiave corrispondente (vedi [95-cli.md §Config](95-cli.md)). L'implementazione del rilevamento e del reindex automatico avviene in Fase 3 (Step 13), insieme alla scrittura TOML via CLI.
 
 ## Scelte consolidate per questa sottofase
 
