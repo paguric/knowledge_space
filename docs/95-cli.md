@@ -121,8 +121,6 @@ Comandi per la gestione del grafo Neo4j (Fase 1C). Richiedono Neo4j configurato 
 
 ### Config
 
-Tutti i comandi `config` hanno l'alias breve `conf` (es. `ks conf show`, `ks conf set base chunking.chunk_size 500`).
-
 | Comando | Descrizione |
 |---|---|
 | `config show [<base>]` | Mostra la configurazione effettiva (cascata resolved: hardcoded → `defaults.toml` → `base.toml`). Se base omessa, mostra quella del workspace (`defaults.toml`). |
@@ -181,8 +179,7 @@ La CLI è implementata con Typer, usando `AppContext` come dipendenza (vedi [91a
 
 I parametri `key` e `value` dei comandi `config set`/`unset` implementano shell completion custom:
 
-- **`conf`** è alias di `config` → `ks conf ` + `<TAB>` continua come `ks config`.
-- **`key`**: suggerisce i percorsi dotted validi ricavati dal registry delle strategie e dallo schema di configurazione. Esempi:
+- **`key`**: suggerisce i percorsi dotted validi ricavati dal registry delle strategie e dallo schema di configurazione. Supporta abbreviazioni: `chunk` → `chunking.`, `ingest` → `ingestion.`, `embed` → `embedding.`, `pre` → `pre_retrieval.`, `post` → `post_retrieval.`. Esempi:
   - `chunking.` → `chunking.chunk_size`, `chunking.chunk_overlap`, `chunking.method`, `chunking.separator`
   - `embedding.` → `embedding.model`, `embedding.device`
   - `ingestion.` → `ingestion.library`
