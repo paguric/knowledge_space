@@ -65,9 +65,35 @@ Sezione `[retrieval]`. Esegue la ricerca vera e propria sul vector store (dense)
 [retrieval]
 method = "dense"              # "dense" | "sparse" | "hybrid"
 fusion = "rrf"                # "rrf" (default, robusto) | "weighted_sum" (richiede pesi)
+distance_metric = "cosine"    # "cosine" | "l2" | "ip"
 expansion = "none"            # "none" | "parent_child" (in pausa)
 query_mode = "original"       # "original" | "hyde"
 ```
+
+### Distance metric
+
+Controlla la metrica usata da Chroma per la ricerca **dense**. La scelta impatta gli score raw e la qualità del retrieval.
+
+| Metrica | Cosa misura | Range score | Note |
+|---------|-------------|-------------|------|
+| `cosine` (default) | Similarità coseno: coseno dell'angolo tra due vettori. | [-1, 1] (Chroma restituisce `1 - cosine` → [0, 2], dove 0 = identico) | Standard per embedding. Ignora la magnitudine dei vettori. Chroma usa `1 - cosine` internamente (distanza). |
+| `l2` | Distanza euclidea: distanza geometrica tra due punti. | [0, +∞), 0 = identico | Sensibile alla magnitudine. Utile se gli embedding hanno lunghezze informative. |
+| `ip` | Prodotto scalare: `a · b`. | (-∞, +∞), più alto = più simile | Equivale a cosine se i vettori sono normalizzati a lunghezza 1. Più veloce di cosine. |
+
+### Normalizzazione per `weighted_sum`
+
+Quando `fusion = "weighted_sum"` (solo hybrid), gli score raw di dense e sparse sono su scale diverse e non confrontabili:
+
+- **Dense**: dipende da `distance_metric`. Es. con `cosine` Chroma restituisce `1 - cosine` ([0, 2], 0 = massima similarità). Con `l2` restituisce distanza euclidea ([0, +∞)).
+- **Sparse** (BM25): score non normalizzato, ~0–20+ a seconda della collezione.
+
+Prima della fusione entrambe le liste vengono normalizzate in [0, 1] con min-max scaling (`(score - min) / (max - min)`), dove 1 = massima rilevanza. Invertendo il verso per metriche dove score basso = migliore (cosine, l2). Poi si applica:
+
+```
+final_score = dense_weight * normalized_dense + sparse_weight * normalized_sparse
+```
+
+I pesi sono validati al caricamento del TOML: `dense_weight + sparse_weight` deve fare 1.0.
 
 ### Query mode
 
@@ -116,17 +142,7 @@ class RetrievalStrategy(Protocol):
 | Fusion | Descrizione | Config |
 |--------|-------------|--------|
 | `rrf` (default) | Reciprocal Rank Fusion. Robusto, non richiede tuning di pesi. | — |
-| `weighted_sum` | Somma pesata di score dense e sparse normalizzati. Richiede pesi espliciti. | `dense_weight`, `sparse_weight` (default 0.5/0.5, devono sommare a 1.0) |
-
-Per `weighted_sum` gli score dense e sparse sono normalizzati in [0, 1] con min-max scaling prima della fusione, per renderli confrontabili su scale diverse. I pesi sono validati al caricamento del TOML (errore se non sommano a 1.0).
-
-```toml
-[retrieval]
-method = "hybrid"
-fusion = "weighted_sum"
-dense_weight = 0.7
-sparse_weight = 0.3
-```
+| `weighted_sum` | Somma pesata di score normalizzati (min-max). Richiede pesi espliciti. Vedi § [Normalizzazione per weighted_sum](#normalizzazione-per-weighted_sum). | `dense_weight`, `sparse_weight` (default 0.5/0.5, devono sommare a 1.0) |
 
 ### Parent-Child expansion (in pausa)
 

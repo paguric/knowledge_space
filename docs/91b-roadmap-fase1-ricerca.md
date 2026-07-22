@@ -30,7 +30,8 @@ Implementare secondo la specifica [80-retrieval.md](80-retrieval.md). La pipelin
 #### Retrieval (dense / sparse / hybrid)
 
 - [ ] Interfaccia `RetrievalStrategy` e registry (`knowledge_base/strategies/retrieval/retrieval.py`).
-- [ ] Strategy `dense`: similarity search su Chroma via vettori (`collection.query`). `top_k` configurabile.
+- [ ] Strategy `dense`: similarity search su Chroma via vettori (`collection.query`). `top_k` e `distance_metric` configurabili.
+- [ ] Strategy `sparse`: BM25-like. Se il modello di embedding usato per la base espone `embed_sparse` (es. `BAAI/bge-m3`), usato nativamente. Altrimenti, **fallback automatico**: il `KnowledgeBaseManager` monta un BM25 esterno (`rank_bm25`) sul testo grezzo dei chunk della base, con un warning di log all'avvio.
 - [ ] Strategy `sparse`: BM25-like. Se il modello di embedding usato per la base espone `embed_sparse` (es. `BAAI/bge-m3`), usato nativamente. Altrimenti, **fallback automatico**: il `KnowledgeBaseManager` monta un BM25 esterno (`rank_bm25`) sul testo grezzo dei chunk della base, con un warning di log all'avvio.
 - [ ] Strategy `hybrid`: ensemble dense + sparse. Fusione controllata da `fusion`:
   - `rrf` (default): Reciprocal Rank Fusion — robusto, nessun peso da configurare.
@@ -63,6 +64,7 @@ Implementare secondo la specifica [80-retrieval.md](80-retrieval.md). La pipelin
 | Aspetto | Scelta |
 |---|---|
 | Repository di retrieval | Chroma (vector store) + `rank_bm25` fallback per sparse |
+| Metrica distanza dense | `cosine` (default) / `l2` / `ip`. Chroma restituisce distanza, normalizzata con min-max per confronto con BM25 |
 | Espansione testuale | Stadi concatenati: `multi_query`, `step_back`, `least_to_most` |
 | Query mode (retrieval) | `"original"` (embed_query) / `"hyde"` (documento ipotetico → embed_documents) |
 | Fusione hybrid | RRF (default, nessun peso) + `weighted_sum` (min-max + peso esplicito) |
