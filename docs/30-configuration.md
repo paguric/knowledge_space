@@ -202,30 +202,6 @@ Il programma mantiene un **registro di strategie** per `ingestion`, `chunking`, 
 - In futuro l'interfaccia grafica potrà modificarli, ma per ora no.
 - Il programma deve **validare** il TOML all'avvio: se un valore non è riconosciuto, loggare un warning e usare il default.
 
-### Come leggere la configurazione
-
-Python 3.11+ include `tomllib` per leggere (non scrivere) TOML:
-
-```python
-import tomllib
-from pathlib import Path
-
-def load_base_config(base_name: str, workspace_paths) -> BaseConfig:
-    # 1. Defaults hardcoded
-    config = BaseConfig()
-    # 2. Override con defaults.toml del workspace
-    defaults_path = workspace_paths.defaults_toml
-    if defaults_path.exists():
-        with open(defaults_path, "rb") as f:
-            config = config.override(BaseConfig.from_toml(tomllib.load(f)))
-    # 3. Override con config specifica della base
-    base_toml = workspace_paths.base_config_dir / f"{base_name}.toml"
-    if base_toml.exists():
-        with open(base_toml, "rb") as f:
-            config = config.override(BaseConfig.from_toml(tomllib.load(f)))
-    return config
-```
-
 ### Pipeline di retrieval
 
 Il dettaglio completo della pipeline di retrieval (pre-retrieval, retrieval, post-retrieval) è in [80-retrieval.md](80-retrieval.md). Qui la sintassi TOML; per specifiche e implementazione vedi il file dedicato.
