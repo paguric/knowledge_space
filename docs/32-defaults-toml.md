@@ -70,9 +70,16 @@ return_properties = ["chunk_id", "text"]
 # intento dell'utente dichiarato nel TOML (es. consulente: nulla viene riassunto).
 
 [pre_retrieval]
-# Query rewriting. "identity" = nessuna riscrittura (1:1).
-method = "identity"
-# params = { n_queries = 3 }  # es. per multi_query
+# Stadi di query rewriting. "identity" = nessuna riscrittura (1:1).
+# Ogni stage che richiede LLM (multi_query, step_back, least_to_most)
+# specifica il modello con `model`. Se omesso e `requires_llm = True`
+# -> fallback automatico a identity con warning.
+stages = [{ method = "identity" }]
+# Esempio con LLM:
+# stages = [
+#   { method = "step_back",   model = "openai/gpt-4o-mini" },
+#   { method = "multi_query", model = "openai/gpt-4o-mini", params = { n_queries = 3 } },
+# ]
 
 [retrieval]
 # Metodo di ricerca: "dense" | "sparse" | "hybrid".
@@ -84,18 +91,26 @@ method = "identity"
 # - hybrid: ensemble dense + sparse; la fusione e' controllata da `fusion`.
 method = "dense"
 fusion = "rrf"   # "rrf" (default, robusto) | "weighted_sum" (richiede pesi)
+# query_mode: "original" (embed_query) | "hyde" (documento ipotetico via LLM).
+# Se "hyde", specificare hyde_model (vedi 75-llm.md).
+query_mode = "original"
+# hyde_model = "openai/gpt-4o-mini"   # richiesto se query_mode = "hyde"
 
 [post_retrieval]
 # Numero di risultati finali passati al LLM generatore.
 top_k = 10
 # Reranking: riordino dei top-N prima della compression.
 # "identity" = nessun rerank (l'ordine del retrieval resta tale).
+# "cross_encoder" = modello BERT-like (richiede reranker_model).
+# "llm" = LLM valuta la rilevanza (richiede reranker_model, vedi 75-llm.md).
 reranker = "identity"
-# reranker_model = "BAAI/bge-reranker-v2-m3"   # solo se reranker != "identity"
+# reranker_model = "BAAI/bge-reranker-v2-m3"   # per cross_encoder
+# reranker_model = "openai/gpt-4o"              # per llm (vedi 75-llm.md)
 # Compression: sintesi/riduzione dei contenuti passati all'LLM.
-# "identity" = testo originale as-is (nessun riassunto).
-# Utile per il profilo consulente: passare i documenti non riassunti al LLM.
+# "identity" = testo originale as-is (nessun riassunto). Utile per profilo consulente.
+# "llm_chain_extract" = estrazione parti rilevanti (richiede compressor_model).
 compressor = "identity"
+# compressor_model = "openai/gpt-4o-mini"       # per llm_chain_extract (vedi 75-llm.md)
 ```
 
 ---

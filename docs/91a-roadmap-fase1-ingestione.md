@@ -95,6 +95,34 @@ Implementare secondo la specifica [70-embedding.md](70-embedding.md).
 - [x] Validatore chunk vs `max_context_tokens`: errore esplicito se un chunk eccede il limite.
 - [x] Test: embedding con modelli diversi → vettori di dimensioni diverse; errore atteso su chunk troppo grande.
 
+### Step 6-bis: Astrazione LLM
+
+Definire l'interfaccia per tutti i modelli linguistici (LLM) usati nel sistema, parallelamente a Step 6 (embedding). Specifica completa in [75-llm.md](75-llm.md).
+
+A differenza dell'embedding (configurabile per-base in `[embedding].model`), **non esiste una sezione `[llm]` globale**: ogni componente che richiede un LLM specifica il proprio modello nel proprio parametro (es. `stages[{method="multi_query", model="..."}]`, `reranker_model`, `hyde_model`, `extraction_model`).
+
+- [ ] Definire `LLMMetadata` (Pydantic): `model_name`, `provider`, `context_window`, `requires_api`, `supports_streaming`, `supports_json`.
+- [ ] Definire `LLMStrategy` (Protocol):
+  - `generate(messages: list[dict], *, max_tokens, temperature, **kwargs) -> str`
+  - `stream(messages: list[dict], *, max_tokens, temperature, **kwargs) -> Iterator[str]`
+- [ ] Creare `knowledge_base/strategies/llm.py` con `LLMStrategy`, `LLMMetadata`, factory helper, e **registry** dei modelli supportati:
+  - Modelli mock `mock/echo`, `mock/fixed` per test (F0, nessuna dipendenza API).
+  - Abbreviazioni: `fast` → `openai/gpt-4o-mini`, `quality` → `openai/gpt-4o`, `local` → `ollama/llama3.1`.
+  - Provider remoti: `openai/`, `anthropic/`, `google/`, `cohere/` (solo registro, implementazione in Fase 1B/1C).
+  - Provider locali: `ollama/`, `llamacpp/`, `vllm/` (solo registro).
+- [ ] **Chiavi API**: stessa regola di `[embedding]` — mai nei TOML. Env var o `UserSettings` (`~/.config/KnowledgeSpace/config.json`). `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `COHERE_API_KEY`. Per provider locali: `OLLAMA_BASE_URL`, `LLAMACPP_BASE_URL`, `VLLM_BASE_URL` (default endpoint noto).
+- [ ] **Fallback**: stage con `requires_llm = True` ma modello non specificato → fallback a `identity` con warning (pre-retrieval, post-retrieval). `hyde_model` o `extraction_model` assenti → errore esplicito (non degradabili). Chiave API mancante → errore all'istanziazione.
+- [ ] Aggiornare `llm_factory` in `AppContext` (Step 8-ter): `Callable[[str], LLMStrategy]` prende un model name (es. `"openai/gpt-4o-mini"`), istanzia la strategy corrispondente con caching.
+- [ ] Aggiungere `model` al `params_schema` del registry di [80-retrieval.md](80-retrieval.md) per tutte le strategie `requires_llm = True`.
+- [ ] Scrivere test:
+  - `mock/echo` restituisce l'ultimo messaggio utente (verifica interfaccia).
+  - `mock/fixed` restituisce "Risposta mock".
+  - `llm_factory("mock/fixed")` → restituisce strategy, `generate()` funziona.
+  - `llm_factory("sconosciuto")` → errore.
+  - `llm_factory("openai/gpt-4o-mini")` senza `OPENAI_API_KEY` → errore all'istanziazione.
+
+> **Nessuna dipendenza HTTP/API in Fase 1A**: i provider remoti e locali sono solo registrati (metadati + stub). `llm_factory` solleva errore se si tenta di istanziare un provider non-mock. Le implementazioni reali (OpenAI, Ollama, Anthropic) arrivano in Fase 1B (Step 8) e Fase 1C (Step 8-bis), quando i componenti che le usano vengono sviluppati.
+
 ### Step 7: KnowledgeBaseManager e indicizzazione
 
 Implementare la logica operativa sulle basi di conoscenza, orchestrando ingestion → chunking → embedding → Chroma. Include `file_id` (UUID stabile per rename), diff incrementale via `content_hash`, e gestione move/rename senza recompute.
@@ -159,8 +187,8 @@ I trigger (model-change, chunking-change, ingestion-change) sono rilevati automa
 
 ## Dipendenze tra sottofasi
 
-- **Fase 1B** (retrieval) dipende da: Step 7 (KnowledgeBaseManager con Chroma funzionante).
-- **Fase 1C** (GraphRAG) dipende da: Step 7 (file_id, chunk_id, Chroma funzionante, chunk su disco, diff incrementale).
+- **Fase 1B** (retrieval) dipende da: Step 7 (KnowledgeBaseManager con Chroma funzionante), Step 6-bis (LLMStrategy + registry).
+- **Fase 1C** (GraphRAG) dipende da: Step 7 (file_id, chunk_id, Chroma funzionante, chunk su disco, diff incrementale), Step 6-bis (LLMStrategy + registry, per extraction/text2cypher).
 
 ---
 

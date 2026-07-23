@@ -72,7 +72,7 @@ Ogni componente è identificato da un **nome** + eventuali **parametri**, in mod
 | `[ingestion]` | `library` | `"docling"`, `"pymupdf4llm"`, `"markitdown"` | [50-ingestion.md](50-ingestion.md) |
 | `[chunking]` | `method` | `"fixed_size"`, `"recursive"`, `"semantic"`, `"sentence"`, `"markdown"` | [60-chunking.md](60-chunking.md) |
 | `[embedding]` | `model` | qualsiasi modello HuggingFace locale o API | [70-embedding.md](70-embedding.md) |
-| `[pre_retrieval]` | `method` | `"identity"`, `"hyde"`, `"multi_query"` | [80-retrieval.md](80-retrieval.md) |
+| `[pre_retrieval]` | `stages[{method, model, params}]` | `"identity"`, `"multi_query"`, `"step_back"`, `"least_to_most"` | [80-retrieval.md](80-retrieval.md), [75-llm.md](75-llm.md) |
 | `[retrieval]` | `method` / `fusion` | `"dense"` / `"sparse"` / `"hybrid"`; `"rrf"` / `"weighted_sum"` | 80 |
 | `[post_retrieval]` | `reranker` / `compressor` | `"identity"`, `"cross_encoder"`, `"llm"` | 80 |
 | `[graph]` | `schema`/`resolver`/`on_chunk_change`/`retriever` | `"manuale"`/`"EXTRACTED"`/`"FREE"`, `"semantic"`/`"exact"`/`"fuzzy"`, `"eager"`/`"lazy"` | [40-graph.md](40-graph.md) |

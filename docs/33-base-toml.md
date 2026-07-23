@@ -14,8 +14,9 @@ chunk_overlap = 100
 model = "sentence-transformers/all-MiniLM-L6-v2"   # base con modello più leggero
 
 [pre_retrieval]
-method = "multi_query"
-params = { n_queries = 4 }
+stages = [
+  { method = "multi_query", model = "openai/gpt-4o-mini", params = { n_queries = 4 } },
+]
 ```
 
 ---

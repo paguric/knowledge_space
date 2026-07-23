@@ -39,6 +39,7 @@ Questi prerequisiti sono già coperti dalla Fase 1A, Step 7. Vengono elencati qu
 - [ ] Creare `graph.json` workspace-level con `bolt_uri`, `database`, `schema_ref`, `embedding_model`.
 - [ ] Aggiungere sezione `[graph]` al `BaseConfig` per-base (vedi [30-configuration.md](30-configuration.md)):
   - `schema`, `resolver`, `on_chunk_change`, `chunk_embedding_property`, `retriever`, `top_k`, `vector_index`, `fulltext_index`, `retrieval_query`, `return_properties`.
+  - `extraction_model`, `schema_model` (opzionali, vedi [75-llm.md](75-llm.md)): modello LLM per entity extraction e schema extraction.
 - [ ] Test caricamento `GraphConfigData` roundtrip JSON.
 
 #### F2 — `KSChunkLoader`
@@ -103,7 +104,7 @@ Vedi [40-graph.md §13](40-graph.md) per il dettaglio:
 - [ ] Fallback resolver: senza `[nlp]` → warning + exact.
 - [ ] Schema reload: secondo run → nessuna chiamata LLM.
 - [ ] Move/rename: `file_name` aggiornato su Neo4j, niente re-estrazione.
-- [ ] Mock LLM per non spendere token.
+- [ ] Mock LLM per non spendere token (vedi [75-llm.md §Test](75-llm.md#test)).
 
 #### F7-bis — Retrieval factory per GraphRAG
 
@@ -129,7 +130,7 @@ Vedi [40-graph.md §13](40-graph.md) per il dettaglio:
 | Propagazione content change | `[graph].on_chunk_change = "eager"` (default) o `"lazy"` |
 | Propagazione move/rename | Property-only: `file_name`/`path` su nodi `Chunk`/`Document` |
 | Propagazione cambio modello | Property-only: `embedding` sui nodi `Chunk` |
-| Propagazione cambio chunking/ingestion | Full re-estrazione: delete vecchi nodi + re-estrazione LLM |
+| Propagazione cambio chunking/ingestion | Full re-estrazione: delete vecchi nodi + re-estrazione LLM via `extraction_model` (vedi [75-llm.md](75-llm.md)) |
 | Retrieval su grafo | Configurabile `[graph].retriever` per-base (default `hybrid_cypher`) |
 | Dipendenza da Fase 1A | Chroma, `file_id`, chunk su disco, diff incrementale |
 

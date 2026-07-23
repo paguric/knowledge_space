@@ -17,6 +17,7 @@ Questo documento è l'indice del piano di refactor. Ogni argomento è trattato i
 - [**50 — Strategie di ingestion**](50-ingestion.md) — librerie supportate, parametri e profili d'uso.
 - [**60 — Strategie di chunking**](60-chunking.md) — chunker base e avanzati.
 - [**70 — Embedding configurabile per base**](70-embedding.md) — modelli, registry, metadati e validazione contesto.
+- [**75 — Astrazione LLM**](75-llm.md) — LLMStrategy Protocol, registry, per-component TOML, chiavi API, fallback.
 - [**80 — Pipeline di retrieval**](80-retrieval.md) — pre-retrieval (query rewriting), retrieval (dense/sparse/hybrid), post-retrieval (rerank/compress).
 
 ## Roadmap

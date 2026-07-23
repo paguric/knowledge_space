@@ -4,7 +4,7 @@
 
 Il lavoro è diviso in **4 fasi**:
 
-1. **Fase 1A — Ingestione e indicizzazione vettoriale**: documento → ingestion → chunking → embedding → Chroma. Sync FS, configurazione, strategy registry, blocco cambio config, reindex incrementale vettoriale, `file_id`, `AppContext`. Dettagli: [91a-roadmap-fase1-ingestione.md](91a-roadmap-fase1-ingestione.md).
+1. **Fase 1A — Ingestione e indicizzazione vettoriale**: documento → ingestion → chunking → embedding → Chroma. Sync FS, configurazione, strategy registry, blocco cambio config, reindex incrementale vettoriale, `file_id`, `AppContext`, **astrazione LLM** (Step 6-bis). Dettagli: [91a-roadmap-fase1-ingestione.md](91a-roadmap-fase1-ingestione.md), [75-llm.md](75-llm.md).
 2. **Fase 1B — Ricerca sui documenti processati**: pipeline di retrieval (pre/retrieval/post) su vettori Chroma. Dettagli: [91b-roadmap-fase1-ricerca.md](91b-roadmap-fase1-ricerca.md).
 3. **Fase 1C — Indicizzazione e retrieval su grafo (GraphRAG)**: costruzione grafo Neo4j, propagazione incrementale, retrieval su grafo. Dettagli: [91c-roadmap-fase1-graphrag.md](91c-roadmap-fase1-graphrag.md).
 
@@ -24,6 +24,7 @@ Al termine della Fase 1 `knowledge-base` è una libreria completa e testabile in
 | 1A | 4 — Strategie di ingestion | 91a |
 | 1A | 5 — Strategie di chunking | 91a |
 | 1A | 6 — Embedding configurabile per base | 91a |
+| 1A | 6-bis — Astrazione LLM e registry | 91a |
 | 1A | 7 — KnowledgeBaseManager e indicizzazione | 91a |
 | 1A | 8-ter — `AppContext` e bootstrap | 91a |
 | 1B | 8 — Pipeline di retrieval (pre/retrieval/post) | [91b-roadmap-fase1-ricerca.md](91b-roadmap-fase1-ricerca.md) |
@@ -64,9 +65,10 @@ Al termine della Fase 1 `knowledge-base` è una libreria completa e testabile in
 - La CLI può esporre due comandi separati: `serve` e `mcp`.
 - In futuro, MCP in modalità SSE sullo stesso server FastAPI.
 
-### Strategie LLM-dipendenti
+### LLM e modelli linguistici
 
-- Query rewriting (HyDE, multi-query) e compression richiedono un LLM. Per la Fase 1 usare mock/stub nei test; l'integrazione reale con un LLM (locale o API) sarà decisione di configurazione.
+- L'interfaccia `LLMStrategy` (Protocol) è definita in Fase 1A (Step 6-bis), parallelamente a `EmbeddingStrategy` (Step 6). Ogni componente che richiede un LLM specifica il proprio modello nel TOML (nessuna sezione `[llm]` globale). Vedi [75-llm.md](75-llm.md).
+- In Fase 1A sono implementati solo i mock di test. I provider reali (OpenAI, Ollama, Anthropic) arrivano in Fase 1B (retrieval) e 1C (GraphRAG).
 - `EmbeddingStrategy` per base può richiedere modelli diversi caricati in memoria contemporaneamente: valutare uso di RAM e lazy loading.
 
 ## Riepilogo delle scelte consigliate

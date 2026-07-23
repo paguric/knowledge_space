@@ -10,10 +10,11 @@ Esporre i manager consolidati nella Fase 1 tramite MCP e CLI.
 
 - [ ] Aggiungere `typer` alle dipendenze di `knowledge-space`.
 - [ ] Creare `knowledge_space/cli.py`.
-- [ ] Implementare comandi per workspace, domini, basi, file, chunk, tree, search, reindex, graph, config, auth, models, status — secondo la specifica in [95-cli.md](95-cli.md).
+- [ ] Implementare comandi per workspace, domini, basi, file, chunk, tree, search, reindex, graph, config, auth, models, profiles, status — secondo la specifica in [95-cli.md](95-cli.md).
 - [ ] La CLI opera in **modalità standalone**: ogni comando è un processo separato, crea `AppContext` temporaneo, opera su `state.json`/Chroma, termina. Niente watcher in background, niente backend process. Vedi [11-app-lifecycle.md](11-app-lifecycle.md).
 - [ ] La CLI chiama `setup_logging()` (Step 12) subito dopo il parse dei flag globali (`--verbose`, `KS_LOG_LEVEL`), prima di qualsiasi operazione.
 - [ ] **Scrittura TOML** (`config set`/`unset`): la CLI scrive nei file TOML (`defaults.toml`, `base.toml`) — questo completa la transizione dalla Fase 1 (sola lettura) alla Fase 2 (modifica via CLI). Il comando rileva automaticamente se la chiave modificata attiva un trigger di reindex (model-change, chunking-change, ingestion-change) e chiede conferma prima di procedere. Le specifiche dei trigger sono in [30-configuration.md §Trigger di reindex](30-configuration.md).
+- [ ] **Profili** (`profiles list`/`show`/`apply`/`save`/`diff`/`edit`/`remove`): gestisce i profili di configurazione in `~/.config/knowledge-space/profiles/<name>.toml` (vedi [92-roadmap-fase2.md §Step 10](92-roadmap-fase2.md)). `profiles apply` sovrascrive `base.toml` (o `defaults.toml`) con il contenuto del profilo e rileva i trigger di reindex con lo stesso meccanismo di `config set`. `profiles save` risolve la cascata TOML di una base e la salva come nuovo profilo.
 - [ ] **Autocompletamento**: implementare shell completion (Typer nativa) per tutti i comandi; in particolare per `config set`/`unset` completare `<TAB>` sui percorsi dotted (`key`) e sui valori ammissibili (`value`) ricavati dal registry delle strategie.
 - [ ] I comandi `serve` e `stop` (backend process, Fase 4) sono **solo elencati** in `95-cli.md` come riferimento; la loro implementazione è differita a Fase 4 (Step 15 — REST, vedi [94-roadmap-fase4.md](94-roadmap-fase4.md) e [11-app-lifecycle.md](11-app-lifecycle.md)).
 - [ ] Scrivere test di integrazione per i comandi CLI (standalone mode).

@@ -22,10 +22,10 @@ Implementare secondo la specifica [80-retrieval.md](80-retrieval.md). La pipelin
 - [ ] Interfaccia `QueryRewriter` (Protocol) con input `list[str]` e output `list[str]` e registry (`knowledge_base/strategies/retrieval/pre_retrieval.py`).
 - [ ] Orchestrazione stadi concatenati: ogni stadio riceve le query del precedente e produce nuove varianti. Config a `stages = [{method = ..., params = ...}, ...]`.
 - [ ] Strategy `identity`: pass-through, nessuna espansione.
-- [ ] Strategy `multi_query`: per ogni query genera N sotto-query via LLM (diverse prospettive). Parametro `n_queries = 3`.
-- [ ] Strategy `step_back`: per ogni query genera una domanda astratta/concettuale via LLM. Restituisce `[q_originale, q_astratta]`.
-- [ ] Strategy `least_to_most`: decompone la query in sottoproblemi via LLM e restituisce una query per ciascuno + la query originale. L'agente downstream si organizza coi documenti ricevuti (nessuna risoluzione sequenziale qui).
-- [ ] Test con LLM mock: identity pass-through; multi_query/step_back/least_to_most generano output coerenti; composizione di due stadi produce più varianti.
+- [ ] Strategy `multi_query`: per ogni query genera N sotto-query via LLM (diverse prospettive). Parametro `n_queries = 3`, `model` (vedi [75-llm.md](75-llm.md) per modelli supportati).
+- [ ] Strategy `step_back`: per ogni query genera una domanda astratta/concettuale via LLM. Restituisce `[q_originale, q_astratta]`. Parametro `model`.
+- [ ] Strategy `least_to_most`: decompone la query in sottoproblemi via LLM e restituisce una query per ciascuno + la query originale. L'agente downstream si organizza coi documenti ricevuti (nessuna risoluzione sequenziale qui). Parametro `model`.
+- [ ] Test con LLM mock (vedi [75-llm.md §Test](75-llm.md#test)): identity pass-through; multi_query/step_back/least_to_most generano output coerenti; composizione di due stadi produce più varianti.
 
 #### Retrieval (dense / sparse / hybrid)
 
@@ -36,7 +36,7 @@ Implementare secondo la specifica [80-retrieval.md](80-retrieval.md). La pipelin
 - [ ] Strategy `hybrid`: ensemble dense + sparse. Fusione controllata da `fusion`:
   - `rrf` (default): Reciprocal Rank Fusion — robusto, nessun peso da configurare.
   - `weighted_sum`: somma pesata di score normalizzati (min-max in [0,1]). Pesi `dense_weight` e `sparse_weight` (default 0.5/0.5, validati a somma 1.0).
-- [ ] **Query mode** (`retrieval.query_mode`): `"original"` (default, embedding diretto con `embed_query()`) o `"hyde"` (genera documento ipotetico via LLM e lo embedda con `embed_documents()`). Ortogonale al pre-retrieval: gli stadi di espansione producono N varianti testuali, poi ciascuna viene embeddata secondo `query_mode`.
+- [ ] **Query mode** (`retrieval.query_mode`): `"original"` (default, embedding diretto con `embed_query()`) o `"hyde"` (genera documento ipotetico via LLM e lo embedda con `embed_documents()`). Se `"hyde"`, richiede `hyde_model` nel TOML. Ortogonale al pre-retrieval: gli stadi di espansione producono N varianti testuali, poi ciascuna viene embeddata secondo `query_mode`.
 - [ ] Rispetto flag `active` durante la ricerca.
 - [ ] Test: dense restituisce chunk con embedding simile; sparse recupera per match testuale; hybrid combina entrambi; fallback BM25 funziona senza modello native-sparse; HyDE genera documento ipotetico e lo embedda correttamente.
 
@@ -44,10 +44,10 @@ Implementare secondo la specifica [80-retrieval.md](80-retrieval.md). La pipelin
 
 - [ ] Interfaccia `Reranker` e `Compressor` (Protocol) e registry (`knowledge_base/strategies/retrieval/post_retrieval.py`).
 - [ ] Reranker `identity`: pass-through, nessun riordino.
-- [ ] Reranker `cross_encoder`: modello BERT-like (es. `BAAI/bge-reranker-v2-m3`) per riordinare i top-N con punteggio di rilevanza più accurato della cosine similarity. Richiede modello caricato.
-- [ ] Reranker `llm`: LLM valuta la rilevanza di ogni chunk rispetto alla query (costoso, ma più flessibile).
+- [ ] Reranker `cross_encoder`: modello BERT-like (es. `BAAI/bge-reranker-v2-m3`) per riordinare i top-N con punteggio di rilevanza più accurato della cosine similarity. Richiede `reranker_model`.
+- [ ] Reranker `llm`: LLM valuta la rilevanza di ogni chunk rispetto alla query (costoso, ma più flessibile). Richiede `reranker_model` (vedi [75-llm.md](75-llm.md)).
 - [ ] Compressor `identity`: pass-through, nessuna compressione.
-- [ ] Compressor `llm_chain_extract`: LLM estrae/riassume i chunk in una risposta coerente.
+- [ ] Compressor `llm_chain_extract`: LLM estrae/riassume i chunk in una risposta coerente. Richiede `compressor_model` (vedi [75-llm.md](75-llm.md)).
 - [ ] Test: identity pass-through; cross_encoder modifica l'ordine dei risultati rispetto alla similarity; llm_chain_extract produce output più corto.
 
 #### Orchestrazione pipeline
@@ -57,7 +57,7 @@ Implementare secondo la specifica [80-retrieval.md](80-retrieval.md). La pipelin
 - [ ] Se un metodo richiede LLM ma nessun LLM è configurato → **fallback automatico a `identity`** con warning (la base è comunque funzionante in degrado).
 - [ ] Integrazione con `AppContext` (Fase 1A): il `SearchService` riceve `KnowledgeBaseManager` e `llm_factory` dall'`AppContext`.
 
-> **Da definire**: integrazione LLM per query rewriting, reranking e compression (locale vs API), supporto metadati di filtraggio al retrieval.
+> L'integrazione LLM è definita in [75-llm.md](75-llm.md) (Step 6-bis, Fase 1A): `LLMStrategy` Protocol, registry, `llm_factory` in `AppContext`. Ogni componente sceglie il proprio modello nel TOML. In Fase 1B si usano i mock per i test; provider reali (OpenAI, Ollama) si aggiungono qui.
 
 ## Scelte consolidate per questa sottofase
 
@@ -68,7 +68,7 @@ Implementare secondo la specifica [80-retrieval.md](80-retrieval.md). La pipelin
 | Espansione testuale | Stadi concatenati: `multi_query`, `step_back`, `least_to_most` |
 | Query mode (retrieval) | `"original"` (embed_query) / `"hyde"` (documento ipotetico → embed_documents) |
 | Fusione hybrid | RRF (default, nessun peso) + `weighted_sum` (min-max + peso esplicito) |
-| LLM per pre/post | Configurabile per-base; fallback a `identity` se LLM non disponibile |
+| LLM per pre/post | Ogni componente sceglie il proprio modello nel TOML (nessuna sezione `[llm]` globale). `LLMStrategy` definito in Step 6-bis ([75-llm.md](75-llm.md)). Fallback a `identity` se modello non specificato. |
 | Reranking | Identity (default), cross_encoder (locale), LLM (API) |
 | Compressione | Identity (default), llm_chain_extract (LLM) |
 | Dipendenza da Fase 1A | Chroma popolato, `chunk_id`/`file_id` stabili, `content_hash` disponibile |

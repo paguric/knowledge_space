@@ -163,9 +163,19 @@ Opera su `~/.config/KnowledgeSpace/config.json` (secrets, chiavi API). File mach
 | `stop` | Arresta il backend via REST `/shutdown`. Vedi [11-app-lifecycle.md §3](11-app-lifecycle.md#3-backend-process-lifecycle). |
 | `mcp` | Avvia MCP in modalità stdio (bridge verso backend REST). Vedi [11-app-lifecycle.md §8](11-app-lifecycle.md#8-mcp-stdio--rest-bridge) e [96-mcp-server.md](96-mcp-server.md). |
 
-### Profili (da definire in Fase 2)
+### Profiles
 
-I comandi relativi ai profili (`profiles list`, `profile apply <name> <base>`, ...) saranno progettati in Fase 2. Vedi [92-roadmap-fase2.md](92-roadmap-fase2.md) per lo stato della discussione.
+Profili di configurazione predefiniti, salvati in `~/.config/knowledge-space/profiles/<name>.toml` (system-wide, riutilizzabili tra workspace). Un profilo è un template TOML che può essere applicato a una base (sovrascrive `base.toml`) o ai default del workspace (sovrascrive `defaults.toml`). Vedi [92-roadmap-fase2.md §Step 10](92-roadmap-fase2.md) per i profili predefiniti (`ricercatore`, `consulente`, `studente`).
+
+| Comando | Descrizione |
+|---|---|
+| `profiles list` | Elenca i profili disponibili in `~/.config/knowledge-space/profiles/`. Mostra nome, lingue supportate dall'embedding e `max_context_tokens` (estratto dai commenti/valori del TOML). |
+| `profiles show <name>` | Stampa il contenuto TOML di un profilo. |
+| `profiles apply <name> [--base <base>]` | Applica il profilo: con `--base` sovrascrive `<base>/.knowledge-space/base.toml`; senza `--base` sovrascrive `<workspace>/.knowledge-space/defaults.toml`. Chiede conferma prima di sovrascrivere un file esistente. **Rilevamento reindex**: se il profilo cambia `embedding.model`, `chunking.method` o `ingestion.library` rispetto alla configurazione attuale della base e la collection Chroma non è vuota, il comando rileva il trigger (model-change, chunking-change, ingestion-change) e chiede conferma prima di avviare il reindex appropriato (stesso meccanismo di `config set`). |
+| `profiles save <name> [--base <base>]` | Salva la configurazione effettiva di una base (o dei default del workspace se `--base` omesso) come nuovo profilo. Risolve la cascata TOML e scrive il risultato in `~/.config/knowledge-space/profiles/<name>.toml`. Errore se il profilo esiste già (usare `--force` per sovrascrivere). |
+| `profiles diff <name> [--base <base>]` | Mostra le differenze tra la configurazione effettiva di una base e il profilo, come `diff` unificato. Utile per valutare cosa cambia prima di `profiles apply`. |
+| `profiles edit <name>` | Apre il profilo nell'editor predefinito (`$EDITOR` / `$VISUAL`). |
+| `profiles remove <name>` | Elimina un profilo. Chiede conferma. |
 
 ## Struttura Typer
 
@@ -227,6 +237,28 @@ def search(
     else:
         for r in results:
             typer.echo(f"[{r.score:.3f}] {r.chunk_id}: {r.text[:200]}...")
+
+# === Profiles ===
+profiles_app = typer.Typer(help="Gestione profili di configurazione")
+app.add_typer(profiles_app, name="profiles")
+
+@profiles_app.command("list")
+def profiles_list():
+    """Elenca i profili disponibili in ~/.config/knowledge-space/profiles/."""
+    ctx = get_ctx()
+    profiles_dir = ctx.runtime_paths.config_home / "knowledge-space" / "profiles"
+    for p in sorted(profiles_dir.glob("*.toml")):
+        typer.echo(p.stem)
+
+@profiles_app.command("apply")
+def profiles_apply(
+    name: str = typer.Argument(..., help="Nome del profilo"),
+    base: str | None = typer.Option(None, "--base", help="Base target (se omesso, applica ai defaults)"),
+):
+    """Applica un profilo a una base o ai defaults del workspace."""
+    ctx = get_ctx()
+    ...
+    # Rilevamento trigger di reindex (come config set)
 ```
 
 ---
