@@ -6,7 +6,8 @@ Al termine di questa sottofase `knowledge-base` sa:
 - Espandere la query utente in più varianti testuali tramite stadi componibili (multi_query, step_back, least_to_most)
 - Cambiare la rappresentazione della query per il retrieval (original / HyDE)
 - Cercare chunk simili via dense/sparse/hybrid retrieval su Chroma (con fallback BM25 automatico)
-- Riordinare e comprimere i risultati (identity, cross_encoder reranker, llm_chain_extract compressor)
+- Riordinare i risultati con metodi rule-based (relevance, MMR), cross-encoder o LLM
+- Comprimere i risultati con llm_chain_extract o selective_context (arXiv:2310.06201)
 - Rispettare i flag `active` durante la ricerca
 
 > Per la collocazione di questa sottofase nel piano generale: vedi [90-roadmap-overview.md](90-roadmap-overview.md). Per la specifica dettagliata della pipeline: [80-retrieval.md](80-retrieval.md). La Fase 1A (ingestione e indicizzazione) deve essere completata prima di iniziare questa sottofase.
@@ -43,12 +44,19 @@ Implementare secondo la specifica [80-retrieval.md](80-retrieval.md). La pipelin
 #### Post-retrieval (reranking / compression)
 
 - [ ] Interfaccia `Reranker` e `Compressor` (Protocol) e registry (`knowledge_base/strategies/retrieval/post_retrieval.py`).
-- [ ] Reranker `identity`: pass-through, nessun riordino.
-- [ ] Reranker `cross_encoder`: modello BERT-like (es. `BAAI/bge-reranker-v2-m3`) per riordinare i top-N con punteggio di rilevanza più accurato della cosine similarity. Richiede `reranker_model`.
-- [ ] Reranker `llm`: LLM valuta la rilevanza di ogni chunk rispetto alla query (costoso, ma più flessibile). Richiede `reranker_model` (vedi [75-llm.md](75-llm.md)).
-- [ ] Compressor `identity`: pass-through, nessuna compressione.
-- [ ] Compressor `llm_chain_extract`: LLM estrae/riassume i chunk in una risposta coerente. Richiede `compressor_model` (vedi [75-llm.md](75-llm.md)).
-- [ ] Test: identity pass-through; cross_encoder modifica l'ordine dei risultati rispetto alla similarity; llm_chain_extract produce output più corto.
+- [ ] **Rule-based reranker**:
+  - [ ] Reranker `identity`: pass-through, nessun riordino.
+  - [ ] Reranker `relevance`: riordina per score del retriever (discendente). Dopo hybrid fusion riapplica l'ordinamento per score fuso.
+  - [ ] Reranker `mmr`: Maximum Marginal Relevance, bilancia rilevanza e diversità tramite embedding dei chunk. Parametro `mmr_lambda` (default 0.7).
+- [ ] **Model-based reranker**:
+  - [ ] Reranker `cross_encoder`: modello BERT-like (es. `BAAI/bge-reranker-v2-m3`, `cross-encoder/ms-marco-MiniLM-L6-v2`) per riordinare i top-N con punteggio di rilevanza più accurato. Richiede `reranker_model`.
+- [ ] **LLM-based reranker**:
+  - [ ] Reranker `llm`: LLM valuta la rilevanza di ogni chunk rispetto alla query (costoso, ma più flessibile). Richiede `reranker_model` (vedi [75-llm.md](75-llm.md)).
+- [ ] **Compressor**:
+  - [ ] Compressor `identity`: pass-through, nessuna compressione.
+  - [ ] Compressor `llm_chain_extract`: LLM estrae/riassume i chunk in una risposta coerente. Richiede `compressor_model` (vedi [75-llm.md](75-llm.md)).
+  - [ ] Compressor `selective_context`: comprime il contesto rimuovendo token a bassa self-information (arXiv:2310.06201). Richiede `compressor_model` e `compression_ratio` (es. 0.5 = 50%).
+- [ ] Test: identity pass-through; relevance ordine corretto dopo hybrid; mmr introduce diversità; cross_encoder modifica l'ordine; llm rerank coerente col prompt; llm_chain_extract output più corto; selective_context rapporto rispettato.
 
 #### Orchestrazione pipeline
 
@@ -69,8 +77,8 @@ Implementare secondo la specifica [80-retrieval.md](80-retrieval.md). La pipelin
 | Query mode (retrieval) | `"original"` (embed_query) / `"hyde"` (documento ipotetico → embed_documents) |
 | Fusione hybrid | RRF (default, nessun peso) + `weighted_sum` (min-max + peso esplicito) |
 | LLM per pre/post | Ogni componente sceglie il proprio modello nel TOML (nessuna sezione `[llm]` globale). `LLMStrategy` definito in Step 6-bis ([75-llm.md](75-llm.md)). Fallback a `identity` se modello non specificato. |
-| Reranking | Identity (default), cross_encoder (locale), LLM (API) |
-| Compressione | Identity (default), llm_chain_extract (LLM) |
+| Reranking | Rule-based: `identity`, `relevance`, `mmr`. Model: `cross_encoder`. LLM: `llm` |
+| Compressione | `identity`, `llm_chain_extract`, `selective_context` (arXiv:2310.06201) |
 | Dipendenza da Fase 1A | Chroma popolato, `chunk_id`/`file_id` stabili, `content_hash` disponibile |
 
 ## Dipendenze con altre sottofasi

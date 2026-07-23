@@ -166,16 +166,16 @@ Sezione `[post_retrieval]`. Filtraggio, riordino e compressione dei risultati pr
 ```toml
 [post_retrieval]
 top_k = 10                    # risultati finali (applicato ultimo)
-reranker = "identity"          # "identity" | "cross_encoder" | "llm"
-compressor = "identity"        # "identity" | "llm_chain_extract"
+reranker = "identity"          # "identity" | "relevance" | "mmr" | "cross_encoder" | "llm"
+compressor = "identity"        # "identity" | "llm_chain_extract" | "selective_context"
 ```
 
 ### Interfacce separate
 
 Reranker e Compressor rispondono a domande diverse:
 
-- **Reranker**: "quali tra questi chunk sono i più rilevanti per la query?" (classificatore a coppie query↔chunk).
-- **Compressor**: "quali contenuti, tra quelli rilevanti, devono essere passati all'LLM?" (estrazione, sintesi).
+- **Reranker**: "quali tra questi chunk sono i più rilevanti per la query?" (riordina i top-N).
+- **Compressor**: "quali contenuti, tra quelli rilevanti, devono essere passati all'LLM?" (estrazione, sintesi, pruning).
 
 ```python
 class Reranker(Protocol):
@@ -193,44 +193,80 @@ class Compressor(Protocol):
 
 ### Strategie di rerank
 
+I reranker si dividono in tre famiglie: **rule-based** (metriche, nessun ML), **model-based** (cross-encoder), **LLM-based** (LLM).
+
+#### Rule-based
+
+Metodi che non richiedono modelli ML né LLM. Lavorano sugli score del retrieval, sulla diversità semantica tramite embedding, o su rank.
+
+| Method | Descrizione | Parametri |
+|--------|-------------|-----------|
+| `identity` | No-op: l'ordine del retrieval rimane invariato. | — |
+| `relevance` | Riordina per score originale del retriever (discendente). Equivale a `identity` per dense/sparse puro, ma dopo hybrid fusion riapplica l'ordinamento per score fuso. | — |
+| `mmr` | Maximum Marginal Relevance: bilancia rilevanza e diversità del contenuto. Richiede embedding dei chunk (dal retriever). | `mmr_lambda: float = 0.7` (1 = solo rilevanza, 0 = solo diversità) |
+
+#### Model-based
+
+| Method | Descrizione | Richiede modello |
+|--------|-------------|:---:|
+| `cross_encoder` | Modello cross-encoder (es. `BAAI/bge-reranker-v2-m3`) che processa coppie (query, chunk) e assegna un punteggio di rilevanza più accurato della cosine similarity. Più lento ma più preciso del Bi-Encoder usato in retrieval. Vedi [SBERT cross-encoder](https://www.sbert.net/examples/applications/cross-encoder/README.html). | sì (`reranker_model`) |
+
+#### LLM-based
+
 | Method | Descrizione | Richiede LLM |
 |--------|-------------|:---:|
-| `identity` | No-op: l'ordine del retrieval rimane invariato. | no |
-| `cross_encoder` | Modello cross-encoder (es. `BAAI/bge-reranker-v2-m3`) per riordinare chunk per rilevanza. | no (modello dedicato) |
-| `llm` | LLM riordina i chunk per rilevanza (più costoso). | sì |
+| `llm` | LLM valuta la rilevanza di ogni chunk rispetto alla query (costoso, ma più flessibile). Il prompt chiede un punteggio o un rank per ogni chunk. | sì (`reranker_model`) |
 
-Parametro `reranker_model` specifica il modello:
-- Per `cross_encoder`: identificatore del cross-encoder (es. `BAAI/bge-reranker-v2-m3`). Non è un LLM, ma un modello di similarità specializzato.
-- Per `llm`: identificatore del LLM (es. `openai/gpt-4o`), come da [75-llm.md](75-llm.md). Obbligatorio se `reranker = "llm"`.
+#### Parametri
+
+`reranker_model` specifica il modello in base al metodo:
+- `cross_encoder`: identificatore del cross-encoder (es. `BAAI/bge-reranker-v2-m3`, `cross-encoder/ms-marco-MiniLM-L6-v2`).
+- `llm`: identificatore del LLM (es. `openai/gpt-4o`), come da [75-llm.md](75-llm.md). Obbligatorio se `reranker = "llm"`.
+- `identity`, `relevance`, `mmr`: `reranker_model` non richiesto. Per `mmr`, l'embedding dei chunk viene dal retriever (non serve modello aggiuntivo).
 
 Esempi:
 
 ```toml
 [post_retrieval]
+reranker = "relevance"          # rule-based, nessun modello extra
+
+[post_retrieval]
+reranker = "mmr"
+mmr_lambda = 0.7                # bilancia rilevanza/diversità
+
+[post_retrieval]
 reranker = "cross_encoder"
 reranker_model = "BAAI/bge-reranker-v2-m3"
-
-# vs
 
 [post_retrieval]
 reranker = "llm"
 reranker_model = "openai/gpt-4o"
 ```
 
-Allo stesso modo, `compressor = "llm_chain_extract"` richiede `compressor_model`:
+### Strategie di compression
+
+| Method | Descrizione | Richiede LLM | Richiede modello |
+|--------|-------------|:---:|:---:|
+| `identity` | No-op: restituisce il testo dei chunk così com'è. Utile per profilo `consulente` (i documenti non devono essere riassunti). | no | no |
+| `llm_chain_extract` | LLM estrae/riassume i chunk in una risposta coerente. Usa `compressor_model`. | sì | — |
+| `selective_context` | Comprime il contesto rimuovendo token a bassa self-information, preservando solo quelli più informativi. Si basa su un LM base (es. LLaMA-7B) per calcolare `I(x_t) = −log₂ P(x_t)` e scarta i token con self-information sotto una soglia (arXiv:2310.06201). Il rapporto di compressione è configurabile. | sì (LM base per calcolo probabilità) | — |
+
+`compressor = "selective_context"` accetta parametri:
+
+```toml
+[post_retrieval]
+compressor = "selective_context"
+compression_ratio = 0.5          # target: 50% del contesto originale
+compressor_model = "openai/gpt-4o-mini"   # LM per calcolo self-information
+```
+
+`compressor = "llm_chain_extract"` richiede `compressor_model`:
 
 ```toml
 [post_retrieval]
 compressor = "llm_chain_extract"
 compressor_model = "openai/gpt-4o-mini"
 ```
-
-### Strategie di compression
-
-| Method | Descrizione | Richiede LLM |
-|--------|-------------|:---:|
-| `identity` | No-op: restituisce il testo dei chunk così com'è. Utile per profilo `consulente` (i documenti non devono essere riassunti). | no |
-| `llm_chain_extract` | Langchain `LLMChainExtractor`: estrae dal chunk solo le parti rilevanti per la query. | sì |
 
 ## Registry delle strategie
 
@@ -250,10 +286,16 @@ Tutte le strategy (query rewriter, retriever, reranker, compressor) sono registr
     # Query mode (retrieval)
     "query_mode/original": {"type": "query_mode", "requires_llm": False},
     "query_mode/hyde": {"type": "query_mode", "requires_llm": True, "params_schema": {"model": str}},
-    # Post-retrieval
-    "cross_encoder": {"type": "reranker", "requires_model": True},
-    "llm": {"type": "reranker", "requires_llm": True, "params_schema": {"model": str}},
-    "llm_chain_extract": {"type": "compressor", "requires_llm": True, "params_schema": {"model": str}},
+    # Post-retrieval — reranker
+    "identity": {"type": "reranker", "requires_llm": False, "params_schema": {}},
+    "relevance": {"type": "reranker", "requires_llm": False, "params_schema": {}},
+    "mmr": {"type": "reranker", "requires_llm": False, "params_schema": {"mmr_lambda": float}},
+    "cross_encoder": {"type": "reranker", "requires_model": True, "params_schema": {"reranker_model": str}},
+    "llm": {"type": "reranker", "requires_llm": True, "params_schema": {"reranker_model": str}},
+    # Post-retrieval — compressor
+    "identity": {"type": "compressor", "requires_llm": False, "params_schema": {}},
+    "llm_chain_extract": {"type": "compressor", "requires_llm": True, "params_schema": {"compressor_model": str}},
+    "selective_context": {"type": "compressor", "requires_llm": True, "params_schema": {"compressor_model": str, "compression_ratio": float}},
 }
 ```
 
@@ -302,6 +344,23 @@ compressor = "llm_chain_extract"
 compressor_model = "openai/gpt-4o-mini"
 ```
 
+### Profilo consulente con diversità e compressione
+
+```toml
+[pre_retrieval]
+stages = [{ method = "identity" }]
+
+[retrieval]
+method = "dense"
+
+[post_retrieval]
+top_k = 10
+reranker = "mmr"
+mmr_lambda = 0.7
+compressor = "selective_context"
+compression_ratio = 0.5
+```
+
 ## Fasi di implementazione
 
 - **F0 — Interfacce e registry**: definire `QueryRewriter` (con input `list[str]`, output `list[str]`), `RetrievalStrategy`, `Reranker`, `Compressor` (Protocol). Registry separati per ciascuno. `LLMStrategy` Protocol è definito in Fase 1A (Step 6-bis, [75-llm.md](75-llm.md)).
@@ -310,7 +369,9 @@ compressor_model = "openai/gpt-4o-mini"
 - **F3 — Hybrid retrieval**: dense + sparse + `rrf` / `weighted_sum`.
 - **F4 — Pre-retrieval: espansione testuale**: `multi_query`, `step_back`, `least_to_most` (mock LLM nei test, vedi [75-llm.md §Test](75-llm.md#test)). Orchestrazione stadi concatenati. Ogni stage accetta `model` per selezionare il LLM.
 - **F5 — HyDE**: `retrieval.query_mode = "hyde"` con `hyde_model`. Generazione documento ipotetico + `embed_documents()` invece di `embed_query()`.
-- **F6 — Post-retrieval**: `cross_encoder` e `llm_chain_extract`. `llm` reranker e `llm_chain_extract` accettano rispettivamente `reranker_model` e `compressor_model`.
+- **F6 — Post-retrieval: rule-based reranker**: `relevance` e `mmr`. MMR richiede l'embedding dei chunk (dal retriever) per calcolare la similarità pairwise. Parametro `mmr_lambda`.
+- **F6-bis — Post-retrieval: model/LLM reranker**: `cross_encoder` (modello dedicato) e `llm` (LLM). Accettano `reranker_model`.
+- **F6-ter — Post-retrieval: compressor**: `llm_chain_extract` e `selective_context` (arXiv:2310.06201). Accettano `compressor_model` e, per selective_context, `compression_ratio`.
 - **F7 — Filtri attivi**: rispettare i flag `active` (workspace, dominio, base, file, chunk) durante la ricerca.
 - **F8 — Test**: pipeline completa con mock per strategie LLM; test specifici per `identity` pass-through; test hybrid con fallback BM25; test composizione stadi; test HyDE.
 
@@ -327,7 +388,11 @@ compressor_model = "openai/gpt-4o-mini"
 | Least-to-most decomposizione | Sottoproblemi estratti dalla query |
 | Composizione stadi | Due stadi concatenati producono più varianti |
 | HyDE retrieval | Documento ipotetico generato ed embeddato |
-| Cross-encoder rerank | Ordine modificato dal reranker |
+| Relevance rerank | Riordino per score, invarianza per dense puro |
+| MMR rerank | Diversità introdotta nei risultati, nessun chunk duplicato |
+| Cross-encoder rerank | Ordine modificato dal reranker, punteggi più accurati |
+| LLM rerank | Ordine modificato dal LLM, coerente col prompt |
+| Selective context compress | Output più corto dell'input, rapporto rispettato |
 | Lazy/eager filtering | Flag `active` rispettati |
 
 ---
