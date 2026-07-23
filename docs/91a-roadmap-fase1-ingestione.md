@@ -101,20 +101,20 @@ Definire l'interfaccia per tutti i modelli linguistici (LLM) usati nel sistema, 
 
 A differenza dell'embedding (configurabile per-base in `[embedding].model`), **non esiste una sezione `[llm]` globale**: ogni componente che richiede un LLM specifica il proprio modello nel proprio parametro (es. `stages[{method="multi_query", model="..."}]`, `reranker_model`, `hyde_model`, `extraction_model`).
 
-- [ ] Definire `LLMMetadata` (Pydantic): `model_name`, `provider`, `context_window`, `requires_api`, `supports_streaming`, `supports_json`.
-- [ ] Definire `LLMStrategy` (Protocol):
+- [x] Definire `LLMMetadata` (Pydantic): `model_name`, `provider`, `context_window`, `requires_api`, `supports_streaming`, `supports_json`.
+- [x] Definire `LLMStrategy` (Protocol):
   - `generate(messages: list[dict], *, max_tokens, temperature, **kwargs) -> str`
   - `stream(messages: list[dict], *, max_tokens, temperature, **kwargs) -> Iterator[str]`
-- [ ] Creare `knowledge_base/strategies/llm.py` con `LLMStrategy`, `LLMMetadata`, factory helper, e **registry** dei modelli supportati:
+- [x] Creare `knowledge_base/strategies/llm.py` con `LLMStrategy`, `LLMMetadata`, factory helper, e **registry** dei modelli supportati:
   - Modelli mock `mock/echo`, `mock/fixed` per test (F0, nessuna dipendenza API).
-  - Abbreviazioni: `fast` → `openai/gpt-4o-mini`, `quality` → `openai/gpt-4o`, `local` → `ollama/llama3.1`.
+  - Abbreviazioni: `fast` → `openai/gpt-4o-mini`, `quality` → `openai/gpt-4o`, `local` → `ollama/llama3.1` (più `cheap` → `openai/gpt-4o-mini`).
   - Provider remoti: `openai/`, `anthropic/`, `google/`, `cohere/` (solo registro, implementazione in Fase 1B/1C).
   - Provider locali: `ollama/`, `llamacpp/`, `vllm/` (solo registro).
-- [ ] **Chiavi API**: stessa regola di `[embedding]` — mai nei TOML. Env var o `UserSettings` (`~/.config/KnowledgeSpace/config.json`). `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `COHERE_API_KEY`. Per provider locali: `OLLAMA_BASE_URL`, `LLAMACPP_BASE_URL`, `VLLM_BASE_URL` (default endpoint noto).
-- [ ] **Fallback**: stage con `requires_llm = True` ma modello non specificato → fallback a `identity` con warning (pre-retrieval, post-retrieval). `hyde_model` o `extraction_model` assenti → errore esplicito (non degradabili). Chiave API mancante → errore all'istanziazione.
-- [ ] Aggiornare `llm_factory` in `AppContext` (Step 8-ter): `Callable[[str], LLMStrategy]` prende un model name (es. `"openai/gpt-4o-mini"`), istanzia la strategy corrispondente con caching.
-- [ ] Aggiungere `model` al `params_schema` del registry di [80-retrieval.md](80-retrieval.md) per tutte le strategie `requires_llm = True`.
-- [ ] Scrivere test:
+- [x] **Chiavi API**: stessa regola di `[embedding]` — mai nei TOML. Env var o `UserSettings` (`~/.config/KnowledgeSpace/config.json`). `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `COHERE_API_KEY`. Per provider locali: `OLLAMA_BASE_URL`, `LLAMACPP_BASE_URL`, `VLLM_BASE_URL` (default endpoint noto).
+- [ ] **Fallback**: stage con `requires_llm = True` ma modello non specificato → fallback a `identity` con warning (pre-retrieval, post-retrieval). `hyde_model` o `extraction_model` assenti → errore esplicito (non degradabili). Chiave API mancante → errore all'istanziazione. *(parziale: l'errore all'istanziazione per chiave API mancante è implementato in `llm_factory`; il fallback `identity` con warning e gli errori di `hyde_model`/`extraction_model` assenti arrivano con le strategie di retrieval Step 8 e GraphRAG Fase 1C)*
+- [ ] Aggiornare `llm_factory` in `AppContext` (Step 8-ter): `Callable[[str], LLMStrategy]` prende un model name (es. `"openai/gpt-4o-mini"`), istanzia la strategy corrispondente con caching. *(la factory helper esiste in `knowledge_base/strategies/llm.py` con caching; il wiring in `AppContext` arriva con Step 8-ter)*
+- [ ] Aggiungere `model` al `params_schema` del registry di [80-retrieval.md](80-retrieval.md) per tutte le strategie `requires_llm = True`. *(arriva con Step 8 — registry retrieval)*
+- [x] Scrivere test:
   - `mock/echo` restituisce l'ultimo messaggio utente (verifica interfaccia).
   - `mock/fixed` restituisce "Risposta mock".
   - `llm_factory("mock/fixed")` → restituisce strategy, `generate()` funziona.
