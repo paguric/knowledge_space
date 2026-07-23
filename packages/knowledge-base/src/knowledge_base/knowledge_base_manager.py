@@ -1,0 +1,765 @@
+"""Logica operativa sulle basi di conoscenza: indicizzazione vettoriale.
+
+Il :class:`KnowledgeBaseManager` orchestra la pipeline
+``ingestion → chunking → embedding → Chroma`` su un singolo file e
+mantiene lo stato (:class:`WorkspaceConfig` ↔ ``state.json``). Incapsula
+ Chroma e le strategie: nessuna variabile globale, tutto iniettato al
+costruttore. Dipendenze strette: :class:`BaseConfig`, i registry delle
+strategie (Step 4/5/6) e un embedder factory.
+
+ID deterministico (Spec ``docs/91a-roadmap-fase1-ingestione.md`` Step 7):
+
+- ``file_id`` (UUID4) assegnato alla prima indicizzazione, stabile per
+  la vita del file (disaccoppia dal nome sorgente → rename/rename non
+  cambia chunk_id, vedi ``docs/45-indexing-incrementale.md`` trigger 2).
+- ``chunk_id = f"{base_name}::{file_id}::{i}"`` → chiave Chroma.
+
+Persistenza chunk su disco (prodotto derivato, non editabile):
+
+``<base>/.knowledge-space/chunks/<file_id>/<file_id>_chunk_<i>.md``
+
+Il manager riscrive solo i chunk con ``content_hash`` cambiato (trigger
+1, approccio B per insert in mezzo).
+
+Blocco cambio config (trigger 3/4/5): all'avvio ``check_config_change``
+confronta ``BaseConfig`` con i valori registrati ``KnowledgeBase.embedding_model``
+/ ``chunking_method`` / ``ingestion_library`` se la collection Chroma
+non è vuota.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import logging
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
+
+from knowledge_base.base_config import (
+    BaseConfig,
+    ConfigChangeBlockedError,
+    check_config_change_blocked,
+)
+from knowledge_base.models import (
+    ChunkRef,
+    FileEntry,
+    KnowledgeBase,
+    Workspace,
+)
+from knowledge_base.persistence import WorkspaceConfig
+from knowledge_base.strategies import (
+    EmbeddingStrategy,
+    chunking_registry,
+    embedding_registry,
+    ingestion_registry,
+)
+from knowledge_base.strategies.embedding import (
+    ChunkTooLongError,
+    validate_chunk_context,
+)
+
+logger = logging.getLogger(__name__)
+
+
+# --------------------------------------------------------------------------- #
+# Tipi factory iniettabili
+# --------------------------------------------------------------------------- #
+
+
+# Dato BaseConfig, restituisce la strategy di ingestion istanziata.
+IngestionFactory = Callable[[BaseConfig], Any]
+ChunkingFactory = Callable[[BaseConfig, Optional[EmbeddingStrategy]], Any]
+EmbedderFactory = Callable[[str], EmbeddingStrategy]
+
+ConfigPathFor = Callable[[Path], Path]
+
+
+# --------------------------------------------------------------------------- #
+# Eccezioni
+# --------------------------------------------------------------------------- #
+
+
+class BaseNotFoundError(KeyError):
+    """Sollevata quando una base non è presente nel workspace."""
+
+
+class FileAlreadyIndexedError(ValueError):
+    """Sollevata quando ``add_file`` riceve un path già indicizzato."""
+
+
+class ChunkPersistError(RuntimeError):
+    """Sollevata quando un chunk supera il limite ``max_context_tokens``."""
+
+
+# --------------------------------------------------------------------------- #
+# KnowledgeBaseManager
+# --------------------------------------------------------------------------- #
+
+
+def _default_ingestion_factory(config: BaseConfig) -> Any:
+    """Costruisce la strategy di ingestion dal registry (Step 4)."""
+    cls = ingestion_registry.get(config.ingestion.library)
+    return cls(**(config.ingestion.params or {}))
+
+
+def _default_chunking_factory(
+    config: BaseConfig,
+    embedder: Optional[EmbeddingStrategy],
+) -> Any:
+    """Costruisce la strategy di chunking dal registry (Step 5).
+
+    Per strategie con ``requires_embedding=True`` passa l'embedder (es.
+    ``semantic``); altrimenti ``embedder`` è ignorato.
+    """
+    cls = chunking_registry.get(config.chunking.method)
+    chunk_params: Dict[str, Any] = {
+        "chunk_size": config.chunking.chunk_size,
+        "chunk_overlap": config.chunking.chunk_overlap,
+        "separator": config.chunking.separator,
+    }
+    chunk_params.update(config.chunking.params or {})
+    if cls.requires_embedding:
+        chunk_params["embedder"] = embedder
+    return cls(**chunk_params)
+
+
+def _default_embedder_factory(model_name: str) -> EmbeddingStrategy:
+    """Costruisce l'embedder dal registry (Step 6).
+
+    Risolve il caso ``device``/``api_base`` via env var del modello
+    specifico: per semplicità la factory di default non implementa questi
+    override (gestiti da ``AppContext`` Step 8-ter). L'istanza è creata
+    dal registry come già fatto per i test di embedding.
+    """
+    cls = embedding_registry.get(model_name)
+    return cls()
+
+
+class KnowledgeBaseManager:
+    """Pipeline ingestion → chunking → embedding → Chroma per una base.
+
+    Il manager opera su un singolo :class:`Workspace` e persiste lo stato
+    via ``WorkspaceConfig`` (``config.json`` del workspace). L'istanza di
+    Chroma è creata on demand per base e incapsulata: nessuna variabile
+    globale.
+
+    Le factory (ingestion/chunking/embedder) sono iniettabili per
+    agevolare i test con mock; i default usano i registry di Step 4/5/6.
+    """
+
+    def __init__(
+        self,
+        workspace: Workspace,
+        config_loader: Optional[Callable[[str], BaseConfig]] = None,
+        *,
+        config_path_for: ConfigPathFor,
+        chroma_path: Optional[Path] = None,
+        ingestion_factory: IngestionFactory = _default_ingestion_factory,
+        chunking_factory: ChunkingFactory = _default_chunking_factory,
+        embedder_factory: EmbedderFactory = _default_embedder_factory,
+        dot_folder_name: str = ".knowledge-space",
+    ) -> None:
+        self._workspace = workspace
+        self._config_loader = config_loader
+        self._config_path_for = config_path_for
+        self._chroma_path = Path(chroma_path) if chroma_path else None
+        self._ingestion_factory = ingestion_factory
+        self._chunking_factory = chunking_factory
+        self._embedder_factory = embedder_factory
+        self._dot = dot_folder_name
+        # cache embedder per model_name (retry dalla factory)
+        self._embedder_cache: Dict[str, EmbeddingStrategy] = {}
+
+    # ..................................................................... #
+    # Helper persistenza
+    # ..................................................................... #
+
+    def _ws_config(self) -> WorkspaceConfig:
+        return WorkspaceConfig(
+            config_path=self._config_path_for(Path(self._workspace.path)),
+            workspace_path=Path(self._workspace.path),
+        )
+
+    def _save(self) -> None:
+        from knowledge_base.models import WorkspaceConfigData
+
+        self._ws_config().save(
+            WorkspaceConfigData(
+                version=1,
+                domains=self._workspace.domains,
+                bases=self._workspace.bases,
+            )
+        )
+
+    def _load_base_by_name(self, base_name: str) -> KnowledgeBase:
+        if base_name not in self._workspace.bases:
+            raise BaseNotFoundError(base_name)
+        return self._workspace.bases[base_name]
+
+    def _load_base_config(self, base_name: str) -> BaseConfig:
+        if self._config_loader is None:
+            raise RuntimeError(
+                "Nessun config_loader fornito a KnowledgeBaseManager: "
+                "non posso leggere BaseConfig."
+            )
+        return self._config_loader(base_name)
+
+    def _get_embedder(self, model_name: str) -> EmbeddingStrategy:
+        if model_name in self._embedder_cache:
+            return self._embedder_cache[model_name]
+        emb = self._embedder_factory(model_name)
+        self._embedder_cache[model_name] = emb
+        return emb
+
+    # ..................................................................... #
+    # Path helpers (chroma + chunk su disco)
+    # ..................................................................... #
+
+    def _chroma_client(self):
+        from chromadb import PersistentClient
+
+        path = self._chroma_path or self._default_chroma_path()
+        path.mkdir(parents=True, exist_ok=True)
+        return PersistentClient(path=str(path))
+
+    def _default_chroma_path(self) -> Path:
+        return Path(self._workspace.path) / self._dot / "chroma"
+
+    def _base_dot_dir(self, base_name: str) -> Path:
+        return Path(self._workspace.path) / base_name / self._dot
+
+    def _chunks_dir(self, base_name: str, file_id: str) -> Path:
+        return self._base_dot_dir(base_name) / "chunks" / file_id
+
+    def _chunk_path(self, base_name: str, file_id: str, index: int) -> Path:
+        return self._chunks_dir(base_name, file_id) / f"{file_id}_chunk_{index}.md"
+
+    # ...................................................................... #
+    # Conversione langchain → Chroma nativo
+    # ...................................................................... #
+    #
+    # Per mantenere il blockrate di test basso, accediamo alla collection
+    # nativa di ChromaDB (``client.get_or_create_collection``) anziché alla
+    # wrapper langchain: così il manager controlla direttamente metadata e
+    # IDs in upsert/delete.
+
+    def _collection_name(self, base_name: str) -> str:
+        return f"ks_{base_name}"
+
+    def _get_collection(self, base_name: str, dim: int):
+        client = self._chroma_client()
+        metadata = {"hnsw:space": "cosine"}
+        return client.get_or_create_collection(
+            name=self._collection_name(base_name),
+            metadata=metadata,
+        )
+
+    def _collection_count(self, base_name: str) -> int:
+        try:
+            client = self._chroma_client()
+            col = client.get_collection(name=self._collection_name(base_name))
+            return col.count()
+        except Exception:
+            return 0
+
+    def _collection_non_empty(self, base_name: str) -> bool:
+        return self._collection_count(base_name) > 0
+
+    # ..................................................................... #
+    # CRUD base
+    # ..................................................................... #
+
+    def add(self, base_path: Path) -> KnowledgeBase:
+        """Registra una nuova base (cartella). Restituisce il modello.
+
+        Solleva :class:`ValueError` se la cartella non esiste o la base è
+        già registrata."""
+        p = Path(base_path)
+        if not p.is_dir():
+            raise ValueError(f"La cartella base non esiste: {p}")
+        name = p.name
+        if name in self._workspace.bases:
+            raise ValueError(f"Base '{name}' già registrata")
+        kb = KnowledgeBase(path=p)
+        self._workspace.bases[name] = kb
+        self._save()
+        return kb
+
+    def remove(self, base_name: str) -> bool:
+        """Rimuove una base dal workspace e cancella la collection Chroma.
+
+        Restituisce ``True`` se era presente. I chunk su disco NON sono
+        cancellati qui: l'utente potrebbe volerli recuperare; il watcher o
+        una ``purge_base`` futura provvederà. Modello conservativo.
+        """
+        if base_name not in self._workspace.bases:
+            return False
+        # Drop collection Chroma
+        try:
+            client = self._chroma_client()
+            client.delete_collection(name=self._collection_name(base_name))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Delete collection %s fallito: %s", base_name, exc)
+        del self._workspace.bases[base_name]
+        self._save()
+        return True
+
+    # ..................................................................... #
+    # Blocco cambio config (trigger 3/4/5)
+    # ..................................................................... #
+
+    def check_config_change(self, base_name: str) -> None:
+        """Verifica il blocco cambio config all'avvio.
+
+        Confronta ``BaseConfig`` caricata con i valori registrati
+        ``embedding_model``/``chunking_method``/``ingestion_library`` se la
+        collection Chroma della base non è vuota. Solleva
+        :class:`ConfigChangeBlockedError` se il cambio richiede reindex
+        esplicito.
+        """
+        kb = self._load_base_by_name(base_name)
+        config = self._load_base_config(base_name)
+        check_config_change_blocked(
+            base_name,
+            config,
+            registered_embedding_model=kb.embedding_model,
+            registered_chunking_method=kb.chunking_method,
+            registered_ingestion_library=kb.ingestion_library,
+            collection_non_empty=self._collection_non_empty(base_name),
+        )
+
+    # ..................................................................... #
+    # Pipeline principale: add_file
+    # ..................................................................... #
+
+    def add_file(self, base_name: str, source_path: Path) -> FileEntry:
+        """Esegue la pipeline completa su un file: ingestion → chunking →
+        embedding → upsert Chroma. Persiste chunk su disco e stato su
+        ``config.json``.
+
+        Idempotente: se il file è già indicizzato con stesso ``content_hash``
+        → no-op (restituisce il ``FileEntry`` esistente). Se il contenuto è
+        cambiato, esegue il diff incrementale (trigger 1, approccio B).
+
+        Genera ``file_id`` alla prima indicizzazione (UUID4, stabile).
+
+        Solleva :class:`ChunkPersistError` (wrap
+        :class:`ChunkTooLongError`) se un chunk eccede il ``max_context_tokens``
+        del modello di embedding.
+        """
+        kb = self._load_base_by_name(base_name)
+        src = Path(source_path)
+        if not src.is_file():
+            raise FileNotFoundError(f"File sorgente non trovato: {src}")
+
+        config = self._load_base_config(base_name)
+        # Blocco cambio config (trigger 3/4/5) — controlla prima di operare.
+        self.check_config_change(base_name)
+
+        key = src.name
+        existing = kb.files.get(key)
+
+        # 1. Ingestion
+        ingestion = self._ingestion_factory(config)
+        markdown = ingestion.convert(src)
+        new_md_hash = _sha256(markdown)
+
+        # Short-circuit: file già indicizzato e contenuto invariato → no-op.
+        if existing is not None and existing.content_hash == new_md_hash:
+            return existing
+
+        # 2. Chunking (embedder serve solo per strategie semantic)
+        embedder = self._get_embedder(config.embedding.model)
+        chunker = self._chunking_factory(config, embedder)
+        raw_chunks = chunker.split(markdown)
+        new_chunk_hashes = [_sha256(c["text"]) for c in raw_chunks]
+
+        # 3. Validazione lunghezza chunk (Step 7 bullet + embedding.validate)
+        for i, c in enumerate(raw_chunks):
+            try:
+                validate_chunk_context(
+                    c["text"],
+                    embedder.metadata.max_context_tokens,
+                    base_name=base_name,
+                    file_name=src.name,
+                    chunk_index=i,
+                )
+            except ChunkTooLongError as exc:
+                raise ChunkPersistError(str(exc)) from exc
+
+        # 4. Determina file_id: nuovo se è prima indicizzazione.
+        if existing is not None and existing.file_id:
+            file_id = existing.file_id
+        else:
+            file_id = uuid.uuid4().hex
+
+        # 5. Persistenza chunk su disco + Chroma upsert (diff incrementale)
+        self._persist_chunks(base_name, file_id, src.name, raw_chunks, new_chunk_hashes, existing)
+
+        # 6. Update modello FileEntry
+        if existing is None:
+            existing = FileEntry(
+                mtime=src.stat().st_mtime,
+                added=_now_iso(),
+                file_id=file_id,
+                name=src.name,
+                content_hash=new_md_hash,
+                active=True,
+                chunks=[
+                    ChunkRef(index=i, active=True, content_hash=new_chunk_hashes[i])
+                    for i in range(len(raw_chunks))
+                ],
+            )
+            kb.files[key] = existing
+        else:
+            existing.mtime = src.stat().st_mtime
+            existing.file_id = file_id
+            existing.name = src.name
+            existing.content_hash = new_md_hash
+            existing.chunks = [
+                ChunkRef(index=i, active=True, content_hash=new_chunk_hashes[i])
+                for i in range(len(raw_chunks))
+            ]
+
+        # 7. Registrazione config attiva nella base (per il blocco cambio config).
+        kb.embedding_model = config.embedding.model
+        kb.chunking_method = config.chunking.method
+        kb.ingestion_library = config.ingestion.library
+
+        self._save()
+        return existing
+
+    # ..................................................................... #
+    # Persistenza chunk su disco + Chroma upsert diff
+    # ..................................................................... #
+
+    def _persist_chunks(
+        self,
+        base_name: str,
+        file_id: str,
+        file_name: str,
+        new_chunks: List[Dict[str, Any]],
+        new_hashes: List[str],
+        existing: Optional[FileEntry],
+    ) -> None:
+        """Scrive i chunk su disco, fa upsert Chroma (solo cambiati) e
+        cancella chunk/record Chroma scomparsi.
+
+        Implementa il **diff incrementale** (trigger 1): un chunk è
+        ri-embeddato/upsertato solo se il ``content_hash`` differisce da
+        quello registrato per lo stesso indice. Approscc B per insert in
+        mezzo (shift accettato).
+        """
+        # Mappa indice→content_hash dei vecchi chunk (se presenti).
+        old_hashes: Dict[int, str] = {}
+        if existing is not None:
+            for c in existing.chunks:
+                if c.content_hash is not None:
+                    old_hashes[c.index] = c.content_hash
+
+        # Prepara testi + ids + metadati per Chroma.
+        texts_to_upsert: List[str] = []
+        ids_to_upsert: List[str] = []
+        metas_to_upsert: List[Dict[str, Any]] = []
+        # Embedding via embedder (richiede lo stesso vector space del modello
+        # registrato — l'embedder cache garantisce consistenza intra-run).
+        config = self._load_base_config(base_name)
+        embedder = self._get_embedder(config.embedding.model)
+        col = self._get_collection(base_name, dim=embedder.metadata.dim)
+
+        new_count = len(new_chunks)
+        old_max_index = max(old_hashes) if old_hashes else -1
+
+        # 1. Upsert dei chunk nuovi/cambiati
+        for i, chunk in enumerate(new_chunks):
+            new_hash = new_hashes[i]
+            old_hash = old_hashes.get(i)
+
+            # Scrive su disco solo se cambiato (o nuovo).
+            chunk_path = self._chunk_path(base_name, file_id, i)
+            if old_hash != new_hash:
+                chunk_path.parent.mkdir(parents=True, exist_ok=True)
+                chunk_path.write_text(chunk["text"], encoding="utf-8")
+
+                chunk_id = f"{base_name}::{file_id}::{i}"
+                metadata = {
+                    "chunk_id": chunk_id,
+                    "base_name": base_name,
+                    "file_name": file_name,
+                    "file_id": file_id,
+                    "chunk_index": i,
+                    "content_hash": new_hash,
+                }
+                texts_to_upsert.append(chunk["text"])
+                ids_to_upsert.append(chunk_id)
+                metas_to_upsert.append(metadata)
+
+        # Embedding + upsert Chroma batch (se ci sono chunk cambiati).
+        if texts_to_upsert:
+            vectors = embedder.embed(texts_to_upsert)
+            col.upsert(
+                ids=ids_to_upsert,
+                embeddings=vectors,
+                documents=texts_to_upsert,
+                metadatas=metas_to_upsert,
+            )
+
+        # 2. Cancella chunk oltre la nuova lunghezza (file accorciato)
+        if old_max_index >= new_count:
+            ids_to_delete = [
+                f"{base_name}::{file_id}::{i}"
+                for i in range(new_count, old_max_index + 1)
+            ]
+            try:
+                col.delete(ids=ids_to_delete)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Delete chunk %s fallito: %s", ids_to_delete, exc)
+            for i in range(new_count, old_max_index + 1):
+                p = self._chunk_path(base_name, file_id, i)
+                if p.exists():
+                    p.unlink()
+
+    # ..................................................................... #
+    # Remove file
+    # ..................................................................... #
+
+    def remove_file(self, base_name: str, source_name: str) -> bool:
+        """Rimuove un file dalla base: cancella chunk da disco e i suoi
+        record Chroma. Restituisce ``True`` se era presente.
+        """
+        kb = self._load_base_by_name(base_name)
+        if source_name not in kb.files:
+            return False
+        entry = kb.files[source_name]
+        file_id = entry.file_id
+        if file_id:
+            # Cancella record Chroma
+            try:
+                col = self._chroma_client().get_collection(
+                    name=self._collection_name(base_name)
+                )
+                ids = [f"{base_name}::{file_id}::{i}" for i in range(len(entry.chunks))]
+                if ids:
+                    col.delete(ids=ids)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Delete Chroma records fallito: %s", exc)
+            # Cancella cartella chunk
+            chunks_dir = self._chunks_dir(base_name, file_id)
+            if chunks_dir.exists():
+                for p in chunks_dir.iterdir():
+                    p.unlink()
+                chunks_dir.rmdir()
+        del kb.files[source_name]
+        self._save()
+        return True
+
+    # ..................................................................... #
+    # Sync (mtime check)
+    # ..................................................................... #
+
+    def sync(self, base_name: str) -> KnowledgeBase:
+        """Allinea una base col filesystem:
+
+        - Aggiunge (in ``pending``) i file nuovi registrandone il path
+          (l'effettiva indicizzazione avviene con :meth:`add_file`).
+        - Rimuove i file la cui origine su disco è scomparsa.
+        - Rileva file modificati (mtime cambiato) e li marca per re-index.
+
+        Per la Fase 1A questo sync opera solo a livello ``mtime``/presenza:
+        l'azione di re-ingest esplicita è delegata a ``add_file``
+        (chiamato esplicitamente dalla CLI o dal watcher). La sync registra
+        lo stato ma non attiva pipeline pesanti.
+        """
+        kb = self._load_base_by_name(base_name)
+        base_path = kb.path
+        if not base_path.is_dir():
+            return kb
+
+        # 1. File nuovi
+        seen: set[str] = set()
+        for entry in base_path.iterdir():
+            if not entry.is_file() or entry.name.startswith("."):
+                continue
+            seen.add(entry.name)
+            if entry.name not in kb.files:
+                # Nuovo file: lasciamo la registrazione all'add_file esplicito.
+                # Qui ci limitiamo a loggare.
+                logger.info("File nuovo scoperto in %s: %s", base_name, entry.name)
+                continue
+            # 2. File esistente: mtime check
+            file_entry = kb.files[entry.name]
+            try:
+                current_mtime = entry.stat().st_mtime
+            except OSError:
+                continue
+            if file_entry.mtime != current_mtime:
+                logger.info(
+                    "File modificato (mtime) in %s: %s — re-index suggerito",
+                    base_name,
+                    entry.name,
+                )
+                # Non attiviamo pipeline qui: l'utente/CLI chiamerà add_file.
+
+        # 3. File scomparsi
+        for name in list(kb.files):
+            if name not in seen:
+                # Cancella chunk + Chroma records
+                self._remove_file_internal(kb, base_name, name)
+
+        self._save()
+        return kb
+
+    def _remove_file_internal(
+        self, kb: KnowledgeBase, base_name: str, source_name: str
+    ) -> None:
+        """Come :meth:`remove_file` ma opera in-place sul modello senza
+        ``_save()`` — usato da :meth:`sync` per batch."""
+        entry = kb.files.get(source_name)
+        if entry is None:
+            return
+        file_id = entry.file_id
+        if file_id:
+            try:
+                col = self._chroma_client().get_collection(
+                    name=self._collection_name(base_name)
+                )
+                ids = [f"{base_name}::{file_id}::{i}" for i in range(len(entry.chunks))]
+                if ids:
+                    col.delete(ids=ids)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Delete Chroma records (sync) fallito: %s", exc)
+            chunks_dir = self._chunks_dir(base_name, file_id)
+            if chunks_dir.exists():
+                for p in chunks_dir.iterdir():
+                    p.unlink()
+                chunks_dir.rmdir()
+        del kb.files[source_name]
+
+    # ..................................................................... #
+    # Move / rename senza recompute (trigger 2)
+    # ..................................................................... #
+
+    def rename_file(
+        self,
+        base_name: str,
+        old_name: str,
+        new_path: Path,
+    ) -> FileEntry:
+        """Aggiorna path/nome di un file già indicizzato senza ricalcolare
+        embedding (trigger 2 di ``docs/45-indexing-incrementale.md``).
+
+        Aggiorna ``FileEntry.name`` nello stato e i metadati Chroma
+        (``file_name``) dei chunk del file. ``chunk_id`` immutato (basato
+        su ``file_id``). Zero re-embed.
+
+        Solleva :class:`FileAlreadyIndexedError` se il nuovo nome coincide
+        con un file già presente nella base (gestito come add separato).
+        """
+        kb = self._load_base_by_name(base_name)
+        if old_name not in kb.files:
+            raise FileNotFoundError(
+                f"File '{old_name}' non indicizzato nella base '{base_name}'"
+            )
+        entry = kb.files[old_name]
+        new_name = Path(new_path).name
+        if new_name != old_name and new_name in kb.files:
+            raise FileAlreadyIndexedError(
+                f"Il nome target '{new_name}' è già indicizzato nella base"
+            )
+
+        # 1. Update metadati Chroma (file_name) — chunk_id immutato
+        file_id = entry.file_id
+        if file_id:
+            try:
+                col = self._chroma_client().get_collection(
+                    name=self._collection_name(base_name)
+                )
+                ids = [f"{base_name}::{file_id}::{i}" for i in range(len(entry.chunks))]
+                if ids:
+                    col.update(
+                        ids=ids,
+                        metadatas=[{"file_name": new_name}] * len(ids),
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Update metadata Chroma (rename) fallito: %s", exc)
+
+        # 2. Update modello
+        entry.name = new_name
+        entry.mtime = Path(new_path).stat().st_mtime if Path(new_path).exists() else entry.mtime
+        if new_name != old_name:
+            del kb.files[old_name]
+            kb.files[new_name] = entry
+        self._save()
+        return entry
+
+    # ..................................................................... #
+    # Migrazione retroattiva state.json
+    # ..................................................................... #
+
+    def migrate_state(self) -> None:
+        """Migra un ``config.json`` legacy (pre-Step 7) al nuovo schema:
+        - genera ``file_id`` mancanti (UUID4);
+        - rigenera ``chunk_id`` registro (invarianti: basati su ``file_id``);
+        - calcola ``content_hash`` per i file senza;
+        - propaga ``embedding_model``/``chunking_method``/``ingestion_library``
+          registrati (se mancanti, restano ``None``: la prima ``add_file``
+          provvede a popolarli);
+        - garantisce la sezione ``graph`` esiste (default placeholder).
+
+        Idempotente: rieseguire non cambia i dati già migrati.
+        """
+        # Garantisce la sezione graph a livello workspace (placeholder)
+        # (gestita dal WorkspaceConfig stesso in Fase 1C — qui ci limitiamo
+        # ai campi base.)
+        for kb in self._workspace.bases.values():
+            for name, entry in kb.files.items():
+                if not entry.file_id:
+                    entry.file_id = uuid.uuid4().hex
+                if not entry.name:
+                    entry.name = name
+                # content_hash: se manca e il chunk su disco è presente, lo
+                # ricalcoliamo dal testo — altrimenti resta None (add_file lo
+                # ricalcolerà).
+                if entry.content_hash is None:
+                    md = self._read_chunked_markdown(kb, entry.file_id, len(entry.chunks))
+                    if md is not None:
+                        entry.content_hash = _sha256(md)
+                # ChunkRef: garantisce content_hash presente (se possibile).
+                for c in entry.chunks:
+                    if c.content_hash is None and entry.file_id:
+                        chunk_p = self._chunk_path(
+                            kb.path.name, entry.file_id, c.index
+                        )
+                        if chunk_p.exists():
+                            c.content_hash = _sha256(chunk_p.read_text(encoding="utf-8"))
+        self._save()
+
+    def _read_chunked_markdown(
+        self, kb: KnowledgeBase, file_id: Optional[str], n_chunks: int
+    ) -> Optional[str]:
+        """Ricostruisce il markdown originale concatenando i chunk su
+        disco (per la migrazione ``content_hash`` a livello file)."""
+        if not file_id or n_chunks == 0:
+            return None
+        base_name = kb.path.name
+        parts: List[str] = []
+        for i in range(n_chunks):
+            p = self._chunk_path(base_name, file_id, i)
+            if not p.exists():
+                return None
+            parts.append(p.read_text(encoding="utf-8"))
+        return "\n\n".join(parts)
+
+
+# --------------------------------------------------------------------------- #
+# Helpers
+# --------------------------------------------------------------------------- #
+
+
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")

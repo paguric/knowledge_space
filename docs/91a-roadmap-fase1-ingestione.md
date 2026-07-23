@@ -127,26 +127,26 @@ A differenza dell'embedding (configurabile per-base in `[embedding].model`), **n
 
 Implementare la logica operativa sulle basi di conoscenza, orchestrando ingestion → chunking → embedding → Chroma. Include `file_id` (UUID stabile per rename), diff incrementale via `content_hash`, e gestione move/rename senza recompute.
 
-- [ ] **Estendere modelli Pydantic** (prerequisito per grafo, ma implementato qui perché modifica la pipeline di indicizzazione):
+- [x] **Estendere modelli Pydantic** (prerequisito per grafo, ma implementato qui perché modifica la pipeline di indicizzazione):
   - `FileEntry`: aggiungere `file_id: str` (UUID4 generato alla prima indicizzazione, stabile per la vita del file).
   - `ChunkRef`: rimuovere `edited`/`edited_mtime`. `chunk_id = f"{base_name}::{file_id}::{i}"`.
   - `KnowledgeBase`: aggiungere `chunking_method: Optional[str]` e `ingestion_library: Optional[str]` (per blocco cambio config).
   - `WorkspaceConfigData` / `GraphConfigData`: sezione `graph`.
-- [ ] Creare `KnowledgeBaseManager`:
+- [x] Creare `KnowledgeBaseManager`:
   - `add(workspace, path)` / `remove(workspace, name)`
   - `add_file(kb, path)` → pipeline: ingestion → chunking → embedding → vector store
   - `remove_file(kb, path)` → rimozione da indice e vector store
   - `sync(kb)` → allinea file con filesystem (mtime check)
-- [ ] Il manager legge `BaseConfig` (Step 3) per istanziare le strategy corrette.
-- [ ] **Validazione lunghezza chunk vs `max_context_tokens`** dell'embedding: errore esplicito se un chunk eccede il limite del modello.
-- [ ] Encapsulare Chroma/langchain nel manager (nessuna variabile globale).
-- [ ] **ID deterministico per chunk**: `chunk_id = f"{base_name}::{file_id}::{i}"` (usato come chiave in Chroma e come `Neo4jNode.id`). Disaccoppia dal filename: rename del file sorgente non cambia `chunk_id` (vedi trigger 2 di [45-indexing-incrementale.md](45-indexing-incrementale.md)).
-- [ ] **Salvataggio chunk su disco obbligatorio**: `<base>/.knowledge-space/chunks/<file_id>/<file_id>_chunk_<i>.md` (prodotto derivato, non editabile dall'utente). Il manager riscrive solo i chunk con `content_hash` cambiato.
-- [ ] **Estensione metadata Chroma**: `chunk_id`, `base_name`, `file_name`, `file_id`, `chunk_index`, `content_hash`; `collection.upsert` (no `add_documents(uuid4())`). Niente `edited`/`edited_mtime`.
-- [ ] **Diff incrementale su re-ingest** (trigger 1 di [45-indexing-incrementale.md](45-indexing-incrementale.md)): dopo re-chunk, confronta `content_hash` dei nuovi chunk con quelli vecchi. Solo chunk con hash diverso vengono re-embeddati e upsertati in Chroma. Chunk invariati saltati. Su inserimento in mezzo al documento, approccio **B** (shift accettato, re-embed da quel punto in poi).
-- [ ] **Move/rename senza recompute** (trigger 2 di [45-indexing-incrementale.md](45-indexing-incrementale.md)): update `FileEntry.path`/`FileEntry.name` + metadata Chroma (file_name). `chunk_id` immutato (basato su `file_id`). Zero re-embed.
-- [ ] **Migrazione retroattiva** dei `state.json` esistenti: `file_id` (generato), `chunk_id` (rigenerato), `content_hash` (calcolato), `embedding_model`, `chunking_method`, `ingestion_library`, sezione `graph`.
-- [ ] Scrivere test per: ingestion, rimozione, sync mtime, diff incrementale, move/rename idempotente, errore `max_context_tokens`, idempotenza (add_file × 2).
+- [x] Il manager legge `BaseConfig` (Step 3) per istanziare le strategy corrette.
+- [x] **Validazione lunghezza chunk vs `max_context_tokens`** dell'embedding: errore esplicito se un chunk eccede il limite del modello.
+- [x] Encapsulare Chroma/langchain nel manager (nessuna variabile globale).
+- [x] **ID deterministico per chunk**: `chunk_id = f"{base_name}::{file_id}::{i}"` (usato come chiave in Chroma e come `Neo4jNode.id`). Disaccoppia dal filename: rename del file sorgente non cambia `chunk_id` (vedi trigger 2 di [45-indexing-incrementale.md](45-indexing-incrementale.md)).
+- [x] **Salvataggio chunk su disco obbligatorio**: `<base>/.knowledge-space/chunks/<file_id>/<file_id>_chunk_<i>.md` (prodotto derivato, non editabile dall'utente). Il manager riscrive solo i chunk con `content_hash` cambiato.
+- [x] **Estensione metadata Chroma**: `chunk_id`, `base_name`, `file_name`, `file_id`, `chunk_index`, `content_hash`; `collection.upsert` (no `add_documents(uuid4())`). Niente `edited`/`edited_mtime`.
+- [x] **Diff incrementale su re-ingest** (trigger 1 di [45-indexing-incrementale.md](45-indexing-incrementale.md)): dopo re-chunk, confronta `content_hash` dei nuovi chunk con quelli vecchi. Solo chunk con hash diverso vengono re-embeddati e upsertati in Chroma. Chunk invariati saltati. Su inserimento in mezzo al documento, approccio **B** (shift accettato, re-embed da quel punto in poi).
+- [x] **Move/rename senza recompute** (trigger 2 di [45-indexing-incrementale.md](45-indexing-incrementale.md)): update `FileEntry.path`/`FileEntry.name` + metadata Chroma (file_name). `chunk_id` immutato (basato su `file_id`). Zero re-embed.
+- [x] **Migrazione retroattiva** dei `state.json` esistenti: `file_id` (generato), `chunk_id` (rigenerato), `content_hash` (calcolato), `embedding_model`, `chunking_method`, `ingestion_library`, sezione `graph`.
+- [x] Scrivere test per: ingestion, rimozione, sync mtime, diff incrementale, move/rename idempotente, errore `max_context_tokens`, idempotenza (add_file × 2).
 
 ### Step 8-ter: `AppContext` e bootstrap dell'applicazione
 
