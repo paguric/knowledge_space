@@ -53,6 +53,7 @@ Interfaccia a riga di comando (Typer) per gestire workspace, domini, basi, file,
 | Comando | Descrizione |
 |---------|-------------|
 | `base add <path>` | Aggiunge base |
+| `base add <path> --sync` | Aggiunge base e indicizza i file automaticamente |
 | `base list` | Elenca basi |
 | `base remove <name>` | Rimuove base |
 | `base info <name>` | Config effettiva, modello, n. file/chunk |
@@ -62,9 +63,10 @@ Interfaccia a riga di comando (Typer) per gestire workspace, domini, basi, file,
 
 | Comando | Descrizione |
 |---------|-------------|
-| `file add <path>` | Forza ingestion |
-| `file list [--base <name>]` | Elenca file |
-| `file remove <path>` | Rimuove da indice |
+| `file add <base> <path>` | Indicizza un singolo file |
+| `file list [--base <name>]` | Elenca file indicizzati |
+| `file sync [<base>]` | Scopre e indicizza tutti i nuovi file |
+| `file remove <base> <name>` | Rimuove da indice |
 | `file info <path>` | mtime, n. chunk, file_id |
 | `file activate/deactivate <path>` | Attiva/disattiva |
 
