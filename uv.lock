@@ -1090,6 +1090,7 @@ source = { editable = "." }
 dependencies = [
     { name = "knowledge-base" },
     { name = "mcp-server" },
+    { name = "typer" },
     { name = "watchdog" },
 ]
 
@@ -1111,6 +1112,7 @@ requires-dist = [
     { name = "knowledge-base", editable = "packages/knowledge-base" },
     { name = "mcp-server", editable = "packages/mcp-server" },
     { name = "openai", marker = "extra == 'remote'", specifier = ">=1.0.0" },
+    { name = "typer", specifier = ">=0.15.0" },
     { name = "voyageai", marker = "extra == 'remote'", specifier = ">=0.1.0" },
     { name = "watchdog", specifier = ">=6.0.0" },
 ]

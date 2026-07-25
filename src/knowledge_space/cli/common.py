@@ -1,0 +1,151 @@
+"""Helper comuni per la CLI.
+
+Fornisce funzioni di utilità usate da tutti i comandi:
+- Costruzione ``AppContext`` temporaneo
+- Risoluzione workspace (da path o ``last_workspace``)
+- Formattazione output (tabella, JSON)
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+from typing import Any, List, Optional
+
+import typer
+
+from knowledge_base.models import Workspace
+from knowledge_space.bootstrap import build_app_context
+from knowledge_space.context import AppContext
+from knowledge_space.runtime_paths import RuntimePaths
+
+
+def get_context(verbose: bool = False) -> AppContext:
+    """Crea un ``AppContext`` temporaneo per il comando corrente.
+
+    Args:
+        verbose: se ``True``, imposta logging DEBUG.
+
+    Returns:
+        ``AppContext`` completamente cablato.
+    """
+    # Setup logging opzionale
+    if verbose:
+        import logging
+
+        logging.basicConfig(level=logging.DEBUG, format="%(name)s %(levelname)s: %(message)s")
+    else:
+        import logging
+
+        logging.basicConfig(level=logging.WARNING, format="%(message)s")
+
+    return build_app_context()
+
+
+def resolve_workspace_path(
+    ctx: AppContext,
+    workspace_path: Optional[str] = None,
+) -> Path:
+    """Risolvi il path del workspace.
+
+    Priorità:
+    1. ``workspace_path`` esplicito (flag ``--workspace``)
+    2. ``last_workspace`` dal GlobalIndex
+    3. Cwd-context: cerca ``.knowledge-space/`` dal cwd verso la root
+
+    Args:
+        ctx: contesto dell'applicazione.
+        workspace_path: path esplicito (opzionale).
+
+    Returns:
+        Path del workspace risolto.
+
+    Raises:
+        typer.Exit: se il workspace non può essere determinato.
+    """
+    if workspace_path:
+        p = Path(workspace_path).resolve()
+        if not p.is_dir():
+            typer.echo(f"Errore: workspace non trovato: {p}", err=True)
+            raise typer.Exit(1)
+        return p
+
+    # Prova last_workspace
+    last = ctx.workspace_manager.get_last_workspace()
+    if last and last.is_dir():
+        return last
+
+    # Cwd-context (stile git)
+    cwd = Path.cwd()
+    current = cwd
+    while True:
+        dot_dir = current / ctx.runtime_paths.dot_folder_name
+        if dot_dir.is_dir():
+            return current
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+
+    typer.echo(
+        "Errore: nessun workspace trovato. "
+        "Usa --workspace <path> o esegui 'ks workspace add <path>'.",
+        err=True,
+    )
+    raise typer.Exit(1)
+
+
+def get_workspace(
+    ctx: AppContext,
+    workspace_path: Optional[str] = None,
+) -> Workspace:
+    """Carica il workspace (da path o ``last_workspace``).
+
+    Args:
+        ctx: contesto dell'applicazione.
+        workspace_path: path esplicito (opzionale).
+
+    Returns:
+        ``Workspace`` caricato.
+    """
+    ws_path = resolve_workspace_path(ctx, workspace_path)
+    workspace = ctx.workspace_manager.load(ws_path)
+    ctx.workspace_manager.set_last_workspace(ws_path)
+    return workspace
+
+
+def output_json(data: Any) -> None:
+    """Stampa JSON formattato su stdout."""
+    typer.echo(json.dumps(data, indent=2, ensure_ascii=False, default=str))
+
+
+def output_table(headers: List[str], rows: List[List[str]]) -> None:
+    """Stampa tabella formattata su stdout.
+
+    Args:
+        headers: intestazioni colonne.
+        rows: righe di dati.
+    """
+    if not rows:
+        typer.echo("(nessun risultato)")
+        return
+
+    # Calcola larghezza colonse
+    col_widths = [len(h) for h in headers]
+    for row in rows:
+        for i, cell in enumerate(row):
+            if i < len(col_widths):
+                col_widths[i] = max(col_widths[i], len(str(cell)))
+
+    # Formatta header
+    header_line = "  ".join(h.ljust(col_widths[i]) for i, h in enumerate(headers))
+    typer.echo(header_line)
+    typer.echo("  ".join("-" * w for w in col_widths))
+
+    # Formatta righe
+    for row in rows:
+        line = "  ".join(
+            str(cell).ljust(col_widths[i]) for i, cell in enumerate(row)
+        )
+        typer.echo(line)

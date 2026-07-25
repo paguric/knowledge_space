@@ -11,6 +11,7 @@ dependencies = [
     "mcp-server",
     "knowledge-base",
     "watchdog>=6.0.0",
+    "typer>=0.15.0",
 ]
 
 [tool.uv.workspace]
@@ -24,7 +25,7 @@ mcp-server = { workspace = true }
 knowledge-base = { workspace = true }
 
 [project.scripts]
-knowledge-space = "knowledge_space:main"
+knowledge-space = "knowledge_space.cli:app"
 
 [build-system]
 requires = ["uv_build>=0.11.17,<0.12.0"]

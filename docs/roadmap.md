@@ -27,7 +27,7 @@ Tabella compatta di tutto il progetto. Leggi questa sezione per capire **dove si
 | 9 | Dataset sintetico legale | 2 | ✅ Fatto | Step 8 | — |
 | 10 | Profili di configurazione | 2 | ❌ Non iniziato | Step 3 | — |
 | 11 | Test end-to-end | 2 | ❌ Non iniziato | Step 8, 9 | — |
-| 12 | Logging su file | 2 | ❌ Non iniziato | Step 8-ter | — |
+| 12 | Logging su file | 2 | ✅ Fatto | Step 8-ter | — |
 | 13 | CLI con Typer | 3 | ❌ Non iniziato | Step 8-ter, 12 | — |
 | 14 | Server MCP | 3 | ❌ Non iniziato | Step 8-ter | — |
 | 15 | Backend REST | 4 | ❌ Non iniziato | Step 13 | — |
@@ -69,7 +69,7 @@ Step 6-bis ──────────┤
 1. **Step 10** — Profili di configurazione
 2. **Step 11** — Test end-to-end (richiede Step 9 ✅)
 3. **Step 6-bis residuali** — implementazioni reali LLM (OpenAI/Ollama)
-4. **Step 12** — Logging su file
+4. ~~**Step 12** — Logging su file~~ ✅
 
 ---
 
@@ -520,14 +520,17 @@ Pipeline completa (ingest → chunk → embed → retrieve) sul dataset legale p
 
 ---
 
-### Step 12 — Logging su file ❌
+### Step 12 — Logging su file ✅
 
 `setup_logging()` in `knowledge_space/logging.py`:
-- File handler: `RotatingFileHandler` su `<state_home>/logs/ks.log` (5 MB × 3 backup)
-- Console handler: INFO di default, DEBUG con `--verbose`
-- `KS_LOG_LEVEL` env var con precedenza
-- Uncaught exception hook
-- Silenzio librerie verbose (chromadb, sentence_transformers, urllib3)
+- File handler: `RotatingFileHandler` su `<log_dir>/ks.log` (5 MB × 3 backup), level DEBUG
+- Console handler: StreamHandler, level INFO di default, DEBUG con `--verbose`
+- `KS_LOG_LEVEL` env var con precedenza (file e console)
+- Format: `%(asctime)s [%(levelname)s] %(name)s: %(message)s` (file), più semplice per console
+- Uncaught exception hook: logga eccezioni non catturate come CRITICAL prima di sys.exit(1)
+- Silenzio librerie verbose: chromadb, sentence_transformers, urllib3, httpx, httpcore, watchdog
+- Idempotente: chiamate multiple non duplicano handler
+- 25 test
 
 ---
 
