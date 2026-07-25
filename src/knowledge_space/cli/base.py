@@ -26,6 +26,7 @@ app = typer.Typer(help="Gestione basi di conoscenza.")
 @app.command()
 def add(
     path: str = typer.Argument(help="Path della cartella base."),
+    sync: bool = typer.Option(False, "--sync", "-s", help="Indicizza automaticamente i file."),
     workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
 ) -> None:
@@ -36,7 +37,21 @@ def add(
 
     try:
         kb = manager.add(Path(path))
-        typer.echo(f"Base aggiunta: {Path(path).name}")
+        base_name = Path(path).name
+        typer.echo(f"Base aggiunta: {base_name}")
+
+        if sync:
+            indexed = 0
+            for entry in Path(path).iterdir():
+                if not entry.is_file() or entry.name.startswith("."):
+                    continue
+                try:
+                    file_entry = manager.add_file(base_name, entry)
+                    typer.echo(f"  {file_entry.name} → {len(file_entry.chunks)} chunk")
+                    indexed += 1
+                except Exception as exc:
+                    typer.echo(f"  {entry.name}: errore — {exc}", err=True)
+            typer.echo(f"{indexed} file indicizzati")
     except ValueError as exc:
         typer.echo(f"Errore: {exc}", err=True)
         raise typer.Exit(1)

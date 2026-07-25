@@ -105,6 +105,58 @@ def list_files(
 
 
 @app.command()
+def sync(
+    base_name: Optional[str] = typer.Argument(None, help="Nome della base (tutte se omesso)."),
+    workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
+) -> None:
+    """Scopre e indicizza i nuovi file nelle basi."""
+    ctx = get_context(verbose=verbose)
+    ws = get_workspace(ctx, workspace)
+    manager = ctx.base_manager_factory(ws)
+
+    bases_to_scan = {}
+    if base_name:
+        if base_name not in ws.bases:
+            typer.echo(f"Base non trovata: {base_name}", err=True)
+            raise typer.Exit(1)
+        bases_to_scan[base_name] = ws.bases[base_name]
+    else:
+        bases_to_scan = ws.bases
+
+    total_indexed = 0
+    total_skipped = 0
+
+    for bname, kb in bases_to_scan.items():
+        base_path = kb.path
+        if not base_path.is_dir():
+            continue
+
+        for entry in base_path.iterdir():
+            if not entry.is_file() or entry.name.startswith("."):
+                continue
+            if entry.name in kb.files:
+                total_skipped += 1
+                continue
+
+            # Nuovo file: indicizza
+            try:
+                file_entry = manager.add_file(bname, entry)
+                typer.echo(
+                    f"  [{bname}] {file_entry.name} → "
+                    f"{len(file_entry.chunks)} chunk"
+                )
+                total_indexed += 1
+            except Exception as exc:
+                typer.echo(f"  [{bname}] {entry.name}: errore — {exc}", err=True)
+
+    if total_indexed == 0 and total_skipped == 0:
+        typer.echo("Nessun file trovato nelle basi.")
+    else:
+        typer.echo(f"\nIndicizzati: {total_indexed}, già presenti: {total_skipped}")
+
+
+@app.command()
 def remove(
     base_name: str = typer.Argument(help="Nome della base."),
     file_name: str = typer.Argument(help="Nome del file da rimuovere."),
