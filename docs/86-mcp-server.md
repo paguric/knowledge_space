@@ -1,45 +1,40 @@
----
-title: Server MCP
-status: non_iniziato
-step: 14
-fase: 3
-updated: 2026-07-22
----
-
 # Server MCP
+
+> **Stato:** non iniziato | **Step:** 14 | **Fase:** 3 | **Aggiornato:** 22 luglio 2026
 
 ## Decisioni chiave
 
 | Aspetto | Scelta |
 |---------|--------|
 | Trasporto default | stdio (Fase 3), SSE opzionale |
+| SDK | `mcp` (ufficiale) |
 | Dipendenze | `knowledge-base` (non `knowledge-space`) |
 | Fase 3 | Processo standalone |
 | Fase 4+ | Bridge verso REST backend |
 
+## Obiettivo
+
+Server MCP per interrogare i workspace tramite il protocollo Model Context Protocol.
+
 ## Protocollo e trasporto
 
-MCP supporta principalmente due modalità:
-
 - **stdio**: il server legge da stdin e scrive su stdout. Default per client come Claude Desktop.
-- **SSE (Server-Sent Events)**: il server espone un endpoint HTTP.
-
-### Scelta consigliata
-
-Iniziare con **stdio** tramite SDK ufficiale `mcp`. In un secondo momento aggiungere SSE come opzione.
+- **SSE (Server-Sent Events)**: endpoint HTTP. Opzionale con `--sse --port 8001`.
 
 ## Tools MCP da esporre
 
-- `list_workspaces` → restituisce i workspace registrati.
-- `add_workspace(path)` → aggiunge un workspace.
-- `remove_workspace(name)` → rimuove un workspace.
-- `list_bases(workspace)` → elenca le knowledge base di un workspace.
-- `add_base(workspace, path)` → aggiunge una knowledge base.
-- `search(query, workspace?, base?)` → ricerca semantica.
-- `add_file(workspace, base, path)` → indicizza un file.
-- `get_config()` → mostra la configurazione attiva (senza secrets).
+| Tool | Descrizione |
+|------|-------------|
+| `list_workspaces` | Workspace registrati |
+| `add_workspace(path)` | Aggiunge workspace |
+| `remove_workspace(name)` | Rimuove workspace |
+| `list_bases(workspace)` | Knowledge base di un workspace |
+| `add_base(workspace, path)` | Aggiunge knowledge base |
+| `search(query, workspace?, base?)` | Ricerca semantica |
+| `add_file(workspace, base, path)` | Indicizza file |
+| `get_config()` | Configurazione attiva (senza secrets) |
 
-## Struttura del pacchetto
+## Struttura pacchetto
 
 ```
 packages/mcp-server/src/mcp_server/
@@ -52,10 +47,33 @@ packages/mcp-server/src/mcp_server/
 
 ## Riutilizzo della logica
 
-Il server MCP non deve reimplementare la logica. Deve usare gli stessi **service** di `knowledge-base`:
+Il server MCP usa gli stessi service di `knowledge-base`:
 
 ```python
 from knowledge_base.services import WorkspaceService, KnowledgeBaseService
 ```
 
-In questo modo ogni modifica ai service si riflette automaticamente sia su REST che su MCP.
+## Ciclo di vita
+
+| Fase | Modalità | Funzionamento |
+|------|----------|---------------|
+| Fase 3 | Standalone | Carica AppContext direttamente, opera su state.json/Chroma |
+| Fase 4+ | Bridge | Traduce MCP stdio → chiamate REST al backend |
+
+## Fasi di implementazione
+
+- [ ] Aggiungere `mcp` alle dipendenze
+- [ ] Rimuovere `mcp-server` da `knowledge-space`, aggiungere `knowledge-base` come dipendenza
+- [ ] Implementare `server.py` con trasporto stdio
+- [ ] Implementare tools MCP
+- [ ] Aggiungere SSE opzionale
+- [ ] Test
+
+## Dipendenze
+
+- **Dipende da:** Step 8-ter (AppContext)
+- **Usato da:** Step 17 (polish)
+
+---
+
+*Ultimo aggiornamento: 22 luglio 2026*

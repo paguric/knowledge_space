@@ -1,12 +1,6 @@
----
-title: Backend REST
-status: non_iniziato
-step: 15
-fase: 4
-updated: 2026-07-22
----
+# Backend REST
 
-# Backend REST per il frontend React
+> **Stato:** non iniziato | **Step:** 15 | **Fase:** 4 | **Aggiornato:** 22 luglio 2026
 
 ## Decisioni chiave
 
@@ -16,27 +10,22 @@ updated: 2026-07-22
 | Versioning API | `/api/v1` |
 | CORS | Configurabile via env/config |
 | Sync vs Async | Endpoint sync, `run_in_threadpool` per operazioni lunghe |
+| Frontend | Static files serviti dal backend (stessa porta) |
 
-## Framework: FastAPI (consigliata)
+## Obiettivo
 
-Rispetto a Flask e Quart, FastAPI è lo standard per backend Python moderni:
+Thin layer REST sopra i manager già testati, per il frontend React e la CLI client.
 
-- supporto nativo a Pydantic per la validazione;
-- documentazione OpenAPI/Swagger generata automaticamente;
-- supporto async nativo;
-- integrazione semplice con Typer per la CLI.
-
-## Struttura del pacchetto `knowledge-space`
+## Struttura pacchetto
 
 ```
 packages/knowledge-space/src/knowledge_space/
-├── __init__.py
 ├── cli.py               # Typer CLI
-├── config.py            # AppConfig / RuntimePaths / UserSettings
+├── context.py           # AppContext
+├── bootstrap.py         # build_app_context
 ├── logging.py           # setup logging
 ├── app.py               # factory FastAPI (create_app)
 ├── api/
-│   ├── __init__.py
 │   ├── deps.py          # dipendenze FastAPI
 │   ├── routers/
 │   │   ├── health.py
@@ -52,29 +41,26 @@ packages/knowledge-space/src/knowledge_space/
 
 ## API endpoints
 
-Versioning: `/api/v1`.
-
 | Metodo | Endpoint | Descrizione |
 |--------|----------|-------------|
 | GET | `/health` | Health check |
 | GET | `/api/v1/workspaces` | Elenca workspace |
-| POST | `/api/v1/workspaces` | Crea workspace da path |
+| POST | `/api/v1/workspaces` | Crea workspace |
 | DELETE | `/api/v1/workspaces/{name}` | Rimuove workspace |
-| GET | `/api/v1/workspaces/{ws}/bases` | Elenca knowledge base |
-| POST | `/api/v1/workspaces/{ws}/bases` | Crea knowledge base |
-| GET | `/api/v1/workspaces/{ws}/bases/{base}/files` | Elenca file indicizzati |
-| POST | `/api/v1/workspaces/{ws}/bases/{base}/files` | Upload e indicizzazione file |
+| GET | `/api/v1/workspaces/{ws}/bases` | Elenca basi |
+| POST | `/api/v1/workspaces/{ws}/bases` | Crea base |
+| GET | `/api/v1/workspaces/{ws}/bases/{base}/files` | Elenca file |
+| POST | `/api/v1/workspaces/{ws}/bases/{base}/files` | Upload + indicizzazione |
 | DELETE | `/api/v1/workspaces/{ws}/bases/{base}/files/{path}` | Rimuove file |
 | POST | `/api/v1/workspaces/{ws}/bases/{base}/search` | Ricerca semantica |
 | POST | `/api/v1/search` | Ricerca globale |
-| GET | `/api/v1/config` | Mostra configurazione runtime |
-| PATCH | `/api/v1/config` | Aggiorna configurazione utente |
+| GET | `/api/v1/config` | Config runtime |
+| PATCH | `/api/v1/config` | Aggiorna config utente |
+| GET | `/api/v1/models/embeddings` | Modelli embedding registrati |
 
-## CORS e frontend
+## CORS
 
 ```python
-from fastapi.middleware.cors import CORSMiddleware
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:3000"],
@@ -84,10 +70,20 @@ app.add_middleware(
 )
 ```
 
-In produzione le origini dovrebbero essere configurate tramite variabili d'ambiente o `config.json`.
+## Fasi di implementazione
 
-## Sincrono vs asincrono
+- [ ] Aggiungere `fastapi` e `uvicorn` alle dipendenze
+- [ ] Creare `knowledge_space/api/app.py` con `create_app`
+- [ ] Implementare router `health`, `workspaces`, `bases`, `files`, `search`, `config`
+- [ ] Aggiungere CORS
+- [ ] Endpoint `/api/v1/models/embeddings`
+- [ ] Test
 
-Le operazioni su `Chroma` e `TinyDB` sono sincrone. I watcher di `watchdog` girano su thread separati.
+## Dipendenze
 
-**Scelta consigliata**: endpoint sync per semplicità, usando `BackgroundTask` o `run_in_threadpool` solo per operazioni lunghe (upload, indexing). La ricerca semantica può essere esposta via `run_in_threadpool` per non bloccare l'event loop.
+- **Dipende da:** Step 13 (CLI)
+- **Usato da:** Step 16 (Frontend), Step 18 (packaging)
+
+---
+
+*Ultimo aggiornamento: 22 luglio 2026*

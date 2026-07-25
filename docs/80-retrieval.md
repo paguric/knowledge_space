@@ -1,12 +1,6 @@
----
-title: Pipeline di retrieval
-status: non_iniziato
-step: 8
-fase: 1B
-updated: 2026-07-22
----
-
 # Pipeline di retrieval
+
+> **Stato:** non iniziato | **Step:** 8 | **Fase:** 1B | **Aggiornato:** 22 luglio 2026
 
 ## Decisioni chiave
 
@@ -416,6 +410,11 @@ compression_ratio = 0.5
 | Selective context compress | Output più corto dell'input, rapporto rispettato |
 | Lazy/eager filtering | Flag `active` rispettati |
 
+## Dipendenze
+
+- **Dipende da:** Step 7 (KnowledgeBaseManager), Step 6-bis (LLMStrategy)
+- **Usato da:** Step 13 (CLI `search`), Step 15 (REST `search`)
+
 ---
 
-*Ultimo aggiornamento: 21 luglio 2026*
+*Ultimo aggiornamento: 22 luglio 2026*

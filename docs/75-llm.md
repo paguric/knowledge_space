@@ -1,12 +1,6 @@
----
-title: Astrazione LLM
-status: in_progress
-step: 6-bis
-fase: 1A
-updated: 2026-07-22
----
-
 # Astrazione LLM (Large Language Model)
+
+> **Stato:** in progress | **Step:** 6-bis | **Fase:** 1A | **Aggiornato:** 22 luglio 2026
 
 ## Decisioni chiave
 
@@ -309,6 +303,11 @@ Il registry di [80-retrieval.md §Registry](80-retrieval.md) va esteso per inclu
     },
 }
 ```
+
+## Dipendenze
+
+- **Dipende da:** Step 6 (EmbeddingStrategy per struttura registry)
+- **Usato da:** Step 8 (pre/post-retrieval), Step 8-bis (GraphRAG extraction)
 
 ---
 

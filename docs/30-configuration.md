@@ -1,12 +1,6 @@
----
-title: Gestione della configurazione
-status: implementato
-step: 3
-fase: 1A
-updated: 2026-07-22
----
-
 # Gestione della configurazione
+
+> **Stato:** implementato | **Step:** 3 | **Fase:** 1A | **Aggiornato:** 22 luglio 2026
 
 ## Stato vs configurazione
 

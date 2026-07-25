@@ -1,9 +1,6 @@
----
-title: Indice della documentazione
-updated: 2026-07-22
----
-
 # Documentazione — Knowledge Space
+
+> **Aggiornato:** 22 luglio 2026
 
 ## Piano di progetto
 

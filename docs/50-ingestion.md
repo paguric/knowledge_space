@@ -1,12 +1,6 @@
----
-title: Strategie di ingestion
-status: implementato
-step: 4
-fase: 1A
-updated: 2026-07-22
----
-
 # Strategie di ingestion
+
+> **Stato:** implementato | **Step:** 4 | **Fase:** 1A | **Aggiornato:** 22 luglio 2026
 
 ## Decisioni chiave
 
@@ -162,6 +156,11 @@ params.plugins = []                # percorsi a plugin custom opzionali
 | Estensione sconosciuta | Errore esplicito |
 | Libreria non registrata | Errore di config |
 
+## Dipendenze
+
+- **Dipende da:** Step 3 (BaseConfig, strategy registry)
+- **Usato da:** Step 7 (KnowledgeBaseManager)
+
 ---
 
-*Ultimo aggiornamento: 21 luglio 2026 (Step 4 implementato: identity, docling, pymupdf4llm, markitdown con registry, validazione estensioni, 30 test)*
+*Ultimo aggiornamento: 22 luglio 2026 (Step 4 implementato: identity, docling, pymupdf4llm, markitdown con registry, validazione estensioni, 30 test)*

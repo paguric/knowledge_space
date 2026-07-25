@@ -1,12 +1,6 @@
----
-title: Pipeline GraphRAG
-status: non_iniziato
-step: 8-bis
-fase: 1C
-updated: 2026-07-22
----
-
 # Pipeline GraphRAG da chunk/embeddings esistenti
+
+> **Stato:** non iniziato | **Step:** 8-bis | **Fase:** 1C | **Aggiornato:** 22 luglio 2026
 
 ## Decisioni chiave
 
@@ -358,6 +352,11 @@ La creazione degli indici va fatta una sola volta per workspace (idempotente) du
 - `tools` ha costo di una chiamata LLM per il routing; preferire per query complesse.
 
 Fonti: [User Guide: RAG](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html), [repo neo4j-graphrag-python](https://github.com/neo4j/neo4j-graphrag-python).
+
+## Dipendenze
+
+- **Dipende da:** Step 7 (KnowledgeBaseManager), Step 6-bis (LLMStrategy)
+- **Usato da:** Step 13 (CLI: `ks graph`), Step 15 (REST: query GraphRAG)
 
 ## 15. Sviluppi futuri
 

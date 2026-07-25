@@ -1,12 +1,6 @@
----
-title: Strategie di chunking
-status: implementato
-step: 5
-fase: 1A
-updated: 2026-07-22
----
-
 # Strategie di chunking
+
+> **Stato:** implementato | **Step:** 5 | **Fase:** 1A | **Aggiornato:** 22 luglio 2026
 
 ## Decisioni chiave
 
@@ -180,6 +174,11 @@ Ogni strategy registra (oltre al nome) uno schema dei parametri accettati. Il re
 | `sentence` italiano | Boundary a `.`?`!` |
 | `markdown` code block | Code block intatto |
 
+## Dipendenze
+
+- **Dipende da:** Step 3 (BaseConfig, strategy registry)
+- **Usato da:** Step 7 (KnowledgeBaseManager)
+
 ---
 
-*Ultimo aggiornamento: 21 luglio 2026 (Step 5 implementato: 5 strategy con registry, params_schema discoverable, semantic custom con EmbeddingStrategy, 46 test)*
+*Ultimo aggiornamento: 22 luglio 2026 (Step 5 implementato: 5 strategy con registry, params_schema discoverable, semantic custom con EmbeddingStrategy, 46 test)*

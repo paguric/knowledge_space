@@ -1,12 +1,6 @@
----
-title: Indicizzazione incrementale
-status: implementato (trigger 1-2)
-step: 7
-fase: 1A
-updated: 2026-07-22
----
-
 # Indicizzazione incrementale e ciclo di vita dell'indice
+
+> **Stato:** implementato (trigger 1-2) | **Step:** 7 | **Fase:** 1A | **Aggiornato:** 22 luglio 2026
 
 ## Decisioni chiave
 
@@ -263,6 +257,11 @@ Il trigger 2 (move/rename) non propaga al grafo come re-estrazione: solo update 
 - **I4 — Comandi `ks reindex`**: implementazione dei 3 subcomandi (`--model-change`, `--chunking-change`, `--ingestion-change`). Fase 3 (CLI).
 - **I5 — Propagazione grafo**: integrazione con `on_chunk_change` eager/lazy, scope mirato per trigger 1, full re-estrazione per trigger 4/5, property-only per trigger 2.
 - **I6 — Test end-to-end**: 5 trigger × scenari tipici.
+
+## Dipendenze
+
+- **Dipende da:** Step 7 (KnowledgeBaseManager, file_id, content_hash)
+- **Usato da:** Step 8-bis (propagazione grafo), Step 13 (CLI `reindex`)
 
 ## Test
 

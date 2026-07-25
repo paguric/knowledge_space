@@ -1,12 +1,6 @@
----
-title: Modello di dominio e persistenza
-status: implementato
-step: 0
-fase: 1A
-updated: 2026-07-22
----
-
 # Modello di dominio e persistenza
+
+> **Stato:** implementato | **Step:** 0 | **Fase:** 1A | **Aggiornato:** 22 luglio 2026
 
 ## Decisioni chiave
 
@@ -215,3 +209,12 @@ Rispetto a `to_dict()`/`from_dict()` manuali, Pydantic offre validazione automat
 5. Aggiornare `last_workspace` quando un workspace viene aperto/usato.
 6. Scrivere test di roundtrip JSON e di sincronizzazione.
 7. Integrare gradualmente con le classi esistenti **senza** fare il grande refactor.
+
+## Dipendenze
+
+- **Dipende da:** nessuno (fondamenta)
+- **Usato da:** Step 1 (workspace), Step 2 (domini), Step 7 (KnowledgeBaseManager), Step 8-bis (GraphRAG)
+
+---
+
+*Ultimo aggiornamento: 22 luglio 2026*
