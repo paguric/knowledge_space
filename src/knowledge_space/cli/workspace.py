@@ -38,7 +38,13 @@ def add(
 
     added = ctx.workspace_manager.add(ws_path)
     if added:
+        # Sync per scoprire le cartelle-figlie come basi
+        workspace = ctx.workspace_manager.load(ws_path)
+        ctx.workspace_manager.sync(workspace)
+        n_bases = len(workspace.bases)
         typer.echo(f"Workspace registrato: {ws_path}")
+        if n_bases:
+            typer.echo(f"  {n_bases} base scoperte automaticamente")
     else:
         typer.echo(f"Workspace già registrato: {ws_path}")
 
