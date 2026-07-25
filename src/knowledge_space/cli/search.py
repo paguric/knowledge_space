@@ -1,0 +1,124 @@
+"""Comando search.
+
+``ks search <query>`` — ricerca vettoriale
+``ks search <query> --base <name>`` — filtra per base
+``ks search <query> --top-k N`` — override risultati
+"""
+
+from __future__ import annotations
+
+from typing import Optional
+
+import typer
+
+from knowledge_space.cli.common import (
+    get_context,
+    get_workspace,
+    output_json,
+)
+
+
+def search_command(
+    query: str = typer.Argument(help="Query di ricerca."),
+    base_name: Optional[str] = typer.Option(None, "--base", "-b", help="Filtra per base."),
+    top_k: int = typer.Option(10, "--top-k", "-k", help="Numero massimo di risultati."),
+    workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
+) -> None:
+    """Esegue una ricerca vettoriale sulle basi del workspace."""
+    ctx = get_context(verbose=verbose)
+    ws = get_workspace(ctx, workspace)
+
+    # Verifica che esistano basi
+    if not ws.bases:
+        typer.echo("Nessuna base nel workspace. Aggiungi una base prima di cercare.", err=True)
+        raise typer.Exit(1)
+
+    # Costruisci la collection factory
+    bases_to_search = {}
+    if base_name:
+        if base_name not in ws.bases:
+            typer.echo(f"Base non trovata: {base_name}", err=True)
+            raise typer.Exit(1)
+        bases_to_search[base_name] = ws.bases[base_name]
+    else:
+        bases_to_search = ws.bases
+
+    # Raccogli tutti i risultati da tutte le basi
+    all_results = []
+
+    for bname, kb in bases_to_search.items():
+        if not kb.files:
+            continue
+
+        # Carica config per ottenere il modello embedding
+        try:
+            config_loader = ctx.base_config_loader_factory(ws.path)
+            config = config_loader.load(bname)
+            model_name = config.embedding.model
+        except Exception:
+            model_name = "sentence-transformers/all-mpnet-base-v2"
+
+        # Crea embedder e collection
+        try:
+            embedder = ctx.embedder_factory(model_name)
+        except Exception as exc:
+            typer.echo(f"Warning: embedder non disponibile per {bname}: {exc}", err=True)
+            continue
+
+        # Accedi alla collection Chroma
+        try:
+            from chromadb import PersistentClient
+
+            chroma_path = ws.path / ctx.runtime_paths.dot_folder_name / "chroma"
+            if not chroma_path.exists():
+                continue
+            client = PersistentClient(path=str(chroma_path))
+            collection = client.get_collection(name=f"ks_{bname}")
+        except Exception:
+            continue
+
+        # Esegui ricerca
+        try:
+            query_vector = embedder.embed([query])[0]
+            results = collection.query(
+                query_embeddings=[query_vector],
+                n_results=min(top_k, collection.count()),
+                include=["documents", "metadatas", "distances"],
+            )
+
+            if results and results["ids"] and results["ids"][0]:
+                for i, chunk_id in enumerate(results["ids"][0]):
+                    document = results["documents"][0][i] if results["documents"] else ""
+                    metadata = results["metadatas"][0][i] if results["metadatas"] else {}
+                    distance = results["distances"][0][i] if results["distances"] else 0.0
+                    score = 1.0 - distance
+
+                    all_results.append({
+                        "chunk_id": chunk_id,
+                        "base": bname,
+                        "file_name": metadata.get("file_name", ""),
+                        "score": round(score, 4),
+                        "text": document[:200] if document else "",
+                    })
+        except Exception as exc:
+            typer.echo(f"Warning: ricerca fallita per {bname}: {exc}", err=True)
+
+    # Ordina per score e limita
+    all_results.sort(key=lambda r: r["score"], reverse=True)
+    all_results = all_results[:top_k]
+
+    if json_output:
+        output_json(all_results)
+    else:
+        if not all_results:
+            typer.echo("Nessun risultato trovato.")
+            return
+        typer.echo(f"Trovati {len(all_results)} risultati:\n")
+        for i, r in enumerate(all_results, 1):
+            typer.echo(f"{i}. [{r['base']}] {r['file_name']} (score={r['score']})")
+            typer.echo(f"   {r['chunk_id']}")
+            if r["text"]:
+                typer.echo(f"   {r['text']}...")
+            typer.echo()

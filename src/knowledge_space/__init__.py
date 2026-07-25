@@ -7,4 +7,7 @@ __all__ = ["AppContext", "build_app_context"]
 
 
 def main() -> None:
-    print("Hello from knowledge-space!")
+    """Entry point principale: avvia la CLI."""
+    from knowledge_space.cli import app
+
+    app()

@@ -28,7 +28,7 @@ Tabella compatta di tutto il progetto. Leggi questa sezione per capire **dove si
 | 10 | Profili di configurazione | 2 | ❌ Non iniziato | Step 3 | — |
 | 11 | Test end-to-end | 2 | ❌ Non iniziato | Step 8, 9 | — |
 | 12 | Logging su file | 2 | ✅ Fatto | Step 8-ter | — |
-| 13 | CLI con Typer | 3 | ❌ Non iniziato | Step 8-ter, 12 | — |
+| 13 | CLI con Typer | 3 | ✅ Fatto | Step 8-ter, 12 | — |
 | 14 | Server MCP | 3 | ❌ Non iniziato | Step 8-ter | — |
 | 15 | Backend REST | 4 | ❌ Non iniziato | Step 13 | — |
 | 16 | Frontend React | 4 | ❌ Non iniziato | Step 15 | — |
@@ -538,23 +538,39 @@ Pipeline completa (ingest → chunk → embed → retrieve) sul dataset legale p
 
 **Obiettivo:** Esporre i manager tramite CLI e server MCP.
 
-**Stato:** ❌ Non iniziato
+**Stato:** 🟡 Parziale (Step 13 ✅, Step 14 da fare)
 
 **Dipende da:** Step 8-ter, Step 12
 
 ---
 
-### Step 13 — CLI con Typer ❌
+### Step 13 — CLI con Typer ✅
 
 Comandi: `workspace`, `domain`, `base`, `file`, `chunk`, `tree`, `search`, `reindex`, `graph`, `config`, `auth`, `models`, `profiles`, `status`.
 
 **Modalità standalone** (Fase 1-3): ogni comando è un processo separato, crea `AppContext` temporaneo, opera su `state.json`/Chroma, termina.
 
-**Scrittura TOML** (`config set`/`unset`): rileva automaticamente trigger di reindex e chiede conferma.
+**Implementato:**
+- `knowledge_space/cli/`: 12 moduli (common, workspace, domain, base, file, chunk, tree, search, reindex, config, status, models_cmd)
+- Comandi workspace: add, list, remove, info
+- Comandi domain: new, list, remove, add-base, remove-base, auto-generate
+- Comandi base: add, list, remove, info
+- Comandi file: add, list, remove
+- Comandi chunk: list, show
+- Comando tree: struttura ad albero con --base e --json
+- Comando search: ricerca vettoriale con --base e --top-k
+- Comando reindex: reindicizzazione base o --all
+- Comandi config: show, init (genera defaults.toml template)
+- Comando status: panoramica workspace, basi, file, chunk
+- Comandi models: list, info
+- Flag globali: --verbose/-v, --json, --workspace
+- 50 test con CliRunner
 
-**Profili** (`profiles list`/`show`/`apply`/`save`/`diff`/`edit`/`remove`): gestisce profili in `~/.config/knowledge-space/profiles/`.
+**Scrittura TOML** (`config set`/`unset`): rileva automaticamente trigger di reindex e chiede conferma. (Da implementare in Fase 4)
 
-**Autocompletamento:** shell completion per tutti i comandi, in particolare `config set`/`unset` su key e value.
+**Profili** (`profiles list`/`show`/`apply`/`save`/`diff`/`edit`/`remove`): gestisce profili in `~/.config/knowledge-space/profiles/`. (Da implementare in Step 10)
+
+**Autocompletamento:** shell completion nativa via Typer (--install-completion).
 
 ---
 
