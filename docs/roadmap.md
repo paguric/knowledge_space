@@ -66,10 +66,10 @@ Step 6-bis ──────────┤
 
 ### Priorità imminente
 
-1. **Step 10** — Profili di configurazione
-2. **Step 11** — Test end-to-end (richiede Step 9 ✅)
-3. **Step 6-bis residuali** — implementazioni reali LLM (OpenAI/Ollama)
-4. ~~**Step 12** — Logging su file~~ ✅
+1. **Step 14** — Server MCP
+2. **Step 10** — Profili di configurazione
+3. **Step 11** — Test end-to-end
+4. **Step 6-bis residuali** — implementazioni reali LLM
 
 ---
 
