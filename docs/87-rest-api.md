@@ -2,7 +2,11 @@
 
 > **Stato:** non iniziato | **Step:** 15 | **Fase:** 4 | **Aggiornato:** 22 luglio 2026
 
-## Decisioni chiave
+## Panoramica
+
+Thin layer REST sopra i manager già testati, per il frontend React e la CLI client. Framework FastAPI con versioning `/api/v1`.
+
+## Scelte
 
 | Aspetto | Scelta |
 |---------|--------|
@@ -12,11 +16,9 @@
 | Sync vs Async | Endpoint sync, `run_in_threadpool` per operazioni lunghe |
 | Frontend | Static files serviti dal backend (stessa porta) |
 
-## Obiettivo
+## Dettagli
 
-Thin layer REST sopra i manager già testati, per il frontend React e la CLI client.
-
-## Struttura pacchetto
+### Struttura pacchetto
 
 ```
 packages/knowledge-space/src/knowledge_space/
@@ -39,7 +41,7 @@ packages/knowledge-space/src/knowledge_space/
     └── ...              # thin wrapper su knowledge-base
 ```
 
-## API endpoints
+### API endpoints
 
 | Metodo | Endpoint | Descrizione |
 |--------|----------|-------------|
@@ -58,7 +60,7 @@ packages/knowledge-space/src/knowledge_space/
 | PATCH | `/api/v1/config` | Aggiorna config utente |
 | GET | `/api/v1/models/embeddings` | Modelli embedding registrati |
 
-## CORS
+### CORS
 
 ```python
 app.add_middleware(
@@ -70,7 +72,7 @@ app.add_middleware(
 )
 ```
 
-## Fasi di implementazione
+### Fasi di implementazione
 
 - [ ] Aggiungere `fastapi` e `uvicorn` alle dipendenze
 - [ ] Creare `knowledge_space/api/app.py` con `create_app`
@@ -81,9 +83,6 @@ app.add_middleware(
 
 ## Dipendenze
 
-- **Dipende da:** Step 13 (CLI)
-- **Usato da:** Step 16 (Frontend), Step 18 (packaging)
-
----
-
-*Ultimo aggiornamento: 22 luglio 2026*
+| Dipende da | Usato da |
+|------------|----------|
+| Step 13 (CLI) | Step 16 (Frontend), Step 18 (packaging) |

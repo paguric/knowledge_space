@@ -222,6 +222,179 @@ class LLMStrategy(Protocol):
         ...
 
 
+# --------------------------------------------------------------------------- #
+# Retrieval pipeline (Step 8)
+# --------------------------------------------------------------------------- #
+
+
+class RetrievalResult:
+    """Singolo risultato di retrieval."""
+
+    def __init__(
+        self,
+        chunk_id: str,
+        text: str,
+        score: float,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        self.chunk_id = chunk_id
+        self.text = text
+        self.score = score
+        self.metadata = metadata or {}
+
+    def __repr__(self) -> str:
+        return (
+            f"RetrievalResult(chunk_id={self.chunk_id!r}, "
+            f"score={self.score:.4f}, text={self.text[:50]!r}...)"
+        )
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, RetrievalResult):
+            return NotImplemented
+        return self.chunk_id == other.chunk_id and self.score == other.score
+
+    def __hash__(self) -> int:
+        return hash((self.chunk_id, self.score))
+
+
+class PreRetrievalStrategy(Protocol):
+    """Interfaccia per strategie di pre-retrieval (espansione testuale).
+
+    Ogni stadio riceve una lista di query dallo stadio precedente e
+    produce varianti (espansione). Lo stadio ``identity`` è no-op:
+    restituisce le query invariate.
+
+    Strategie con ``requires_llm=True`` ricevono un ``llm`` al
+    costruttore.
+    """
+
+    name: str
+    requires_llm: bool = False
+
+    def expand(self, queries: List[str]) -> List[str]:
+        """Espande una lista di query in una lista di varianti.
+
+        Args:
+            queries: query in ingresso (dal precedente stadio o dall'utente).
+
+        Returns:
+            Lista di query espanse (può essere più lunga dell'input).
+        """
+        ...
+
+
+class RetrievalStrategy(Protocol):
+    """Interfaccia per strategie di retrieval (dense/sparse/hybrid).
+
+    Una strategia esegue la ricerca su un vector store (Chroma) e/o un
+    indice sparse (BM25) e restituisce risultati ordinati per score.
+    """
+
+    name: str
+
+    def search(
+        self, query: str, *, top_k: int = 10, **kwargs: Any
+    ) -> List[RetrievalResult]:
+        """Esegue la ricerca e restituisce i top_k risultati."""
+        ...
+
+
+class PostRetrievalStrategy(Protocol):
+    """Interfaccia per strategie di post-retrieval (reranking/compression).
+
+    Strategie con ``requires_llm=True`` o ``requires_model=True``
+    ricevono il modello al costruttore.
+    """
+
+    name: str
+    requires_llm: bool = False
+    requires_model: bool = False
+
+    def rerank(
+        self,
+        query: str,
+        results: List[RetrievalResult],
+        top_k: int = 10,
+    ) -> List[RetrievalResult]:
+        """Riordina/comprime i risultati di retrieval."""
+        ...
+
+
+class PreRetrievalRegistry:
+    """Registry per strategie di pre-retrieval."""
+
+    def __init__(self) -> None:
+        self._strategies: Dict[str, Type] = {}
+
+    def register(self, name: str, strategy_cls: Type) -> None:
+        self._strategies[name] = strategy_cls
+        logger.debug("Registrata pre-retrieval strategy '%s' -> %s", name, strategy_cls)
+
+    def get(self, name: str) -> Type:
+        if name not in self._strategies:
+            available = ", ".join(sorted(self._strategies)) or "(nessuna)"
+            raise KeyError(
+                f"Pre-retrieval strategy '{name}' non trovata. Disponibili: {available}"
+            )
+        return self._strategies[name]
+
+    def list_names(self) -> List[str]:
+        return sorted(self._strategies)
+
+    def contains(self, name: str) -> bool:
+        return name in self._strategies
+
+
+class RetrievalRegistry:
+    """Registry per strategie di retrieval."""
+
+    def __init__(self) -> None:
+        self._strategies: Dict[str, Type] = {}
+
+    def register(self, name: str, strategy_cls: Type) -> None:
+        self._strategies[name] = strategy_cls
+        logger.debug("Registrata retrieval strategy '%s' -> %s", name, strategy_cls)
+
+    def get(self, name: str) -> Type:
+        if name not in self._strategies:
+            available = ", ".join(sorted(self._strategies)) or "(nessuna)"
+            raise KeyError(
+                f"Retrieval strategy '{name}' non trovata. Disponibili: {available}"
+            )
+        return self._strategies[name]
+
+    def list_names(self) -> List[str]:
+        return sorted(self._strategies)
+
+    def contains(self, name: str) -> bool:
+        return name in self._strategies
+
+
+class PostRetrievalRegistry:
+    """Registry per strategie di post-retrieval."""
+
+    def __init__(self) -> None:
+        self._strategies: Dict[str, Type] = {}
+
+    def register(self, name: str, strategy_cls: Type) -> None:
+        self._strategies[name] = strategy_cls
+        logger.debug("Registrata post-retrieval strategy '%s' -> %s", name, strategy_cls)
+
+    def get(self, name: str) -> Type:
+        if name not in self._strategies:
+            available = ", ".join(sorted(self._strategies)) or "(nessuna)"
+            raise KeyError(
+                f"Post-retrieval strategy '{name}' non trovata. Disponibili: {available}"
+            )
+        return self._strategies[name]
+
+    def list_names(self) -> List[str]:
+        return sorted(self._strategies)
+
+    def contains(self, name: str) -> bool:
+        return name in self._strategies
+
+
 class LLMRegistry:
     """Registry di modelli LLM con metadati discoverable.
 
@@ -288,6 +461,9 @@ ingestion_registry = StrategyRegistry()
 chunking_registry = StrategyRegistry()
 embedding_registry = StrategyRegistry()
 llm_registry = LLMRegistry()
+pre_retrieval_registry = PreRetrievalRegistry()
+retrieval_registry = RetrievalRegistry()
+post_retrieval_registry = PostRetrievalRegistry()
 
 
 # Import dei submoduli alla fine: la loro importazione popola i registry
@@ -297,3 +473,6 @@ from knowledge_base.strategies import chunking as _chunking  # noqa: F401,E402
 from knowledge_base.strategies import embedding as _embedding  # noqa: F401,E402
 from knowledge_base.strategies import ingestion as _ingestion  # noqa: F401,E402
 from knowledge_base.strategies import llm as _llm  # noqa: F401,E402
+from knowledge_base.strategies import pre_retrieval as _pre_retrieval  # noqa: F401,E402
+from knowledge_base.strategies import retrieval as _retrieval  # noqa: F401,E402
+from knowledge_base.strategies import post_retrieval as _post_retrieval  # noqa: F401,E402

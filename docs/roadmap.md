@@ -1,6 +1,6 @@
 # Roadmap — Knowledge Space
 
-> **Ultimo aggiornamento:** 22 luglio 2026
+> **Ultimo aggiornamento:** 25 luglio 2026
 
 ---
 
@@ -21,9 +21,9 @@ Tabella compatta di tutto il progetto. Leggi questa sezione per capire **dove si
 | 6 | Embedding configurabile | 1A | ✅ Fatto | Step 3 | — |
 | 6-bis | Astrazione LLM | 1A | 🟡 Parziale | Step 6 | Fallback identity + wiring in AppContext |
 | 7 | KnowledgeBaseManager | 1A | ✅ Fatto | Step 4, 5, 6 | — |
-| **8-ter** | **AppContext e bootstrap** | **1A** | **❌ Non iniziato** | **Step 7, 6-bis** | **PROSSIMO PASSO CRITICO** |
-| 8 | Pipeline retrieval | 1B | ❌ Non iniziato | Step 8-ter | — |
-| 8-bis | Pipeline GraphRAG | 1C | ❌ Non iniziato | Step 8-ter | — |
+| **8-ter** | **AppContext e bootstrap** | **1A** | **✅ Fatto** | **Step 7, 6-bis** | **—** |
+| 8 | Pipeline retrieval | 1B | ✅ Fatto | Step 8-ter | — |
+| 8-bis | Pipeline GraphRAG | 1C | ✅ Fatto | Step 8-ter | — |
 | 9 | Dataset sintetico legale | 2 | ❌ Non iniziato | Step 8 | — |
 | 10 | Profili di configurazione | 2 | ❌ Non iniziato | Step 3 | — |
 | 11 | Test end-to-end | 2 | ❌ Non iniziato | Step 8, 9 | — |
@@ -66,10 +66,10 @@ Step 6-bis ──────────┤
 
 ### Priorità imminente
 
-1. **Step 8-ter** — AppContext e bootstrap (blocca tutto il resto)
-2. **Step 6-bis residuali** — fallback identity, wiring (da fare insieme a 8-ter)
-3. **Step 8** — Pipeline retrieval (Fase 1B)
-4. **Step 8-bis** — Pipeline GraphRAG (Fase 1C)
+1. **Step 9** — Dataset sintetico legale (in corso su agente parallelo)
+2. **Step 6-bis residuali** — fallback identity, wiring (arrivano con implementazioni reali)
+3. **Step 10** — Profili di configurazione
+4. **Step 11** — Test end-to-end
 
 ---
 
@@ -125,7 +125,7 @@ knowledge_space/
 
 **Obiettivo:** Pipeline completa: documento → ingestion → chunking → embedding → Chroma. Include sync filesystem, configurazione per-base, strategy registry, gestione incrementale dell'indice.
 
-**Stato:** ✅ Quasi completa (Step 0-7 fatti, Step 6-bis parziale, Step 8-ter non iniziato)
+**Stato:** ✅ Completa (Step 0-8-ter fatti, Step 6-bis parziale)
 
 ---
 
@@ -288,11 +288,11 @@ Logica operativa sulle basi: orchestrazione ingestion → chunking → embedding
 
 ---
 
-### Step 8-ter — AppContext e bootstrap ❌
+### Step 8-ter — AppContext e bootstrap ✅
 
 **Il collo di bottiglia del progetto.** Unico punto in cui le dipendenze vengono assemblate. CLI, MCP e REST ricevono un `AppContext` già pronto.
 
-**Da implementare:**
+**Implementato:**
 
 | Componente | Dove | Descrizione |
 |-----------|------|-------------|
@@ -320,7 +320,10 @@ class AppContext:
 - `RuntimePaths` già esiste in `knowledge_space/runtime_paths.py` (da rivedere se va qui o nel contesto)
 - `knowledge-base` non conosce XDG/APP_NAME — il wiring avviene solo in `knowledge-space`
 
-**Nota:** `RuntimePaths` è già implementato in `knowledge_space/runtime_paths.py`. Step 8-ter deve decidere se mantenerlo lì o spostarlo in `context.py`.
+**Nota:** `RuntimePaths` è mantenuto in `knowledge_space/runtime_paths.py` (non spostato in `context.py`). I file sono:
+- `knowledge_space/context.py` — `AppContext` dataclass
+- `knowledge_space/bootstrap.py` — `build_app_context()` entry point
+- `tests/test_context.py` — 16 test (struttura, factory, wiring end-to-end)
 
 ---
 
@@ -328,15 +331,24 @@ class AppContext:
 
 **Obiettivo:** Pipeline di retrieval su vettori Chroma (dense/sparse/hybrid) con pre-retrieval e post-retrieval.
 
-**Stato:** ❌ Non iniziato
+**Stato:** ✅ Fatto
 
 **Dipende da:** Step 8-ter (AppContext)
 
 ---
 
-### Step 8 — Pipeline retrieval ❌
+### Step 8 — Pipeline retrieval ✅
 
 Pipeline a 3 step: pre-retrieval → retrieval → post-retrieval.
+
+**Implementato:**
+- `strategies/pre_retrieval.py`: 4 strategy (`identity`, `multi_query`, `step_back`, `least_to_most`)
+- `strategies/retrieval.py`: 3 strategy (`dense`, `sparse`, `hybrid`) con fusione `rrf`/`weighted_sum`
+- `strategies/post_retrieval.py`: 7 strategy (`identity`, `relevance`, `mmr`, `cross_encoder`, `llm`, `llm_chain_extract`, `selective_context`)
+- `search_service.py`: `SearchService` con orchestrazione 3 step e fallback automatico LLM→identity
+- `base_config.py`: sezioni `[pre_retrieval]`, `[retrieval]`, `[post_retrieval]` aggiunte a `BaseConfig`
+- `strategies/__init__.py`: `RetrievalResult`, `PreRetrievalRegistry`, `RetrievalRegistry`, `PostRetrievalRegistry`
+- 85 test
 
 #### Pre-retrieval (espansione testuale)
 
@@ -383,9 +395,20 @@ Se un metodo richiede LLM ma non è configurato → fallback automatico a `ident
 
 **Obiettivo:** Grafo Neo4j da chunk/embedding esistenti, propagazione incrementale, retrieval su grafo.
 
-**Stato:** ❌ Non iniziato (solo prerequisiti F0 ✅)
+**Stato:** ✅ Fatto
 
 **Dipende da:** Step 8-ter (AppContext), Step 7 (KnowledgeBaseManager)
+
+**Implementato:**
+- `graph/store.py`: `GraphStore` Protocol, `Neo4jGraphStore`, `MockGraphStore`, factory
+- `graph/schema.py`: `GraphSchema`, `NodeSchema`, `EdgeSchema`, caricamento/salvataggio JSON
+- `graph/extraction.py`: `EntityRelationExtractor`, `GraphExtractionResult`, parsing JSON robusto
+- `graph/resolver.py`: `EntityResolver` Protocol, `ExactMatchResolver`, `SpaCySemanticMatchResolver` (fallback)
+- `graph/writer.py`: `Neo4jWriter` con write_nodes, write_edges, delete, update_properties, indici
+- `graph/chunk_loader.py`: `KSChunkLoader` per leggere chunk da disco + embedding da Chroma
+- `graph/retriever.py`: 6 retriever (`vector`, `vector_cypher`, `hybrid`, `hybrid_cypher`, `text2cypher`, `tools`)
+- `base_config.py`: sezione `[graph]` aggiunta a `BaseConfig`
+- 82 test (3 skipped: Neo4j integration, SpaCy semantic)
 
 ### Prerequisiti (F0) — già fatti ✅
 

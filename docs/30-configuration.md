@@ -2,135 +2,114 @@
 
 > **Stato:** implementato | **Step:** 3 | **Fase:** 1A | **Aggiornato:** 22 luglio 2026
 
-## Stato vs configurazione
+## Panoramica
 
-Conviene tenere separati due concetti distinti:
+Ogni base di conoscenza ha la propria configurazione TOML, con cascata di default: hardcoded → `defaults.toml` (workspace) → `base.toml` (base). Lo stato (domini, basi, file, chunk) vive in JSON separato dalla configurazione (ingestion, chunking, embedding, retrieval).
+
+## Scelte
+
+| Aspetto | Scelta |
+|---------|--------|
+| Formato stato | JSON (`state.json` per workspace) |
+| Formato config | TOML (human-friendly, con commenti) |
+| Cascata | hardcoded → `defaults.toml` → `base.toml` |
+| Strategy pattern | Registry per ingestion, chunking, embedding, retrieval, LLM |
+| Cambio config | Bloccato se collection non vuota |
+| Secrets | Mai nei TOML — env var o `UserSettings` |
+| Scrittura TOML | Sola lettura (Fase 1), scrittura via CLI `config set` (Fase 3) |
+
+## Dettagli
+
+### Stato vs configurazione
 
 | | Stato | Configurazione |
 |---|------|----------------|
 | Cosa | domini, basi, file, chunk, flag `active`, mtime | ingestion, chunking, embedding, parametri |
 | Cambia spesso? | Sì, a runtime | No, raramente |
 | Chi lo scrive | il programma | l'utente (a mano) |
-| Formato | JSON (machine-friendly) | TOML (human-friendly, con commenti) |
-
-- Lo **stato** del workspace vive in `<workspace>/.knowledge-space/state.json` (vedi [20-data-model.md](20-data-model.md)).
-- La **configurazione** di ogni base vive in **TOML**, un file per base.
-
----
-
-## Configurazione delle basi di conoscenza
+| Formato | JSON | TOML |
 
 ### Filesystem
-
-La struttura completa del filesystem (workspace, basi, chunk, graph) vive qui. La pipeline GraphRAG fa riferimento a questo layout — vedi anche [40-graph.md](40-graph.md) per le convenzioni specifiche del grafo.
 
 ```
 <workspace>/
 ├── paper.pdf                              # file sorgente dell'utente (esempio)
 ├── <base>/                                # base = cartella foglia dentro il workspace
-│   ├── documento.pdf                      # file sorgente dell'utente (appartenenti alla base)
+│   ├── documento.pdf                      # file sorgente dell'utente
 │   ├── appunti.md
-│   └── .knowledge-space/                  # dotfolder, dati e config di proprietà della base
+│   └── .knowledge-space/                  # dotfolder, dati e config della base
 │       ├── base.toml                      # configurazione specifica della base
-│       └── chunks/                       # chunk su disco (prodotto derivato del sorgente)
-│           └── <file_id>/                # file_id = UUID stabile del FileEntry
+│       └── chunks/                        # chunk su disco (prodotto derivato)
+│           └── <file_id>/                 # file_id = UUID stabile
 │               ├── <file_id>_chunk_0.md
-│               ├── <file_id>_chunk_1.md
-│               └── ...
-└── .knowledge-space/                      # dotfolder, stato e config di proprietà del workspace
-    ├── state.json                        # stato (albero Workspace -> Domain -> Base -> File -> Chunk)
-    ├── defaults.toml                     # default per tutte le basi del workspace
-    └── graph/                            # stato e connessione del grafo workspace (uno per workspace)
-        ├── graph.json                    # bolt_uri, database, embedding_model, schema_ref
-        └── schema.json                   # schema del grafo (caricato, vedi 40-graph.md §6-bis)
+│               └── <file_id>_chunk_1.md
+└── .knowledge-space/                      # dotfolder, stato e config del workspace
+    ├── state.json                         # stato (Workspace → Domain → Base → File → Chunk)
+    ├── defaults.toml                      # default per tutte le basi
+    └── graph/                             # stato grafo workspace (uno per workspace)
+        ├── graph.json                     # bolt_uri, database, embedding_model, schema_ref
+        └── schema.json                    # schema del grafo
 ```
 
-Regole:
-- **Niente basi fuori da un workspace**: una base è sempre una sottocartella di un workspace.
-- I chunk su disco sono un **prodotto derivato** del documento sorgente via ingestion + chunking. **Non sono editabili dall'utente**: Chroma è la fonte di verità. L'utente che vuole modificare il contenuto deve editare il **documento sorgente** e lasciare che KS re-indicizzi (vedi [45-indexing-incrementale.md](45-indexing-incrementale.md)).
-- Ogni base ha il proprio `.knowledge-space/` (chunk + `base.toml`): la base è **autocontenuta**, copiabile/spostabile con la sua config e i suoi chunk.
-- Il watcher sorgente della base ignora i path che iniziano con `.` (`.knowledge-space/`).
-- `graph/` appartiene al workspace (un grafo per workspace), ma la **configurazione del comportamento** (schema, `on_chunk_change`, `resolver`) è in `[graph]` del `BaseConfig` per-base — vedi [40-graph.md](40-graph.md).
-- Cascata di configurazione: default hardcoded → `<workspace>/.knowledge-space/defaults.toml` → `<base>/.knowledge-space/base.toml`.
-- Se una base non ha `base.toml`, usa i default del workspace (comportamento legittimo, **nessun warning**).
-- Se `defaults.toml` manca, KS usa i default hardcoded del programma **con un warning all'avvio** (segnala intenzione/config persa); KS non riscrive mai il TOML.
-- KS **non ricrea** i file TOML eliminati (regola: TOML è human-written).
-- I path dei chunk su disco usano `file_id` (UUID) invece di `file_stem`, così il rename del file sorgente non sposta la cartella chunk né cambia i `chunk_id` (vedi [45-indexing-incrementale.md](45-indexing-incrementale.md) trigger 2).
+**Regole:**
+- Niente basi fuori da un workspace
+- Chunk su disco sono **prodotto derivato**, non editabili dall'utente (Chroma è fonte di verità)
+- Ogni base è **autocontenuta** (copiabile/spostabile con la sua config e i suoi chunk)
+- Watcher sorgente ignora i path che iniziano con `.`
+- `graph/` appartiene al workspace (un grafo per workspace)
 
-### Esempio di `defaults.toml`
+### Cascata di configurazione
 
-Vedi [Appendix A](#appendix-a--esempio-defaultstoml) in fondo a questo documento.
+```
+default hardcoded
+  ↓ override
+<workspace>/.knowledge-space/defaults.toml
+  ↓ override
+<base>/.knowledge-space/base.toml
+```
 
-### Esempio di `<base>/.knowledge-space/base.toml`
-
-Vedi [Appendix B](#appendix-b--esempio-basetoml) in fondo a questo documento.
+- Se una base non ha `base.toml`, usa i default del workspace (nessun warning)
+- Se `defaults.toml` manca, usa i default hardcoded **con warning** all'avvio
+- KS **non ricrea** mai i file TOML eliminati
 
 ### Strategie (plugin/strategy pattern)
 
-Ogni componente è identificato da un **nome** + eventuali **parametri**, in modo da poter aggiungere nuove librerie/metodi senza riscrivere il codice:
-
-| Sezione | Campo `library`/`method`/`model` | Esempi | Specifiche |
+| Sezione | Campo | Esempi | Specifiche |
 |---|---|---|---|
 | `[ingestion]` | `library` | `"docling"`, `"pymupdf4llm"`, `"markitdown"` | [50-ingestion.md](50-ingestion.md) |
 | `[chunking]` | `method` | `"fixed_size"`, `"recursive"`, `"semantic"`, `"sentence"`, `"markdown"` | [60-chunking.md](60-chunking.md) |
-| `[embedding]` | `model` | qualsiasi modello HuggingFace locale o API | [70-embedding.md](70-embedding.md) |
+| `[embedding]` | `model` | qualsiasi modello HuggingFace o API | [70-embedding.md](70-embedding.md) |
 | `[pre_retrieval]` | `stages[{method, model, params}]` | `"identity"`, `"multi_query"`, `"step_back"`, `"least_to_most"` | [80-retrieval.md](80-retrieval.md), [75-llm.md](75-llm.md) |
-| `[retrieval]` | `method` / `fusion` | `"dense"` / `"sparse"` / `"hybrid"`; `"rrf"` / `"weighted_sum"` | 80 |
-| `[post_retrieval]` | `reranker` / `compressor` | `"identity"`, `"cross_encoder"`, `"llm"` | 80 |
+| `[retrieval]` | `method` / `fusion` | `"dense"` / `"sparse"` / `"hybrid"`; `"rrf"` / `"weighted_sum"` | [80-retrieval.md](80-retrieval.md) |
+| `[post_retrieval]` | `reranker` / `compressor` | `"identity"`, `"cross_encoder"`, `"llm"` | [80-retrieval.md](80-retrieval.md) |
 | `[graph]` | `schema`/`resolver`/`on_chunk_change`/`retriever` | `"manuale"`/`"EXTRACTED"`/`"FREE"`, `"semantic"`/`"exact"`/`"fuzzy"`, `"eager"`/`"lazy"` | [40-graph.md](40-graph.md) |
-
-Il programma mantiene un **registro di strategie** per `ingestion`, `chunking`, `embedding`, e istanzia quella giusta in base al nome nel config. Aggiungere una nuova libreria di ingestion = registrare una nuova strategia, senza toccare il codice esistente.
-
-Il cambio di `[embedding].model`, `[chunking].method` o `[ingestion].library` su una base con collection Chroma non vuota è **bloccato** (serve `ks reindex <base> --<reason>` esplicito, vedi [45-indexing-incrementale.md](45-indexing-incrementale.md) trigger 3/4/5). I chunk vivono in `<base>/.knowledge-space/chunks/<file_id>/` (dotfolder, prodotto derivato del sorgente, non editabili) — vedi la sezione [Filesystem](#filesystem) per la struttura completa.
 
 ### Regole di modifica
 
-L'accesso in scrittura alla configurazione TOML è diviso in due fasi:
+**Fase 1 (sola lettura):** TOML modificati a mano dall'utente. Il programma legge, valida (warning + fallback per valori non riconosciuti), non scrive.
 
-**Fase 1 (Step 3, Fase 1A) — sola lettura:**
-- I file TOML sono pensati per essere **modificati a mano** dall'utente (file aperto in un editor).
-- Il programma **legge** ma non scrive i file TOML.
-- Il programma **valida** il TOML all'avvio: se un valore non è riconosciuto, logga un warning e usa il default.
-
-**Fase 2 (Step 13, Fase 3) — scrittura via CLI:**
-- La CLI ottiene il comando `config set` per modificare le preferenze nei TOML.
-- Il programma scrive solo i file TOML delle basi e `defaults.toml`, mai il config dell'app (`config.json` gestito da `auth set`).
-- Il comando rileva automaticamente se la chiave modificata impatta l'indice esistente (`embedding.model` → re-embed, `chunking.method` → re-chunk, `ingestion.library` → re-ingest) e chiede conferma prima di procedere.
+**Fase 2 (scrittura via CLI):** comando `config set` per modificare le preferenze. Rileva automaticamente trigger di reindex e chiede conferma.
 
 ### Trigger di reindex
 
-Il cambio di alcune chiavi di configurazione su una base con collection Chroma non vuota attiva un trigger di reindex. I trigger sono rilevati automaticamente:
-
 | Trigger | Chiave config | Impatto |
 |---|---|---|
-| `model-change` | `embedding.model` | Nuova collection Chroma con `dim` del nuovo modello, re-embed da disco. |
-| `chunking-change` | `chunking.method` | Re-chunk + re-embed + riscrittura chunk su disco. Delete+insert in Chroma. |
-| `ingestion-change` | `ingestion.library` | Re-ingest + re-chunk + re-embed. Come chunking-change ma parte da ingestion. |
+| `model-change` | `embedding.model` | Nuova collection Chroma, re-embed da disco |
+| `chunking-change` | `chunking.method` | Re-chunk + re-embed + riscrittura chunk su disco |
+| `ingestion-change` | `ingestion.library` | Re-ingest + re-chunk + re-embed |
 
-Il rilevamento avviene in due punti:
-- **All'avvio**: se la configurazione TOML differisce da quella registrata in `state.json` e la collection non è vuota, il caricamento fallisce con un messaggio che invita a usare `ks reindex`.
-- **In scrittura via CLI** (`config set`): il comando rileva il trigger dalla chiave modificata, chiede conferma, e avvia automaticamente il reindex appropriato.
+Rilevamento: all'avvio (config TOML vs `state.json`) e in scrittura via CLI (`config set`). Vedi [45-indexing-incrementale.md](45-indexing-incrementale.md) per i 5 trigger completi.
 
-Vedi [45-indexing-incrementale.md](45-indexing-incrementale.md) per la specifica completa dei 5 trigger (inclusi content-change e move/rename, che non dipendono dalla configurazione).
+### Configurazione dell'applicazione
 
----
+La configurazione dell'applicazione (`RuntimePaths`, `UserSettings`, `AppConfig`, variabili d'ambiente) è descritta in [31-configurazione-app.md](31-configurazione-app.md).
 
-## Configurazione dell'applicazione
-
-La configurazione dell'applicazione (`RuntimePaths`, `UserSettings`, `AppConfig`, variabili d'ambiente, sicurezza) è descritta in [31-configurazione-app.md](31-configurazione-app.md).
-
----
-
-## Appendix A — Esempio di `defaults.toml`
-
-Configurazione predefinita per tutte le basi del workspace.
+### Appendix A — Esempio di `defaults.toml`
 
 ```toml
-# Default per tutte le basi del workspace
-
 [ingestion]
 library = "docling"
-params.use_gpu = false       # true per accelerare con GPU (docling, embedding)
+params.use_gpu = false
 
 [chunking]
 method = "fixed_size"
@@ -140,30 +119,22 @@ separator = "\n\n"
 
 [embedding]
 model = "sentence-transformers/all-mpnet-base-v2"
-# device = "cpu"
 
 [graph]
-schema = "manuale"          # "manuale" | "EXTRACTED" | "FREE"
-resolver = "semantic"      # "semantic" (default, extra [nlp]) | "exact" | "fuzzy" (extra [fuzzy-matching]) | "none"
-on_chunk_change = "eager"  # "eager" (default) | "lazy"
+schema = "manuale"
+resolver = "semantic"
+on_chunk_change = "eager"
 chunk_embedding_property = "embedding"
 node_types = ["Person", "Organization", "Concept"]
 relationship_types = ["WORKS_FOR", "RELATED_TO"]
-patterns = [
-    ["Person", "WORKS_FOR", "Organization"],
-    ["Concept", "RELATED_TO", "Concept"],
-]
-retriever = "hybrid_cypher"   # vedi 40-graph.md §14
+patterns = [["Person", "WORKS_FOR", "Organization"], ["Concept", "RELATED_TO", "Concept"]]
+retriever = "hybrid_cypher"
 top_k = 5
 vector_index = "chunk-embeddings"
 fulltext_index = "chunk-text"
 retrieval_query = """
-RETURN node.id            AS chunk_id,
-       node.text          AS text,
-       node.base_name     AS base_name,
-       node.file_name     AS file_name,
-       node.chunk_index   AS chunk_index,
-       score
+RETURN node.id AS chunk_id, node.text AS text, node.base_name AS base_name,
+       node.file_name AS file_name, node.chunk_index AS chunk_index, score
 """
 return_properties = ["chunk_id", "text"]
 
@@ -172,32 +143,33 @@ stages = [{ method = "identity" }]
 
 [retrieval]
 method = "dense"
-fusion = "rrf"               # "rrf" (default) | "weighted_sum"
-query_mode = "original"      # "original" | "hyde"
+fusion = "rrf"
+query_mode = "original"
 
 [post_retrieval]
 top_k = 10
-reranker = "identity"        # "identity" | "relevance" | "mmr" | "cross_encoder" | "llm"
-compressor = "identity"      # "identity" | "llm_chain_extract" | "selective_context"
+reranker = "identity"
+compressor = "identity"
 ```
 
-## Appendix B — Esempio di `<base>/.knowledge-space/base.toml`
-
-Configurazione specifica di una base. I campi mancanti ereditano da `defaults.toml`.
+### Appendix B — Esempio di `base.toml`
 
 ```toml
-# Configurazione della base (es. test_kb1)
-# I campi mancanti ereditano da defaults.toml
-
 [chunking]
-chunk_size = 500          # override del default del workspace
+chunk_size = 500
 chunk_overlap = 100
 
 [embedding]
-model = "sentence-transformers/all-MiniLM-L6-v2"   # base con modello più leggero
+model = "sentence-transformers/all-MiniLM-L6-v2"
 
 [pre_retrieval]
 stages = [
   { method = "multi_query", model = "openai/gpt-4o-mini", params = { n_queries = 4 } },
 ]
 ```
+
+## Dipendenze
+
+| Dipende da | Usato da |
+|------------|----------|
+| Nessuno (fondamenta) | Tutti gli altri step |

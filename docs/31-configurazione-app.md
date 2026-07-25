@@ -2,7 +2,11 @@
 
 > **Stato:** in progress | **Step:** 8-ter | **Fase:** 1A | **Aggiornato:** 22 luglio 2026
 
-## Decisioni chiave
+## Panoramica
+
+Configurazione dell'applicazione: path XDG (`RuntimePaths`), secrets (`UserSettings`), variabili d'ambiente e il loro rapporto con la configurazione delle basi (TOML).
+
+## Scelte
 
 | Aspetto | Scelta |
 |---------|--------|
@@ -11,11 +15,9 @@
 | Secrets | Mai nei TOML — env var o `UserSettings` |
 | `AppContext` | Unico punto DI (Step 8-ter) |
 
-## Obiettivo
+## Dettagli
 
-Definire la configurazione dell'applicazione: path XDG, secrets, variabili d'ambiente e il loro rapporto con la configurazione delle basi (TOML).
-
-## `RuntimePaths`
+### `RuntimePaths`
 
 Classe Pydantic che racchiude tutti i path necessari, mantenendo lo standard XDG.
 
@@ -25,7 +27,7 @@ Classe Pydantic che racchiude tutti i path necessari, mantenendo lo standard XDG
 | `data_home` | `~/.local/share/KnowledgeSpace/` | Chunk, dati grandi |
 | `state_home` | `~/.local/state/KnowledgeSpace/` | Indici, log, DB |
 
-Path derivati:
+**Path derivati:**
 - `user_settings_file`: `config_home/config.json`
 - `workspaces_index`: `state_home/workspaces.json`
 - `workspace_state_file`: `<workspace>/.knowledge-space/state.json`
@@ -33,11 +35,11 @@ Path derivati:
 - `base_toml`: `<workspace>/<base>/.knowledge-space/base.toml`
 - `base_chunks_dir`: `<workspace>/<base>/.knowledge-space/chunks/`
 
-## `UserSettings`
+### `UserSettings`
 
 Gestisce `~/.config/KnowledgeSpace/config.json` con secrets e preferenze utente.
 
-## Variabili d'ambiente
+### Variabili d'ambiente
 
 | Variabile | Descrizione |
 |-----------|-------------|
@@ -54,13 +56,13 @@ Gestisce `~/.config/KnowledgeSpace/config.json` con secrets e preferenze utente.
 
 La variabile d'ambiente ha precedenza su `UserSettings`.
 
-## Sicurezza
+### Sicurezza
 
 - Secrets in `config.json` con permessi 600 o in env var
 - L'endpoint REST `/api/v1/config` non restituisce secrets in chiaro
 - I file TOML delle basi **non** contengono secrets
 
-## Fasi di implementazione
+### Fasi di implementazione
 
 - [x] `RuntimePaths` in `knowledge_space/runtime_paths.py`
 - [ ] `AppContext` con `RuntimePaths` e `UserSettings` (Step 8-ter)
@@ -68,9 +70,6 @@ La variabile d'ambiente ha precedenza su `UserSettings`.
 
 ## Dipendenze
 
-- **Dipende da:** Step 0 (modelli)
-- **Usato da:** Step 8-ter (AppContext), Step 12 (logging), Step 13 (CLI)
-
----
-
-*Ultimo aggiornamento: 22 luglio 2026*
+| Dipende da | Usato da |
+|------------|----------|
+| Step 0 (modelli) | Step 8-ter (AppContext), Step 12 (logging), Step 13 (CLI) |

@@ -45,5 +45,6 @@ dev = [
 [tool.pytest.ini_options]
 markers = [
     "api: test di integrazione con API remote (richiede API key env var: COHERE_API_KEY, VOYAGE_API_KEY)",
+    "neo4j: test di integrazione con Neo4j (richiede istanza Neo4j in esecuzione)",
 ]
 

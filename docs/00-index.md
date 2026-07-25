@@ -39,6 +39,20 @@
 | 86 | [MCP](86-mcp-server.md) | Server MCP stdio/SSE, tools | 14 |
 | 87 | [REST API](87-rest-api.md) | FastAPI, endpoints, CORS | 15 |
 
+## Template documentazione
+
+Tutti i documenti seguono la stessa struttura:
+
+```
+# [Titolo]
+> **Stato:** ... | **Step:** ... | **Fase:** ... | **Aggiornato:** ...
+
+## Panoramica    ← cosa è, a cosa serve
+## Scelte        ← tabella decisioni chiave
+## Dettagli      ← contenuto tecnico (config, interfacce, algoritmi)
+## Dipendenze    ← cosa dipende da cosa
+```
+
 ## File deprecati
 
 Conservati per riferimento storico. Non aggiornare.

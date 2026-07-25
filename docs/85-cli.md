@@ -2,7 +2,11 @@
 
 > **Stato:** non iniziato | **Step:** 13 | **Fase:** 3 | **Aggiornato:** 22 luglio 2026
 
-## Decisioni chiave
+## Panoramica
+
+Interfaccia a riga di comando (Typer) per gestire workspace, domini, basi, file, chunk, ricerca e configurazione. In Fase 1-3 opera in modalità standalone (ogni comando = processo separato); in Fase 4+ diventa client del backend REST.
+
+## Scelte
 
 | Aspetto | Scelta |
 |---------|--------|
@@ -13,18 +17,16 @@
 | Autocompletamento | Shell completion nativa (Typer) |
 | Scrittura TOML | `config set`/`unset` con rilevamento trigger reindex |
 
-## Obiettivo
+## Dettagli
 
-Interfaccia a riga di comando per gestire workspace, domini, basi, file, chunk, ricerca e configurazione.
-
-## Convenzioni generali
+### Convenzioni generali
 
 - **Cwd-context**: rileva il workspace corrente cercando `.knowledge-space/` (stile git). Override con `--workspace <path>`.
 - **Flag globali**: `--help`, `--version`, `--verbose`/`-v`, `--json`, `--workspace <path>`
 
-## Inventario comandi
+### Inventario comandi
 
-### Workspace
+**Workspace:**
 
 | Comando | Descrizione |
 |---------|-------------|
@@ -34,7 +36,7 @@ Interfaccia a riga di comando per gestire workspace, domini, basi, file, chunk, 
 | `workspace move <old> <new>` | Aggiorna path |
 | `workspace info [<path>]` | Mostra stato |
 
-### Domain
+**Domain:**
 
 | Comando | Descrizione |
 |---------|-------------|
@@ -46,7 +48,7 @@ Interfaccia a riga di comando per gestire workspace, domini, basi, file, chunk, 
 | `domain auto-generate` | Genera dalla struttura cartelle |
 | `domain activate/deactivate <name>` | Attiva/disattiva |
 
-### Base
+**Base:**
 
 | Comando | Descrizione |
 |---------|-------------|
@@ -56,7 +58,7 @@ Interfaccia a riga di comando per gestire workspace, domini, basi, file, chunk, 
 | `base info <name>` | Config effettiva, modello, n. file/chunk |
 | `base activate/deactivate <name>` | Attiva/disattiva |
 
-### File
+**File:**
 
 | Comando | Descrizione |
 |---------|-------------|
@@ -66,7 +68,7 @@ Interfaccia a riga di comando per gestire workspace, domini, basi, file, chunk, 
 | `file info <path>` | mtime, n. chunk, file_id |
 | `file activate/deactivate <path>` | Attiva/disattiva |
 
-### Chunk
+**Chunk:**
 
 | Comando | Descrizione |
 |---------|-------------|
@@ -75,7 +77,7 @@ Interfaccia a riga di comando per gestire workspace, domini, basi, file, chunk, 
 | `chunk info <id>` | Metadati |
 | `chunk activate/deactivate <id>` | Attiva/disattiva |
 
-### Tree
+**Tree:**
 
 | Comando | Descrizione |
 |---------|-------------|
@@ -83,7 +85,7 @@ Interfaccia a riga di comando per gestire workspace, domini, basi, file, chunk, 
 | `tree --base/--domain <name>` | Scope a base/dominio |
 | `tree --json` | Output JSON |
 
-### Search
+**Search:**
 
 | Comando | Descrizione |
 |---------|-------------|
@@ -92,14 +94,14 @@ Interfaccia a riga di comando per gestire workspace, domini, basi, file, chunk, 
 | `search <query> --top-k N` | Override risultati |
 | `search <query> --json` | Output JSON |
 
-### Reindex
+**Reindex:**
 
 | Comando | Descrizione |
 |---------|-------------|
 | `reindex <base>` | Auto-detect trigger + reindicizza |
 | `reindex --all` | Tutte le basi |
 
-### Graph
+**Graph:**
 
 | Comando | Descrizione |
 |---------|-------------|
@@ -108,7 +110,7 @@ Interfaccia a riga di comando per gestire workspace, domini, basi, file, chunk, 
 | `graph re-extract-schema` | Forza re-estrazione schema |
 | `graph status` | Stato grafo |
 
-### Config
+**Config:**
 
 | Comando | Descrizione |
 |---------|-------------|
@@ -119,7 +121,7 @@ Interfaccia a riga di comando per gestire workspace, domini, basi, file, chunk, 
 | `config unset <base\|defaults> <key>` | Rimuove chiave |
 | `config edit <base\|defaults>` | Apre in `$EDITOR` |
 
-### Auth
+**Auth:**
 
 | Comando | Descrizione |
 |---------|-------------|
@@ -127,14 +129,14 @@ Interfaccia a riga di comando per gestire workspace, domini, basi, file, chunk, 
 | `auth list` | Elenca chiavi (valori mascherati) |
 | `auth remove <key>` | Rimuove chiave |
 
-### Models
+**Models:**
 
 | Comando | Descrizione |
 |---------|-------------|
 | `models list [--local\|--remote]` | Elenca modelli embedding |
 | `models info <name>` | Dettaglio modello |
 
-### Profiles
+**Profiles:**
 
 | Comando | Descrizione |
 |---------|-------------|
@@ -145,13 +147,13 @@ Interfaccia a riga di comando per gestire workspace, domini, basi, file, chunk, 
 | `profiles diff <name> [--base <base>]` | Differenze |
 | `profiles edit/remove <name>` | Modifica/elimina |
 
-### Status
+**Status:**
 
 | Comando | Descrizione |
 |---------|-------------|
 | `status` | Panoramica workspace attivo, basi, file, chunk, grafo |
 
-### Server (Fase 4)
+**Server (Fase 4):**
 
 | Comando | Descrizione |
 |---------|-------------|
@@ -160,12 +162,12 @@ Interfaccia a riga di comando per gestire workspace, domini, basi, file, chunk, 
 | `stop` | Arresta backend via REST `/shutdown` |
 | `mcp` | MCP stdio bridge verso backend |
 
-## Autocompletamento per `config set`
+### Autocompletamento per `config set`
 
 - **`key`**: suggerisce percorsi dotted validi (`chunking.` → `chunking.chunk_size`, ...)
 - **`value`**: suggerisce valori ammissibili (`ingestion.library` → `docling`, `pymupdf4llm`, `markitdown`)
 
-## Fasi di implementazione
+### Fasi di implementazione
 
 - [ ] Aggiungere `typer` alle dipendenze
 - [ ] Creare `knowledge_space/cli.py`
@@ -177,9 +179,6 @@ Interfaccia a riga di comando per gestire workspace, domini, basi, file, chunk, 
 
 ## Dipendenze
 
-- **Dipende da:** Step 8-ter (AppContext), Step 12 (logging)
-- **Usato da:** Step 15 (REST), Step 18 (packaging)
-
----
-
-*Ultimo aggiornamento: 22 luglio 2026*
+| Dipende da | Usato da |
+|------------|----------|
+| Step 8-ter (AppContext), Step 12 (logging) | Step 15 (REST), Step 18 (packaging) |

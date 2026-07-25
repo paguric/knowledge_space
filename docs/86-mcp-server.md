@@ -2,7 +2,11 @@
 
 > **Stato:** non iniziato | **Step:** 14 | **Fase:** 3 | **Aggiornato:** 22 luglio 2026
 
-## Decisioni chiave
+## Panoramica
+
+Server MCP (Model Context Protocol) per interrogare i workspace. In Fase 3 opera come processo standalone; in Fase 4+ diventa bridge verso il backend REST.
+
+## Scelte
 
 | Aspetto | Scelta |
 |---------|--------|
@@ -12,16 +16,14 @@
 | Fase 3 | Processo standalone |
 | Fase 4+ | Bridge verso REST backend |
 
-## Obiettivo
+## Dettagli
 
-Server MCP per interrogare i workspace tramite il protocollo Model Context Protocol.
-
-## Protocollo e trasporto
+### Protocollo e trasporto
 
 - **stdio**: il server legge da stdin e scrive su stdout. Default per client come Claude Desktop.
 - **SSE (Server-Sent Events)**: endpoint HTTP. Opzionale con `--sse --port 8001`.
 
-## Tools MCP da esporre
+### Tools MCP da esporre
 
 | Tool | Descrizione |
 |------|-------------|
@@ -34,7 +36,7 @@ Server MCP per interrogare i workspace tramite il protocollo Model Context Proto
 | `add_file(workspace, base, path)` | Indicizza file |
 | `get_config()` | Configurazione attiva (senza secrets) |
 
-## Struttura pacchetto
+### Struttura pacchetto
 
 ```
 packages/mcp-server/src/mcp_server/
@@ -45,7 +47,7 @@ packages/mcp-server/src/mcp_server/
 └── __main__.py          # python -m mcp_server
 ```
 
-## Riutilizzo della logica
+### Riutilizzo della logica
 
 Il server MCP usa gli stessi service di `knowledge-base`:
 
@@ -53,14 +55,14 @@ Il server MCP usa gli stessi service di `knowledge-base`:
 from knowledge_base.services import WorkspaceService, KnowledgeBaseService
 ```
 
-## Ciclo di vita
+### Ciclo di vita
 
 | Fase | Modalità | Funzionamento |
 |------|----------|---------------|
 | Fase 3 | Standalone | Carica AppContext direttamente, opera su state.json/Chroma |
 | Fase 4+ | Bridge | Traduce MCP stdio → chiamate REST al backend |
 
-## Fasi di implementazione
+### Fasi di implementazione
 
 - [ ] Aggiungere `mcp` alle dipendenze
 - [ ] Rimuovere `mcp-server` da `knowledge-space`, aggiungere `knowledge-base` come dipendenza
@@ -71,9 +73,6 @@ from knowledge_base.services import WorkspaceService, KnowledgeBaseService
 
 ## Dipendenze
 
-- **Dipende da:** Step 8-ter (AppContext)
-- **Usato da:** Step 17 (polish)
-
----
-
-*Ultimo aggiornamento: 22 luglio 2026*
+| Dipende da | Usato da |
+|------------|----------|
+| Step 8-ter (AppContext) | Step 17 (polish) |

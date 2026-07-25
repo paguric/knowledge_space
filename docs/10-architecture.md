@@ -2,7 +2,11 @@
 
 > **Stato:** in progress | **Aggiornato:** 22 luglio 2026
 
-## Decisioni chiave
+## Panoramica
+
+Organizzazione del monorepo in 3 pacchetti con separazione delle responsabilità: `knowledge-base` (libreria pura), `knowledge-space` (app layer: CLI, REST, bootstrap), `mcp-server` (server MCP). La regola d'oro è che `knowledge-base` non conosce HTTP, MCP, CLI o variabili globali.
+
+## Scelte
 
 | Aspetto | Scelta |
 |---------|--------|
@@ -14,11 +18,9 @@
 | GraphRAG | Modulo `knowledge_base/graph/`, driver iniettato |
 | Iniezione dipendenze | `AppContext` a livello di applicazione |
 
-## Obiettivo
+## Dettagli
 
-Definire l'organizzazione dei pacchetti, la separazione delle responsabilità e le regole architetturali del progetto.
-
-## Organizzazione del monorepo
+### Organizzazione del monorepo
 
 ```
 knowledge_space/
@@ -49,7 +51,7 @@ knowledge_space/
 └── pyproject.toml          # workspace uv
 ```
 
-## Separazione delle responsabilità
+### Separazione delle responsabilità
 
 | Pacchetto | Responsabilità | Dipende da |
 |-----------|---------------|------------|
@@ -57,7 +59,7 @@ knowledge_space/
 | `knowledge-space` | `RuntimePaths`, `AppContext`, CLI, REST API, bootstrap | `knowledge-base` |
 | `mcp-server` | Server MCP (stdio/SSE) | `knowledge-base` |
 
-## Visione architetturale
+### Visione architetturale
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -84,36 +86,24 @@ knowledge_space/
 └──────────────────────┘          └──────────────────────┘
 ```
 
-**Regola d'oro**: `knowledge-base` non deve sapere nulla di HTTP, MCP, CLI o variabili globali. Deve essere una libreria pura che riceve esplicitamente le dipendenze necessarie.
+### Modulo `knowledge_base/graph/`
 
-## Modulo `knowledge_base/graph/`
+Sotto-modulo per la pipeline GraphRAG (Step 8-bis, Fase 1C). Rispetta la regola d'oro: riceve esplicitamente il driver Neo4j, l'embedder, la connessione Chroma e la configurazione.
 
-Sotto-modulo previsto dallo Step 8-bis (Fase 1C). Rispetta la regola d'oro: riceve esplicitamente il driver Neo4j, l'embedder, la connessione Chroma e la configurazione.
-
-Componenti previsti:
-
+**Componenti previsti:**
 - **`KSChunkLoader`**: legge chunk da disco + embedding da Chroma. Espone `upsert_chunks()` per propagazione incrementale.
 - **`GraphPipeline`**: assemblaggio `KSChunkLoader → schema → LLMEntityRelationExtractor → Neo4jWriter → EntityResolver`.
 - **Schema manager**: caricamento `GraphSchema.from_file` se esiste, altrimenti costruzione + materializzazione.
 - **`RetrieverFactory`**: costruisce il retriever corrispondente a `[graph].retriever`.
 
-## Ciclo di vita dell'app
-
-| Fase | Modalità | CLI | Watcher | REST | MCP |
-|---|---|---|---|---|---|
-| **Fase 1–3** | CLI standalone | Ogni comando = processo separato | Non attivi | N/A | N/A |
-| **Fase 4+** | Backend process | Client del backend | Attivi (watchdog) | uvicorn | stdio/SSE |
-
-La spec dettagliata del ciclo di vita è in [11-app-lifecycle.md](11-app-lifecycle.md).
-
-## Pattern architetturali
+### Pattern architetturali
 
 - **Strategy/plugin pattern** per ingestion, chunking, embedding, retrieval, LLM
 - **Registry** discoverable per ogni strategy (nome + parametri + metadati)
 - **AppContext** come unico punto di dependency injection
 - **Nessuna variabile globale** — tutto passato esplicitamente
 
-## Fasi di implementazione
+### Fasi di implementazione
 
 - [x] Step 0-7: Modelli, persistenza, manager, strategy (Fase 1A)
 - [ ] Step 8-ter: AppContext e bootstrap
@@ -122,9 +112,6 @@ La spec dettagliata del ciclo di vita è in [11-app-lifecycle.md](11-app-lifecyc
 
 ## Dipendenze
 
-- **Dipende da:** nessuno (fondamenta)
-- **Usato da:** tutti gli altri step
-
----
-
-*Ultimo aggiornamento: 22 luglio 2026*
+| Dipende da | Usato da |
+|------------|----------|
+| Nessuno (fondamenta) | Tutti gli altri step |

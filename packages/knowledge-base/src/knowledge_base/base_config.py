@@ -49,6 +49,56 @@ class EmbeddingConfig(BaseModel):
     params: Dict[str, Any] = Field(default_factory=dict)
 
 
+class PreRetrievalStageConfig(BaseModel):
+    """Singolo stadio nella sezione ``[pre_retrieval]`` del TOML."""
+
+    method: str = "identity"
+    params: Dict[str, Any] = Field(default_factory=dict)
+
+
+class PreRetrievalConfig(BaseModel):
+    """Sezione ``[pre_retrieval]`` del TOML."""
+
+    stages: List[PreRetrievalStageConfig] = Field(
+        default_factory=lambda: [PreRetrievalStageConfig()]
+    )
+
+
+class RetrievalConfig(BaseModel):
+    """Sezione ``[retrieval]`` del TOML."""
+
+    method: str = "dense"
+    query_mode: str = "original"
+    top_k: int = 10
+    params: Dict[str, Any] = Field(default_factory=dict)
+
+
+class PostRetrievalConfig(BaseModel):
+    """Sezione ``[post_retrieval]`` del TOML."""
+
+    method: str = "identity"
+    params: Dict[str, Any] = Field(default_factory=dict)
+
+
+class GraphConfig(BaseModel):
+    """Sezione ``[graph]`` del TOML per-base (Fase 1C)."""
+
+    enabled: bool = False
+    on_chunk_change: str = "lazy"  # "eager" | "lazy"
+    retriever: str = "hybrid_cypher"
+    schema_mode: str = "FREE"  # "FREE" | "EXTRACTED" | "manuale"
+    resolver: str = "exact"  # "exact" | "semantic" | "none"
+    extraction_model: Optional[str] = None
+    schema_model: Optional[str] = None
+    top_k: int = 5
+    vector_index: str = "chunk-embeddings"
+    fulltext_index: str = "chunk-text"
+    retrieval_query: str = ""
+    return_properties: List[str] = Field(default_factory=lambda: ["chunk_id", "text"])
+    chunk_embedding_property: str = "embedding"
+    params: Dict[str, Any] = Field(default_factory=dict)
+
+
 # --------------------------------------------------------------------------- #
 # BaseConfig
 # --------------------------------------------------------------------------- #
@@ -57,7 +107,7 @@ class EmbeddingConfig(BaseModel):
 class BaseConfig(BaseModel):
     """Configurazione completa di una base di conoscenza.
 
-    Le tre sotto-sezioni possono essere sovrascritte indipendentemente dai
+    Le sotto-sezioni possono essere sovrascritte indipendentemente dai
     file TOML della cascata. Il metodo :meth:`override` fonde un'altra
     ``BaseConfig`` (parziale) sopra questa, restituendo una nuova istanza.
     """
@@ -65,6 +115,10 @@ class BaseConfig(BaseModel):
     ingestion: IngestionConfig = Field(default_factory=IngestionConfig)
     chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
     embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
+    pre_retrieval: PreRetrievalConfig = Field(default_factory=PreRetrievalConfig)
+    retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
+    post_retrieval: PostRetrievalConfig = Field(default_factory=PostRetrievalConfig)
+    graph: GraphConfig = Field(default_factory=GraphConfig)
 
     # .................................................................... #
     # Merge / override
@@ -82,6 +136,14 @@ class BaseConfig(BaseModel):
             ingestion=self._merge_section(self.ingestion, other.ingestion),
             chunking=self._merge_section(self.chunking, other.chunking),
             embedding=self._merge_section(self.embedding, other.embedding),
+            pre_retrieval=self._merge_section(
+                self.pre_retrieval, other.pre_retrieval
+            ),
+            retrieval=self._merge_section(self.retrieval, other.retrieval),
+            post_retrieval=self._merge_section(
+                self.post_retrieval, other.post_retrieval
+            ),
+            graph=self._merge_section(self.graph, other.graph),
         )
 
     @staticmethod
@@ -171,7 +233,133 @@ class BaseConfig(BaseModel):
                     "[embedding] valori invalidi (%s): sezione ai default", exc
                 )
 
-        return cls(ingestion=ingestion, chunking=chunking, embedding=embedding)
+        pre_retrieval = PreRetrievalConfig()
+        retrieval = RetrievalConfig()
+        post_retrieval = PostRetrievalConfig()
+
+        if "pre_retrieval" in data:
+            section = data["pre_retrieval"]
+            known = {"stages"}
+            for key in section:
+                if key not in known:
+                    logger.warning(
+                        "[pre_retrieval] campo sconosciuto '%s' ignorato", key
+                    )
+            if "stages" in section:
+                stages = section["stages"]
+                if isinstance(stages, list):
+                    parsed_stages = []
+                    for s in stages:
+                        if isinstance(s, dict):
+                            try:
+                                parsed_stages.append(
+                                    PreRetrievalStageConfig(**s)
+                                )
+                            except ValidationError as exc:
+                                logger.warning(
+                                    "[pre_retrieval] stage invalido (%s): ignorato",
+                                    exc,
+                                )
+                        else:
+                            logger.warning(
+                                "[pre_retrieval] stage non è un dict: ignorato"
+                            )
+                    if parsed_stages:
+                        pre_retrieval = PreRetrievalConfig(stages=parsed_stages)
+                else:
+                    logger.warning(
+                        "[pre_retrieval].stages non è una lista: ignorato"
+                    )
+
+        if "retrieval" in data:
+            section = data["retrieval"]
+            known = {"method", "query_mode", "top_k", "params"}
+            for key in section:
+                if key not in known:
+                    logger.warning(
+                        "[retrieval] campo sconosciuto '%s' ignorato", key
+                    )
+            kwargs = {k: v for k, v in section.items() if k in known}
+            if "params" in kwargs and not isinstance(kwargs["params"], dict):
+                logger.warning("[retrieval].params non è un dict, ignorato")
+                del kwargs["params"]
+            try:
+                retrieval = RetrievalConfig(**kwargs)
+            except ValidationError as exc:
+                logger.warning(
+                    "[retrieval] valori invalidi (%s): sezione ai default", exc
+                )
+
+        if "post_retrieval" in data:
+            section = data["post_retrieval"]
+            known = {"method", "params"}
+            for key in section:
+                if key not in known:
+                    logger.warning(
+                        "[post_retrieval] campo sconosciuto '%s' ignorato", key
+                    )
+            kwargs = {k: v for k, v in section.items() if k in known}
+            if "params" in kwargs and not isinstance(kwargs["params"], dict):
+                logger.warning("[post_retrieval].params non è un dict, ignorato")
+                del kwargs["params"]
+            try:
+                post_retrieval = PostRetrievalConfig(**kwargs)
+            except ValidationError as exc:
+                logger.warning(
+                    "[post_retrieval] valori invalidi (%s): sezione ai default",
+                    exc,
+                )
+
+        graph = GraphConfig()
+
+        if "graph" in data:
+            section = data["graph"]
+            known = {
+                "enabled", "on_chunk_change", "retriever", "schema",
+                "resolver", "extraction_model", "schema_model", "top_k",
+                "vector_index", "fulltext_index", "retrieval_query",
+                "return_properties", "chunk_embedding_property", "params",
+            }
+            for key in section:
+                if key not in known:
+                    logger.warning(
+                        "[graph] campo sconosciuto '%s' ignorato", key
+                    )
+            kwargs = {}
+            for k, v in section.items():
+                if k not in known:
+                    continue
+                # TOML usa "schema", il modello Pydantic "schema_mode"
+                if k == "schema":
+                    kwargs["schema_mode"] = v
+                else:
+                    kwargs[k] = v
+            if "params" in kwargs and not isinstance(kwargs["params"], dict):
+                logger.warning("[graph].params non è un dict, ignorato")
+                del kwargs["params"]
+            if "return_properties" in kwargs and not isinstance(
+                kwargs["return_properties"], list
+            ):
+                logger.warning(
+                    "[graph].return_properties non è una lista, ignorato"
+                )
+                del kwargs["return_properties"]
+            try:
+                graph = GraphConfig(**kwargs)
+            except ValidationError as exc:
+                logger.warning(
+                    "[graph] valori invalidi (%s): sezione ai default", exc
+                )
+
+        return cls(
+            ingestion=ingestion,
+            chunking=chunking,
+            embedding=embedding,
+            pre_retrieval=pre_retrieval,
+            retrieval=retrieval,
+            post_retrieval=post_retrieval,
+            graph=graph,
+        )
 
 
 # --------------------------------------------------------------------------- #

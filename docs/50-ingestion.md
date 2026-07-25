@@ -2,7 +2,11 @@
 
 > **Stato:** implementato | **Step:** 4 | **Fase:** 1A | **Aggiornato:** 22 luglio 2026
 
-## Decisioni chiave
+## Panoramica
+
+Conversione dei file sorgenti nei formati supportati in testo Markdown strutturato, pronto per il chunking. Ogni strategia incapsula una libreria di conversione e ne espone i parametri configurabili via TOML (`[ingestion].params`).
+
+## Scelte
 
 | Library | Formati | Profilo | GPU |
 |---------|---------|---------|-----|
@@ -11,13 +15,14 @@
 | `markitdown` | PPTX, DOCX, PDF, HTML, TXT | studente | No |
 | `identity` | MD, TXT | tutti | No |
 
-## Obiettivo
+| Aspetto | Scelta |
+|---------|--------|
+| Insieme formati | **Chiuso**: formato non in lista → errore esplicito |
+| GPU | `use_gpu` globale (default `false`), ogni libreria decide se usarla |
 
-Convertire i file sorgenti nei formati supportati in testo Markdown strutturato, pronto per il chunking. Ogni strategia incapsula una libreria di conversione e ne espone i parametri configurabili via TOML (`[ingestion].params`).
+## Dettagli
 
-## Formati supportati
-
-L'insieme è **chiuso**: qualsiasi formato non in questa lista viene rifiutato con errore esplicito dal manager.
+### Formati supportati
 
 | Formato | Estensioni | Profilo d'uso prevalente |
 |---------|-----------|--------------------------|
@@ -28,9 +33,7 @@ L'insieme è **chiuso**: qualsiasi formato non in questa lista viene rifiutato c
 | Preventivi / contratti | `.docx` | `consulente` |
 | Appunti | `.md` | tutti (lettura diretta, nessuna libreria) |
 
-Parametro globale `use_gpu` (default `false`): se `true`, la strategia di ingestion tenta di usare la GPU (CUDA) per accelerare la conversione. Ogni libreria decide in base alle proprie capacità se e come usare la GPU (Docling la usa per OCR e table model; PyMuPDF4LLM e markitdown non beneficiano di GPU e ignorano il flag).
-
-## Interfaccia `IngestionStrategy`
+### Interfaccia `IngestionStrategy`
 
 ```python
 from typing import Protocol
@@ -38,8 +41,8 @@ from pathlib import Path
 
 class IngestionStrategy(Protocol):
     """Converte un file sorgente in testo Markdown."""
-    name: str  # identificatore unico per il registry
-    library: str  # nome della libreria sottostante
+    name: str
+    library: str
     supported_extensions: list[str]
 
     def convert(self, source_path: Path, **params) -> str:
@@ -47,88 +50,46 @@ class IngestionStrategy(Protocol):
         ...
 ```
 
-Ogni strategy si registra nel registry globale (`knowledge_base.strategies.ingestion`) tramite decoratore `@register("ingestion", name)`. Il `BaseConfigLoader` (Step 3) restituisce il nome della library dal TOML; il manager cerca l'istanza nel registry.
+Ogni strategy si registra nel registry globale (`knowledge_base.strategies.ingestion`) tramite decoratore `@register("ingestion", name)`.
 
-## Librerie supportate
+### Librerie supportate
 
-### Docling
-
-| | |
-|---|---|
-| **Manutentore** | IBM / DS4SD |
-| **Licenza** | MIT |
-| **Formati** | PDF, DOCX, PPTX, HTML, xHTML, immagini, ASCIIDOC |
-| **Focus** | Document understanding profondo, layout model, tabelle, OCR |
-| **Dipendenze** | Pesanti (torch, modelli CV opzionali) |
-| **Velocità** | Lenta senza GPU; OK con GPU |
-
-Parametri TOML (`[ingestion]`):
+**Docling** (IBM/DS4SD, MIT): PDF, DOCX, PPTX, HTML, xHTML, immagini, ASCIIDOC. Focus su document understanding profondo, layout model, tabelle, OCR. Dipendenze pesanti (torch, modelli CV opzionali). Lenta senza GPU, OK con GPU.
 
 ```toml
 [ingestion]
 library = "docling"
-params.use_gpu = false             # true per accelerare con GPU (CUDA)
-params.do_ocr = false              # abilita OCR su immagini incorporate
-params.do_table_structure = true    # riconoscimento struttura tabelle
+params.use_gpu = false
+params.do_ocr = false
+params.do_table_structure = true
 params.table_mode = "accurate"     # "accurate" | "fast"
 params.generate_page_images = false
 params.image_export = "reference"  # "reference" | "embedded" | "none"
 ```
 
-**Quando usare**: paper accademici (layout a colonne, formule, tabelle), documenti PDF complessi, DOCX (preventivi, contratti). Profilo **ricercatore** e `consulente` per DOCX.
-
-### PyMuPDF4LLM
-
-| | |
-|---|---|
-| **Manutentore** | Artifex (PyMuPDF) |
-| **Licenza** | ⚠️ **AGPL-3.0** (PyMuPDF) — ok per tesi/accademico, valuta se redistribuisci |
-| **Formati** | Solo PDF |
-| **Focus** | PDF → Markdown veloce, multi-colonna, TOC |
-| **Dipendenze** | Leggere (C extension) |
-| **Velocità** | Molto veloce |
-
-Parametri TOML:
+**PyMuPDF4LLM** (Artifex, ⚠️ AGPL-3.0): solo PDF. PDF → Markdown veloce, multi-colonna, TOC. Dipendenze leggere (C extension). Molto veloce.
 
 ```toml
 [ingestion]
 library = "pymupdf4llm"
-params.page_chunks = false         # output come lista di pagine separate
-params.write_images = false        # estrai immagini come file
+params.page_chunks = false
+params.write_images = false
 params.extract_mode = "standard"   # "standard" | "multicolumn"
-params.margins = 5                 # margini in px per rilevamento colonne
+params.margins = 5
 params.show_progress = false
 ```
 
-**Quando usare**: PDF lunghi a capitoli (libri di testo), multi-colonna, testi normativi. Profilo **consulente**.
-
-### markitdown
-
-| | |
-|---|---|
-| **Manutentore** | Microsoft |
-| **Licenza** | MIT |
-| **Formati** | PPTX, DOCX, PDF, XLSX, XLS, HTML, TXT, CSV, JSON, XML, immagini, audio¹ |
-| **Focus** | Normalizzazione multi-formato light |
-| **Dipendenze** | Leggere (mammoth, pdfminer.six) |
-| **Velocità** | Veloce |
-
-¹ Audio via extra opzionale.
-
-Parametri TOML:
+**markitdown** (Microsoft, MIT): PPTX, DOCX, PDF, XLSX, XLS, HTML, TXT, CSV, JSON, XML, immagini, audio. Normalizzazione multi-formato light. Dipendenze leggere (mammoth, pdfminer.six). Veloce.
 
 ```toml
 [ingestion]
 library = "markitdown"
-# params minimi: markitdown non espone molti parametri nativamente
-params.plugins = []                # percorsi a plugin custom opzionali
+params.plugins = []
 ```
 
-**Quando usare**: slide PPTX, appunti Markdown, documenti Office, formati eterogenei. Profilo **studente**.
+**identity**: lettura diretta per MD/TXT, nessuna libreria, copia del testo.
 
-
-
-## Mappa profili → library
+### Mappa profili → library
 
 | Profilo | Library | Formato target | Note |
 |---------|---------|----------------|------|
@@ -137,16 +98,7 @@ params.plugins = []                # percorsi a plugin custom opzionali
 | `studente` | `markitdown` | PDF semplici, PPTX, MD | Leggero, multi-formato |
 | tutti | — (lettura diretta) | MD | Nessuna libreria, copia del testo |
 
-## Fasi di implementazione
-
-- **F0 — Interfaccia e registry**: definire `IngestionStrategy` (Protocol), creare modulo `knowledge_base/strategies/ingestion.py`, registrare `identity` (per MD/TXT, copia file) come strategia built-in.
-- **F1 — Docling strategy**: incapsulare `docling.document_converter.DocumentConverter` con opzioni `PipelineOptions`. Test con PDF di esempio.
-- **F2 — PyMuPDF4LLM strategy**: incapsulare `pymupdf4llm.to_markdown` con parametri. Test con PDF multi-colonna.
-- **F3 — markitdown strategy**: incapsulare `markitdown.MarkItDown.convert`. Test con PPTX.
-- **F4 — Validazione formati**: in `KnowledgeBaseManager.add_file`, controllo estensione vs `[ingestion].library` supportate. Rifiuto esplicito per formati non supportati.
-- **F6 — Test**: test unit per ogni strategy con file di esempio in `tests/data/synthetic/`. Test di robustezza: file corrotto, PDF vuoto, estensione sconosciuta.
-
-## Test
+### Test
 
 | Test | Cosa verifica |
 |------|---------------|
@@ -158,9 +110,6 @@ params.plugins = []                # percorsi a plugin custom opzionali
 
 ## Dipendenze
 
-- **Dipende da:** Step 3 (BaseConfig, strategy registry)
-- **Usato da:** Step 7 (KnowledgeBaseManager)
-
----
-
-*Ultimo aggiornamento: 22 luglio 2026 (Step 4 implementato: identity, docling, pymupdf4llm, markitdown con registry, validazione estensioni, 30 test)*
+| Dipende da | Usato da |
+|------------|----------|
+| Step 3 (BaseConfig, strategy registry) | Step 7 (KnowledgeBaseManager) |
