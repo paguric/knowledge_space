@@ -44,7 +44,7 @@ def add(
         n_bases = len(workspace.bases)
         typer.echo(f"Workspace registrato: {ws_path}")
         if n_bases:
-            typer.echo(f"  {n_bases} base scoperte automaticamente")
+            typer.echo(f"  {n_bases} basi scoperte automaticamente")
     else:
         typer.echo(f"Workspace già registrato: {ws_path}")
 
