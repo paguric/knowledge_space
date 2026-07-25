@@ -63,52 +63,57 @@ def _print_tree(ws: Any, base_filter: Optional[str] = None) -> None:
     """Stampa l'albero in formato testo."""
     typer.echo(f"📁 {ws.path}")
 
+    # Raccogli basi già mostrate nei domini
+    bases_in_domains: set[str] = set()
+
     # Domini
-    for domain in ws.domains:
+    for di, domain in enumerate(ws.domains):
+        is_last_domain = di == len(ws.domains) - 1
+        domain_prefix = "└── " if is_last_domain and not base_filter else "├── "
         status = "✓" if domain.active else "✗"
-        typer.echo(f"├── 📂 [{status}] {domain.name}")
+        typer.echo(f"{domain_prefix}📂 [{status}] {domain.name}")
+
         for i, bname in enumerate(domain.base_names):
+            bases_in_domains.add(bname)
+            if base_filter and bname != base_filter:
+                continue
             is_last_base = i == len(domain.base_names) - 1
-            prefix = "│   └── " if is_last_base else "│   ├── "
+            child_prefix = "    " if is_last_domain else "│   "
+            connector = "└── " if is_last_base else "├── "
             kb = ws.bases.get(bname)
             if kb:
                 n_files = len(kb.files)
                 n_chunks = sum(len(f.chunks) for f in kb.files.values())
-                typer.echo(f"{prefix}📚 {bname} ({n_files} file, {n_chunks} chunk)")
+                typer.echo(f"{child_prefix}{connector}📚 {bname} ({n_files} file, {n_chunks} chunk)")
             else:
-                typer.echo(f"{prefix}📚 {bname} (non registrata)")
+                typer.echo(f"{child_prefix}{connector}📚 {bname} (non registrata)")
 
     # Basi standalone (non in domini)
-    bases_in_domains = set()
-    for d in ws.domains:
-        bases_in_domains.update(d.base_names)
-
     standalone = [
         name for name in ws.bases
         if name not in bases_in_domains and (base_filter is None or name == base_filter)
     ]
 
-    if standalone:
-        typer.echo("├── 📁 Basi standalone:")
-        for i, bname in enumerate(standalone):
-            kb = ws.bases[bname]
-            n_files = len(kb.files)
-            n_chunks = sum(len(f.chunks) for f in kb.files.values())
-            is_last = i == len(standalone) - 1
-            prefix = "│   └── " if is_last else "│   ├── "
-            typer.echo(f"{prefix}📚 {bname} ({n_files} file, {n_chunks} chunk)")
+    for i, bname in enumerate(standalone):
+        kb = ws.bases[bname]
+        n_files = len(kb.files)
+        n_chunks = sum(len(f.chunks) for f in kb.files.values())
+        is_last = i == len(standalone) - 1 and not (base_filter and base_filter in ws.bases)
+        prefix = "└── " if is_last else "├── "
+        typer.echo(f"{prefix}📚 {bname} ({n_files} file, {n_chunks} chunk)")
 
     # File (se scope a una base)
     if base_filter and base_filter in ws.bases:
         kb = ws.bases[base_filter]
-        typer.echo(f"└── 📄 File in {base_filter}:")
         files = list(kb.files.items())
-        for i, (fname, entry) in enumerate(files):
-            n_chunks = len(entry.chunks)
-            is_last = i == len(files) - 1
-            prefix = "    └── " if is_last else "    ├── "
-            status = "✓" if entry.active else "✗"
-            typer.echo(f"{prefix}[{status}] {fname} ({n_chunks} chunk)")
+        if files:
+            typer.echo(f"└── 📄 File:")
+            for i, (fname, entry) in enumerate(files):
+                n_chunks = len(entry.chunks)
+                is_last = i == len(files) - 1
+                prefix = "    └── " if is_last else "    ├── "
+                status = "✓" if entry.active else "✗"
+                typer.echo(f"{prefix}[{status}] {fname} ({n_chunks} chunk)")
 
 
 def tree_command(
