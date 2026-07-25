@@ -1,0 +1,162 @@
+Contratto di Lavoro — TechVision SA
+
+CONTRATTO DI LAVORO
+
+Tra
+
+Datore di lavoro:
+TechVision SA
+Via Lugano 15, 6900 Lugano
+Partita IVA: CHE-123.456.789
+Rappresentata dal Dr. Marco Bianchi, Amministratore Delegato
+
+e
+
+Lavoratore:
+Dr. Alessandro Rossi
+Nato il 15 marzo 1990
+Residente in Via Lugano 22, 6900 Lugano
+Carta d'identità: TI-1234567
+
+Articolo 1 — Oggetto del contratto
+1.1 Il presente contratto disciplina il rapporto di lavoro subordinato
+    tra TechVision SA (di seguito "il Datore") e il Dr. Alessandro
+    Rossi (di seguito "il Lavoratore").
+1.2 Il Lavoratore è assunto come Ingegnere del Software Senior nel
+    reparto Sviluppo Prodotti.
+
+Articolo 2 — Durata del contratto
+2.1 Il contratto è stipulato a tempo indeterminato.
+2.2 Il rapporto di lavoro ha inizio il 1° aprile 2024.
+2.3 Il periodo di prova è di tre mesi, durante il quale ciascuna delle
+    parti può recedere dal contratto con preavviso di sette giorni
+    (art. 335b cpv. 1 CO).
+
+Articolo 3 — Mansioni del lavoratore
+3.1 Il Lavoratore svolge le seguenti mansioni:
+    a) Progettazione e sviluppo di software;
+    b) Supervisione del team di sviluppo;
+    c) Partecipazione a riunioni tecniche;
+    d) Redazione di documentazione tecnica;
+    e) Altre mansioni compatibili con la qualifica.
+3.2 Il Lavoratore si impegna a svolgere le mansioni con diligenza e
+    nel rispetto delle istruzioni del Datore (art. 321 CO).
+
+Articolo 4 — Orario di lavoro
+4.1 L'orario di lavoro settimanale è di 42 ore, distribuite dal lunedì
+    al venerdì, con le seguenti fasce orarie:
+    - Mattina: 08:30 - 12:00
+    - Pomeriggio: 13:30 - 17:30
+4.2 Il Lavoratore ha diritto a una pausa pranzo di 60 minuti.
+4.3 Il lavoro straordinario è compensato con tempo libero o, su
+    richiesta del Lavoratore, con il salario maggiorato del 25%
+    (art. 321c cpv. 3 CO).
+
+Articolo 5 — Retribuzione
+5.1 Il salario annuo lordo è di CHF 110'000.-- (centodiecimila franchi),
+    corrisposto in 13 mensilità.
+5.2 La tredicesima è corrisposta nel mese di novembre.
+5.3 Il salario è versato entro l'ultimo giorno lavorativo di ogni mese
+    sul conto bancario indicato dal Lavoratore.
+5.4 Il Datore versa i contributi AVS/AI/IPG/APG e le altre
+    prestazioni sociali obbligatorie secondo la legislazione vigente.
+
+Articolo 6 — Ferie
+6.1 Il Lavoratore ha diritto a 25 giorni lavorativi di ferie all'anno.
+6.2 Le ferie devono essere concordate con il Datore e godute durante
+    l'anno di riferimento.
+6.3 Il Lavoratore con più di 50 anni ha diritto a 30 giorni di ferie.
+
+Articolo 7 — Assenza per malattia o infortunio
+7.1 In caso di malattia o infortunio, il Lavoratore conserva il diritto
+    al salario per la durata del rapporto di lavoro, ma non oltre un
+    anno (art. 324a CO).
+7.2 Il Datore ha stipulato un'assicurazione indennità giornaliera di
+    malattia che interviene dopo 30 giorni di assenza.
+7.3 Il Lavoratore deve informare immediatamente il Datore in caso di
+    assenza e presentare un certificato medico dopo tre giorni di
+    assenza consecutivi.
+
+Articolo 8 — Divieto di concorrenza
+8.1 Al termine del rapporto di lavoro, il Lavoratore si impegna a non
+    esercitare attività concorrenziale nei confronti del Datore per un
+    periodo di 12 mesi (art. 322 CO).
+8.2 Il divieto è limitato al Canton Ticino e al Canton Grigioni.
+8.3 Il divieto è valido solo se il Lavoratore ha avuto accesso alla
+    clientela o a segreti commerciali del Datore.
+8.4 In caso di violazione, il Lavoratore è tenuto a pagare una penale
+    di CHF 25'000.--.
+
+Articolo 9 — Segreto professionale
+9.1 Il Lavoratore si impegna a mantenere il segreto su tutte le
+    informazioni confidenziali del Datore (art. 321a CO).
+9.2 L'obbligo di segretezza permane anche dopo la cessazione del
+    rapporto di lavoro.
+9.3 Sono considerate informazioni confidenziali: dati commerciali,
+    strategie aziendali, codice sorgente, brevetti, know-how e
+    qualsiasi altra informazione non pubblica.
+
+Articolo 10 — Proprietà intellettuale
+10.1 Tutte le opere create dal Lavoratore nell'ambito delle sue
+     mansioni appartengono al Datore (art. 332 CO).
+10.2 Il Lavoratore non ha diritto a ulteriore compenso per le opere
+     create nell'ambito del rapporto di lavoro.
+10.3 Le invenzioni fatte dal Lavoratore con mezzi propri e al di fuori
+     delle mansioni restano di proprietà del Lavoratore (art. 332 cpv. 2
+     CO).
+
+Articolo 11 — Preavviso e cessazione del rapporto
+11.1 Dopo il periodo di prova, il rapporto può essere disdetto da
+     ciascuna delle parti con il seguente preavviso:
+     - 1° anno di servizio: 1 mese (art. 335c cpv. 1 CO)
+     - 2° - 9° anno: 2 mesi
+     - 10° anno in poi: 3 mesi
+11.2 Il preavviso decorre dal primo giorno del mese successivo alla
+     disdetta.
+11.3 In caso di giusta causa, ciascuna delle parti può recedere
+     immediatamente (art. 337 CO).
+
+Articolo 12 — Attestato di lavoro
+12.1 Al termine del rapporto di lavoro, il Datore rilascia al
+     Lavoratore un attestato di lavoro completo e benevolo
+     (art. 330a CO).
+12.2 L'attestato deve contenere informazioni sul tipo e la durata del
+     rapporto di lavoro, sulle mansioni svolte e sulla valutazione
+     della prestazione.
+
+Articolo 13 — Clausola di modifica
+13.1 Eventuali modifiche al presente contratto devono essere concordate
+     per iscritto.
+13.2 La modifica unilaterale delle condizioni essenziali del contratto
+     non è ammessa.
+
+Articolo 14 — Clausola di salvaguardia
+14.1 Se una clausola del presente contratto è o diventa invalida, le
+     restanti clausole conservano la loro validità.
+14.2 La clausola invalida è sostituita da una disposizione che si
+     avvicina il più possibile allo scopo della clausola invalida.
+
+Articolo 15 — Diritto applicabile e foro
+15.1 Il presente contratto è regolato dal diritto svizzero.
+15.2 Per ogni controversia derivante dal presente contratto è competente
+     il giudice del luogo di lavoro (art. 34 cpv. 1 LPGA).
+
+Articolo 16 — Entrata in vigore
+16.1 Il presente contratto è redatto in due originali, uno per ciascuna
+     delle parti.
+16.2 Il contratto entra in vigore con la firma di entrambe le parti.
+
+Firma del Datore di lavoro          Firma del Lavoratore
+
+________________________            ________________________
+Dr. Marco Bianchi                   Dr. Alessandro Rossi
+Amministratore Delegato             Ingegnere del Software Senior
+TechVision SA
+
+Data: 15 marzo 2024                 Data: 15 marzo 2024
+
+Luogo: Lugano                       Luogo: Lugano
+
+----
+Nota: questo è un contratto fittizio creato a scopo di test.
+Non corrisponde a nessun contratto reale.

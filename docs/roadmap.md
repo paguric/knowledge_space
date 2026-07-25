@@ -24,7 +24,7 @@ Tabella compatta di tutto il progetto. Leggi questa sezione per capire **dove si
 | **8-ter** | **AppContext e bootstrap** | **1A** | **✅ Fatto** | **Step 7, 6-bis** | **—** |
 | 8 | Pipeline retrieval | 1B | ✅ Fatto | Step 8-ter | — |
 | 8-bis | Pipeline GraphRAG | 1C | ✅ Fatto | Step 8-ter | — |
-| 9 | Dataset sintetico legale | 2 | ❌ Non iniziato | Step 8 | — |
+| 9 | Dataset sintetico legale | 2 | ✅ Fatto | Step 8 | — |
 | 10 | Profili di configurazione | 2 | ❌ Non iniziato | Step 3 | — |
 | 11 | Test end-to-end | 2 | ❌ Non iniziato | Step 8, 9 | — |
 | 12 | Logging su file | 2 | ❌ Non iniziato | Step 8-ter | — |
@@ -66,10 +66,10 @@ Step 6-bis ──────────┤
 
 ### Priorità imminente
 
-1. **Step 9** — Dataset sintetico legale (in corso su agente parallelo)
-2. **Step 6-bis residuali** — fallback identity, wiring (arrivano con implementazioni reali)
-3. **Step 10** — Profili di configurazione
-4. **Step 11** — Test end-to-end
+1. **Step 10** — Profili di configurazione
+2. **Step 11** — Test end-to-end (richiede Step 9 ✅)
+3. **Step 6-bis residuali** — implementazioni reali LLM (OpenAI/Ollama)
+4. **Step 12** — Logging su file
 
 ---
 
@@ -460,13 +460,25 @@ Configurabile via `[graph].retriever` per-base:
 
 **Obiettivo:** Validare end-to-end la pipeline con dataset sintetici e profili predefiniti.
 
-**Stato:** ❌ Non iniziato
+**Stato:** 🟡 Parziale (Step 9 fatto, Step 10-11 da fare)
 
-**Dipende da:** Step 8 (retrieval), Step 8-ter (AppContext)
+**Dipende da:** Step 8 (retrieval ✅), Step 8-ter (AppContext ✅)
 
 ---
 
-### Step 9 — Dataset sintetico legale ❌
+### Step 9 — Dataset sintetico legale ✅
+
+Dataset focalizzato su diritto svizzero/UE, documenti in IT/EN.
+
+**Implementato:**
+- `tests/data/synthetic/legal/`: 9 documenti (7 originali + 2 estratti), 32 query golden
+- `fetch.py`: download documenti pubblici (Costituzione CH, GDPR, AI Act)
+- `extract.py`: estrazione testo da PDF/DOCX
+- `generate.py`: generazione query golden (factual, definition, cross_document)
+- `validate.py`: 28 test di validazione (esistenza, struttura, coerenza contenuto)
+- `conftest.py`: fixtures pytest (`legal_dataset_path`, `golden_queries`, `sample_documents`)
+- Documenti reali: Costituzione CH (IT/DE), GDPR (IT/EN), EU AI Act (EN), Swiss CO (EN)
+- Documenti fittizi: sentenza TF (MD), contratto lavoro (DOCX)
 
 Dataset focalizzato su diritto svizzero/UE, documenti in IT/EN.
 
