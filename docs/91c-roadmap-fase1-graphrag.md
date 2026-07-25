@@ -1,4 +1,6 @@
-# Fase 1C — Indicizzazione e retrieval su grafo (GraphRAG)
+> ⚠️ **Deprecato.** Questo file è stato sostituito da [roadmap.md](roadmap.md). Conservato per riferimento storico. Non aggiornare.
+
+# Fase 1C — Indicizzazione e retrieval su grafo (deprecato)
 
 Costruire il grafo della conoscenza su Neo4j **riprendendo** la pipeline `neo4j-graphrag` a partire dal lexical graph, senza rifare ingestion/chunking/embedding (già calcolati in Fase 1A). Supportare la propagazione incrementale al grafo su cambiamenti (content change, move/rename, cambio config) e la ricerca su grafo via retriever Neo4j configurabili.
 

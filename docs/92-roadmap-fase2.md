@@ -1,4 +1,6 @@
-# Fase 2 — Testing e validazione
+> ⚠️ **Deprecato.** Questo file è stato sostituito da [roadmap.md](roadmap.md). Conservato per riferimento storico. Non aggiornare.
+
+# Fase 2 — Testing e validazione (deprecato)
 
 Validare end-to-end la pipeline di business completa (Fase 1) tramite dataset sintetici e profili di configurazione predefiniti, prima di esporre il sistema tramite CLI/MCP/REST.
 

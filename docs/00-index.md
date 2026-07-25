@@ -1,41 +1,61 @@
-# Piano di Refactor: Knowledge Space
+---
+title: Indice della documentazione
+updated: 2026-07-22
+---
 
-Questo documento è l'indice del piano di refactor. Ogni argomento è trattato in un file dedicato.
+# Documentazione — Knowledge Space
 
-## Documenti di progetto
+## Piano di progetto
 
-- [**10 — Architettura e organizzazione dei pacchetti**](10-architecture.md)
-- [**11 — Ciclo di vita dell'app e processo backend**](11-app-lifecycle.md) — entry point, CLI standalone vs backend process, lifecycle, PID file, signal handling, MCP bridge, packaging.
-- [**12 — Deployment e imballaggio**](12-deployment.md) — immagine Docker del backend REST, eseguibile Windows `.exe` con bundle GUI. *Provvisorio.*
-- [**20 — Modello di dominio e persistenza**](20-data-model.md)
-- [**30 — Gestione della configurazione**](30-configuration.md) — include il layout completo del filesystem del workspace e delle basi.
-  - [**31 — Configurazione dell'applicazione (RuntimePaths, AppConfig, env)**](31-configurazione-app.md)
-  - [**32 — Esempio di `defaults.toml`**](32-defaults-toml.md)
-  - [**33 — Esempio di `<base>/.knowledge-space/base.toml`**](33-base-toml.md)
-- [**40 — Pipeline GraphRAG**](40-graph.md)
-- [**45 — Indicizzazione incrementale e ciclo di vita dell'indice**](45-indexing-incrementale.md) — 5 trigger di reindex (content change, move/rename, cambio modello/strategia/libreria), `file_id` stabile.
-- [**50 — Strategie di ingestion**](50-ingestion.md) — librerie supportate, parametri e profili d'uso.
-- [**60 — Strategie di chunking**](60-chunking.md) — chunker base e avanzati.
-- [**70 — Embedding configurabile per base**](70-embedding.md) — modelli, registry, metadati e validazione contesto.
-- [**75 — Astrazione LLM**](75-llm.md) — LLMStrategy Protocol, registry, per-component TOML, chiavi API, fallback.
-- [**80 — Pipeline di retrieval**](80-retrieval.md) — pre-retrieval (query rewriting), retrieval (dense/sparse/hybrid), post-retrieval (rerank/compress).
+- [**Roadmap unificata**](roadmap.md) — stato, step, dipendenze, priorità. **Fonte di verità per la pianificazione.**
 
-## Roadmap
+## Specifiche tecniche
 
-- [**90 — Roadmap overview**](90-roadmap-overview.md) — fasi, mappa degli step, considerazioni e rischi, riepilogo scelte.
-- [**91a — Fase 1A — Ingestione e indicizzazione vettoriale**](91a-roadmap-fase1-ingestione.md) — Steps 0–7, 8-ter.
-- [**91b — Fase 1B — Ricerca sui documenti processati**](91b-roadmap-fase1-ricerca.md) — Step 8 (retrieval pipeline).
-- [**91c — Fase 1C — Indicizzazione e retrieval su grafo (GraphRAG)**](91c-roadmap-fase1-graphrag.md) — Step 8-bis.
-- [**92 — Fase 2 — Testing e validazione**](92-roadmap-fase2.md) — Steps 9–11 (dataset sintetici, profili, benchmark).
-- [**93 — Fase 3 — MCP + CLI**](93-roadmap-fase3.md) — Steps 13–14.
-- [**94 — Fase 4 — REST + Frontend**](94-roadmap-fase4.md) — Steps 15–18.
+### Architettura e configurazione
 
-## Interfacce utente
+| # | File | Contenuto |
+|---|------|-----------|
+| 10 | [Architettura](10-architecture.md) | Organizzazione pacchetti, separazione responsabilità, GraphRAG module |
+| 11 | [Ciclo di vita app](11-app-lifecycle.md) | CLI standalone vs backend process, PID, signal handling, MCP bridge |
+| 12 | [Deployment](12-deployment.md) | Docker, .exe, CI/CD *(provvisorio)* |
+| 20 | [Modello di dominio](20-data-model.md) | Pydantic models, persistenza ibrida, schema JSON |
+| 30 | [Configurazione](30-configuration.md) | TOML per-base, cascata default, strategy registry, trigger reindex |
+| 31 | [Configurazione app](31-configurazione-app.md) | RuntimePaths, UserSettings, env vars |
 
-- [**95 — CLI standalone**](95-cli.md)
-- [**96 — Server MCP**](96-mcp-server.md)
-- [**97 — Backend REST**](97-rest-api.md)
+### Pipeline di indicizzazione
+
+| # | File | Contenuto | Step |
+|---|------|-----------|------|
+| 40 | [GraphRAG](40-graph.md) | Pipeline Neo4j, KSChunkLoader, entity resolution, retrieval su grafo | 8-bis |
+| 45 | [Indicizzazione incrementale](45-indexing-incrementale.md) | 5 trigger reindex, file_id stabile, diff hash | 7 |
+| 50 | [Ingestion](50-ingestion.md) | Docling, PyMuPDF4LLM, markitdown, identity | 4 |
+| 60 | [Chunking](60-chunking.md) | fixed_size, recursive, semantic, sentence, markdown | 5 |
+| 70 | [Embedding](70-embedding.md) | 12 modelli, registry, validazione contesto | 6 |
+| 75 | [LLM](75-llm.md) | LLMStrategy, registry, per-component config, fallback | 6-bis |
+| 80 | [Retrieval](80-retrieval.md) | pre-retrieval, dense/sparse/hybrid, rerank, compress | 8 |
+
+### Interfacce utente
+
+| # | File | Contenuto | Step |
+|---|------|-----------|------|
+| 85 | [CLI](85-cli.md) | Comandi Typer, autocompletamento, profili | 13 |
+| 86 | [MCP](86-mcp-server.md) | Server MCP stdio/SSE, tools | 14 |
+| 87 | [REST API](87-rest-api.md) | FastAPI, endpoints, CORS | 15 |
+
+## File deprecati
+
+Conservati per riferimento storico. Non aggiornare.
+
+- ~~90-roadmap-overview.md~~ → [roadmap.md](roadmap.md)
+- ~~91a-roadmap-fase1-ingestione.md~~ → [roadmap.md §2](roadmap.md#2--fase-1a-ingestione-e-indicizzazione-vettoriale)
+- ~~91b-roadmap-fase1-ricerca.md~~ → [roadmap.md §3](roadmap.md#3--fase-1b-ricerca-sui-documenti-processati)
+- ~~91c-roadmap-fase1-graphrag.md~~ → [roadmap.md §4](roadmap.md#4--fase-1c-graphrag)
+- ~~92-roadmap-fase2.md~~ → [roadmap.md §5](roadmap.md#5--fase-2-testing-e-validazione)
+- ~~93-roadmap-fase3.md~~ → [roadmap.md §6](roadmap.md#6--fase-3-mcp--cli)
+- ~~94-roadmap-fase4.md~~ → [roadmap.md §7](roadmap.md#7--fase-4-rest--frontend)
+- ~~32-defaults-toml.md~~ → [30-configuration.md §Appendix A](30-configuration.md#appendix-a--esempio-defaultstoml)
+- ~~33-base-toml.md~~ → [30-configuration.md §Appendix B](30-configuration.md#appendix-b--esempio-basetoml)
 
 ---
 
-*Ultimo aggiornamento: 21 luglio 2026*
+*Ultimo aggiornamento: 22 luglio 2026*

@@ -1,4 +1,29 @@
+---
+title: Indicizzazione incrementale
+status: implementato (trigger 1-2)
+step: 7
+fase: 1A
+updated: 2026-07-22
+---
+
 # Indicizzazione incrementale e ciclo di vita dell'indice
+
+## Decisioni chiave
+
+| Trigger | Impatto | Grave? |
+|---------|---------|--------|
+| 1 — content change | Diff per `content_hash`, re-embed solo chunk cambiati | basso |
+| 2 — move/rename | Nessun recompute, solo update path/nome | nullo |
+| 3 — cambio modello embedding | Full re-embed, chunk su disco intatti | medio |
+| 4 — cambio chunking | Full re-chunk + re-embed + riscrittura + grafo | alto |
+| 5 — cambio ingestion | Full re-ingest + tutto downstream | alto |
+
+| Aspetto | Scelta |
+|---------|--------|
+| `file_id` | UUID4 stabile, disaccoppiato dal nome |
+| Insert in mezzo | Approccio B (shift accettato, re-embed da quel punto) |
+| Blocco config | Errore se model/method/library diverso + collection non vuota |
+| Chunk editabili | No — Chroma fonte di verità |
 
 Questo documento descrive **quando e come** l'indice vettoriale (Chroma) e i chunk su disco vengono ricalcolati, e **cosa NON va ricalcolato** quando possibile. È la documentazione di riferimento per il ciclo di vita dell'indice: eventi watcher, cambi di configurazione, blocco/abilitazione dei reindex.
 

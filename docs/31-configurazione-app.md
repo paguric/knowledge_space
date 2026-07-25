@@ -1,4 +1,12 @@
-# 31 — Configurazione dell'applicazione: `RuntimePaths` + `AppConfig`
+---
+title: Configurazione dell'applicazione
+status: in_progress
+step: 8-ter
+fase: 1A
+updated: 2026-07-22
+---
+
+# Configurazione dell'applicazione: `RuntimePaths` + `AppConfig`
 
 Vedi [30-configuration.md](30-configuration.md) per la configurazione delle basi di conoscenza (TOML).
 

@@ -1,4 +1,21 @@
-# 12 — Deployment e imballaggio
+---
+title: Deployment e imballaggio
+status: non_iniziato
+step: 18
+fase: 4
+updated: 2026-07-22
+---
+
+# Deployment e imballaggio
+
+## Decisioni chiave
+
+| Aspetto | Scelta |
+|---------|--------|
+| Docker base image | Da definire (python:3.12-slim candidato) |
+| Modelli locali | Pre-bundled vs mount vs download (da decidere) |
+| Windows tool | PyInstaller / Nuitka / Briefcase (da decidere) |
+| Stato | **Provvisorio** — scelte concrete da definire |
 
 Dettagli operativi per la distribuzione di Knowledge Space: immagine Docker del backend REST ed eseguibile Windows `.exe` con bundle GUI.
 

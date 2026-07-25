@@ -1,3 +1,11 @@
+---
+title: Gestione della configurazione
+status: implementato
+step: 3
+fase: 1A
+updated: 2026-07-22
+---
+
 # Gestione della configurazione
 
 ## Stato vs configurazione
@@ -57,11 +65,11 @@ Regole:
 
 ### Esempio di `defaults.toml`
 
-Vedi [32-defaults-toml.md](32-defaults-toml.md).
+Vedi [Appendix A](#appendix-a--esempio-defaultstoml) in fondo a questo documento.
 
 ### Esempio di `<base>/.knowledge-space/base.toml`
 
-Vedi [33-base-toml.md](33-base-toml.md).
+Vedi [Appendix B](#appendix-b--esempio-basetoml) in fondo a questo documento.
 
 ### Strategie (plugin/strategy pattern)
 
@@ -116,3 +124,86 @@ Vedi [45-indexing-incrementale.md](45-indexing-incrementale.md) per la specifica
 ## Configurazione dell'applicazione
 
 La configurazione dell'applicazione (`RuntimePaths`, `UserSettings`, `AppConfig`, variabili d'ambiente, sicurezza) è descritta in [31-configurazione-app.md](31-configurazione-app.md).
+
+---
+
+## Appendix A — Esempio di `defaults.toml`
+
+Configurazione predefinita per tutte le basi del workspace.
+
+```toml
+# Default per tutte le basi del workspace
+
+[ingestion]
+library = "docling"
+params.use_gpu = false       # true per accelerare con GPU (docling, embedding)
+
+[chunking]
+method = "fixed_size"
+chunk_size = 1000
+chunk_overlap = 200
+separator = "\n\n"
+
+[embedding]
+model = "sentence-transformers/all-mpnet-base-v2"
+# device = "cpu"
+
+[graph]
+schema = "manuale"          # "manuale" | "EXTRACTED" | "FREE"
+resolver = "semantic"      # "semantic" (default, extra [nlp]) | "exact" | "fuzzy" (extra [fuzzy-matching]) | "none"
+on_chunk_change = "eager"  # "eager" (default) | "lazy"
+chunk_embedding_property = "embedding"
+node_types = ["Person", "Organization", "Concept"]
+relationship_types = ["WORKS_FOR", "RELATED_TO"]
+patterns = [
+    ["Person", "WORKS_FOR", "Organization"],
+    ["Concept", "RELATED_TO", "Concept"],
+]
+retriever = "hybrid_cypher"   # vedi 40-graph.md §14
+top_k = 5
+vector_index = "chunk-embeddings"
+fulltext_index = "chunk-text"
+retrieval_query = """
+RETURN node.id            AS chunk_id,
+       node.text          AS text,
+       node.base_name     AS base_name,
+       node.file_name     AS file_name,
+       node.chunk_index   AS chunk_index,
+       score
+"""
+return_properties = ["chunk_id", "text"]
+
+[pre_retrieval]
+stages = [{ method = "identity" }]
+
+[retrieval]
+method = "dense"
+fusion = "rrf"               # "rrf" (default) | "weighted_sum"
+query_mode = "original"      # "original" | "hyde"
+
+[post_retrieval]
+top_k = 10
+reranker = "identity"        # "identity" | "relevance" | "mmr" | "cross_encoder" | "llm"
+compressor = "identity"      # "identity" | "llm_chain_extract" | "selective_context"
+```
+
+## Appendix B — Esempio di `<base>/.knowledge-space/base.toml`
+
+Configurazione specifica di una base. I campi mancanti ereditano da `defaults.toml`.
+
+```toml
+# Configurazione della base (es. test_kb1)
+# I campi mancanti ereditano da defaults.toml
+
+[chunking]
+chunk_size = 500          # override del default del workspace
+chunk_overlap = 100
+
+[embedding]
+model = "sentence-transformers/all-MiniLM-L6-v2"   # base con modello più leggero
+
+[pre_retrieval]
+stages = [
+  { method = "multi_query", model = "openai/gpt-4o-mini", params = { n_queries = 4 } },
+]
+```

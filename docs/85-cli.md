@@ -1,3 +1,11 @@
+---
+title: CLI standalone
+status: non_iniziato
+step: 13
+fase: 3
+updated: 2026-07-22
+---
+
 # CLI standalone
 
 Il backend deve poter funzionare autonomamente da riga di comando, senza frontend. La CLI è lo strumento principale per le Fase 1–3 (modalità standalone: ogni comando è un processo separato, niente watcher in background). A partire dalla Fase 4, la CLI diventa client del backend process (vedi [11-app-lifecycle.md](11-app-lifecycle.md) per il funzionamento del backend e la distinzione tra modalità standalone e client).
@@ -155,13 +163,13 @@ Opera su `~/.config/KnowledgeSpace/config.json` (secrets, chiavi API). File mach
 
 | Comando | Descrizione |
 |---|---|
-| `serve` | Avvia il backend process (watcher + REST API + opz. frontend/MCP). Vedi [11-app-lifecycle.md](11-app-lifecycle.md) e [97-rest-api.md](97-rest-api.md). |
+| `serve` | Avvia il backend process (watcher + REST API + opz. frontend/MCP). Vedi [11-app-lifecycle.md](11-app-lifecycle.md) e [87-rest-api.md](87-rest-api.md). |
 | `serve --gui` | Avvia backend + apre finestra webview (pywebview) |
 | `serve --host 0.0.0.0 --port 8000` | Override bind |
 | `serve --mcp-sse --mcp-port 8001` | Espone MCP SSE |
 | `serve --no-watchers` | Backend senza FS monitoring (debug) |
 | `stop` | Arresta il backend via REST `/shutdown`. Vedi [11-app-lifecycle.md §3](11-app-lifecycle.md#3-backend-process-lifecycle). |
-| `mcp` | Avvia MCP in modalità stdio (bridge verso backend REST). Vedi [11-app-lifecycle.md §8](11-app-lifecycle.md#8-mcp-stdio--rest-bridge) e [96-mcp-server.md](96-mcp-server.md). |
+| `mcp` | Avvia MCP in modalità stdio (bridge verso backend REST). Vedi [11-app-lifecycle.md §8](11-app-lifecycle.md#8-mcp-stdio--rest-bridge) e [86-mcp-server.md](86-mcp-server.md). |
 
 ### Profiles
 

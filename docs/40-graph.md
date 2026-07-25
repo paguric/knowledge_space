@@ -1,4 +1,26 @@
+---
+title: Pipeline GraphRAG
+status: non_iniziato
+step: 8-bis
+fase: 1C
+updated: 2026-07-22
+---
+
 # Pipeline GraphRAG da chunk/embeddings esistenti
+
+## Decisioni chiave
+
+| Aspetto | Scelta |
+|---------|--------|
+| Grafo Neo4j | Uno per workspace |
+| Resume da | Lexical graph + estrazione entità + risoluzione |
+| Schema | Caricato da `schema.json` se esiste; estratto solo la prima volta |
+| Resolver default | `SpaCySemanticMatchResolver` (semantic), fallback exact |
+| Propagazione content change | `eager` (default) o `lazy` |
+| Propagazione move/rename | Property-only (no re-estrazione) |
+| Propagazione cambio modello | Property-only: update embedding su nodi Chunk |
+| Propagazione cambio chunking/ingestion | Full re-estrazione LLM |
+| Retrieval | Configurabile per-base: `vector`, `vector_cypher`, `hybrid`, `hybrid_cypher`, `text2cypher`, `tools` |
 
 Questo documento descrive come Knowledge Space costruisce il grafo della conoscenza su Neo4j **riprendendo** la pipeline ufficiale `neo4j-graphrag` a partire dallo **Lexical Graph Builder**, senza rifare data loading, splitting ed embedding (già calcolati e persistenti in KS). La **propagazione al grafo** su cambiamenti (content change, move/rename, cambio modello/strategia/libreria) è gestita secondo [45-indexing-incrementale.md](45-indexing-incrementale.md).
 
@@ -255,7 +277,7 @@ Ordine consigliato (bloccanti dall'alto in basso):
 - **Resolver semantico non è magico**: `SpaCySemanticMatchResolver` collassa nomi simili per significato; near miss come "OpenAI" ≈ "CloseAI" potrebbero in teoria essere sbagliati ma la cosine similarity ha una soglia. Possibile regolare la soglia o passare a `fuzzy` se si vedono falsi positivi. L'exact resta fallback sicuro.
 - **Ri-estrazione su content change (eager)**: costa una chiamata LLM per chunk cambiato. Mitigato dal diff via `content_hash` (re-embed solo chunk effettivamente cambiati, vedi [45-indexing-incrementale.md](45-indexing-incrementale.md) trigger 1).
 - **Race conditions watcher**: Chroma PersistentClient è safe per singolo processo; il `KnowledgeBaseManager` deve condividere la stessa istanza collection del watcher sorgente. Per più processi (REST + MCP) serve sincronizzazione (vedi [90-roadmap-overview.md](90-roadmap-overview.md) Considerazioni e rischi).
-- **Neo4j non embedded**: serve un'istanza Neo4j in esecuzione (locale o remota). Documentare requisiti runtime in una sezione "Prerequisiti" del README o in `docs/97-rest-api.md`.
+- **Neo4j non embedded**: serve un'istanza Neo4j in esecuzione (locale o remota). Documentare requisiti runtime in una sezione "Prerequisiti" del README o in `docs/87-rest-api.md`.
 - **Re-estrazione schema non migra le entità vecchie**: cambiare schema non riscrive le entità estratte col vecchio; l'utente deve cancellarle Cypher-side o accettare coesistenza.
 
 ## 13. Test

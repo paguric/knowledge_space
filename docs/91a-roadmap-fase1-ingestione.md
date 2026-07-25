@@ -1,4 +1,6 @@
-# Fase 1A — Ingestione e indicizzazione vettoriale
+> ⚠️ **Deprecato.** Questo file è stato sostituito da [roadmap.md](roadmap.md). Conservato per riferimento storico. Non aggiornare.
+
+# Fase 1A — Ingestione e indicizzazione vettoriale (deprecato)
 
 Pipeline completa: documento sorgente → ingestion → chunking → embedding → Chroma. Include sync filesystem, configurazione per-base, strategy registry per ingestion/chunking/embedding, e la gestione incrementale dell'indice vettoriale su eventi (content change, move/rename, cambio config).
 

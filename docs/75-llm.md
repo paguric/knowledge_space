@@ -1,4 +1,25 @@
+---
+title: Astrazione LLM
+status: in_progress
+step: 6-bis
+fase: 1A
+updated: 2026-07-22
+---
+
 # Astrazione LLM (Large Language Model)
+
+## Decisioni chiave
+
+| Aspetto | Scelta |
+|---------|--------|
+| Interfaccia | `LLMStrategy` Protocol con `generate()` e `stream()` |
+| Config per-componente | Nessuna sezione `[llm]` globale; ogni componente sceglie il modello |
+| Provider remoti | OpenAI, Anthropic, Google, Cohere |
+| Provider locali | Ollama, llama.cpp, vLLM |
+| Mock per test | `mock/echo`, `mock/fixed` |
+| Abbreviazioni | `fast`, `cheap` → gpt-4o-mini; `quality` → gpt-4o; `local` → ollama/llama3.1 |
+| Chiavi API | Env var o `UserSettings`, mai nei TOML |
+| Fallback | identity + warning per pre/post-retrieval; errore per hyde/extraction |
 
 ## Obiettivo
 

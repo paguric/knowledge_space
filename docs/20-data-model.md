@@ -1,4 +1,23 @@
+---
+title: Modello di dominio e persistenza
+status: implementato
+step: 0
+fase: 1A
+updated: 2026-07-22
+---
+
 # Modello di dominio e persistenza
+
+## Decisioni chiave
+
+| Aspetto | Scelta |
+|---------|--------|
+| Modelli | Pydantic (`Workspace`, `Domain`, `KnowledgeBase`, `FileEntry`, `ChunkRef`) |
+| Persistenza | Ibrida: indice globale + state.json per workspace |
+| `file_id` | UUID4 stabile per la vita del file |
+| `chunk_id` | `base::file_id::i` (disaccoppiato dal nome) |
+| Chunk editabili | No — Chroma è fonte di verità |
+| `GraphConfigData` | Uno per workspace, in `state.json` |
 
 ## Nota preliminare
 

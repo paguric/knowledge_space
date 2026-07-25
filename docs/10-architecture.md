@@ -1,4 +1,21 @@
+---
+title: Architettura e organizzazione dei pacchetti
+status: in_progress
+updated: 2026-07-22
+---
+
 # Architettura e organizzazione dei pacchetti
+
+## Decisioni chiave
+
+| Aspetto | Scelta |
+|---------|--------|
+| Monorepo | Workspace uv con 3 pacchetti |
+| `knowledge-base` | Libreria pura (no XDG, no CLI, no API) |
+| `knowledge-space` | App layer (CLI, REST, bootstrap) |
+| `mcp-server` | Server MCP (stdio/SSE) |
+| Regola d'oro | `knowledge-base` non conosce HTTP, MCP, CLI o variabili globali |
+| GraphRAG | Modulo `knowledge_base/graph/`, driver iniettato |
 
 ## Stato attuale
 

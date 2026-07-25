@@ -1,4 +1,6 @@
-# Fase 3 — MCP + CLI
+> ⚠️ **Deprecato.** Questo file è stato sostituito da [roadmap.md](roadmap.md). Conservato per riferimento storico. Non aggiornare.
+
+# Fase 3 — MCP + CLI (deprecato)
 
 Esporre i manager consolidati nella Fase 1 tramite MCP e CLI.
 

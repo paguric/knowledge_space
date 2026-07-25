@@ -1,4 +1,25 @@
+---
+title: Pipeline di retrieval
+status: non_iniziato
+step: 8
+fase: 1B
+updated: 2026-07-22
+---
+
 # Pipeline di retrieval
+
+## Decisioni chiave
+
+| Aspetto | Scelta |
+|---------|--------|
+| Pipeline | 3 step: pre-retrieval → retrieval → post-retrieval |
+| No-op esplicito | `method = "identity"` per ogni step |
+| Pre-retrieval | `identity`, `multi_query`, `step_back`, `least_to_most` (stadi concatenati) |
+| Retrieval | `dense`, `sparse` (BM25 fallback), `hybrid` (rrf / weighted_sum) |
+| Query mode | `original` (embed_query) / `hyde` (documento ipotetico) |
+| Reranker | `identity`, `relevance`, `mmr`, `cross_encoder`, `llm` |
+| Compressor | `identity`, `llm_chain_extract`, `selective_context` |
+| Fallback LLM | identity + warning se modello non specificato |
 
 ## Obiettivo
 

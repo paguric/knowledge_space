@@ -1,4 +1,21 @@
+---
+title: Backend REST
+status: non_iniziato
+step: 15
+fase: 4
+updated: 2026-07-22
+---
+
 # Backend REST per il frontend React
+
+## Decisioni chiave
+
+| Aspetto | Scelta |
+|---------|--------|
+| Framework | FastAPI + Pydantic + uvicorn |
+| Versioning API | `/api/v1` |
+| CORS | Configurabile via env/config |
+| Sync vs Async | Endpoint sync, `run_in_threadpool` per operazioni lunghe |
 
 ## Framework: FastAPI (consigliata)
 

@@ -1,4 +1,6 @@
-# Fase 4 — REST + Frontend
+> ⚠️ **Deprecato.** Questo file è stato sostituito da [roadmap.md](roadmap.md). Conservato per riferimento storico. Non aggiornare.
+
+# Fase 4 — REST + Frontend (deprecato)
 
 > Per la collocazione di questa fase nel piano generale: vedi [90-roadmap-overview.md](90-roadmap-overview.md).
 

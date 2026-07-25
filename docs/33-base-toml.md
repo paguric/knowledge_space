@@ -1,4 +1,6 @@
-# 33 — Esempio di `<base>/.knowledge-space/base.toml`
+> ⚠️ **Deprecato.** Contenuto spostato in [30-configuration.md §Appendix B](30-configuration.md#appendix-b--esempio-basetoml). Conservato per riferimento storico. Non aggiornare.
+
+# 33 — Esempio di `<base>/.knowledge-space/base.toml` (deprecato)
 
 Configurazione specifica di una base di conoscenza. I campi mancanti ereditano da [`defaults.toml`](32-defaults-toml.md). Vedi [30-configuration.md](30-configuration.md) per la struttura completa.
 

@@ -1,4 +1,21 @@
+---
+title: Strategie di ingestion
+status: implementato
+step: 4
+fase: 1A
+updated: 2026-07-22
+---
+
 # Strategie di ingestion
+
+## Decisioni chiave
+
+| Library | Formati | Profilo | GPU |
+|---------|---------|---------|-----|
+| `docling` | PDF, DOCX, PPTX, HTML | ricercatore | Sì |
+| `pymupdf4llm` | PDF | consulente | No |
+| `markitdown` | PPTX, DOCX, PDF, HTML, TXT | studente | No |
+| `identity` | MD, TXT | tutti | No |
 
 ## Obiettivo
 

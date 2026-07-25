@@ -1,4 +1,6 @@
-# Fase 1B — Ricerca sui documenti processati
+> ⚠️ **Deprecato.** Questo file è stato sostituito da [roadmap.md](roadmap.md). Conservato per riferimento storico. Non aggiornare.
+
+# Fase 1B — Ricerca sui documenti processati (deprecato)
 
 Pipeline di retrieval su vettori Chroma (dense/sparse/hybrid) con pre-retrieval (espansione testuale) e post-retrieval (reranking, compression). Opera sui chunk già indicizzati dalla Fase 1A. **Nessuna dipendenza dal grafo Neo4j**: la ricerca è puramente vettoriale su Chroma, con fallback BM25 per sparse retrieval.
 

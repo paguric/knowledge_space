@@ -1,4 +1,6 @@
-# Roadmap — Overview
+> ⚠️ **Deprecato.** Questo file è stato sostituito da [roadmap.md](roadmap.md). Conservato per riferimento storico. Non aggiornare.
+
+# Roadmap — Overview (deprecato)
 
 ## Fasi di implementazione
 

@@ -1,4 +1,21 @@
+---
+title: Server MCP
+status: non_iniziato
+step: 14
+fase: 3
+updated: 2026-07-22
+---
+
 # Server MCP
+
+## Decisioni chiave
+
+| Aspetto | Scelta |
+|---------|--------|
+| Trasporto default | stdio (Fase 3), SSE opzionale |
+| Dipendenze | `knowledge-base` (non `knowledge-space`) |
+| Fase 3 | Processo standalone |
+| Fase 4+ | Bridge verso REST backend |
 
 ## Protocollo e trasporto
 

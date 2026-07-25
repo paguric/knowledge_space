@@ -1,4 +1,23 @@
+---
+title: Ciclo di vita dell'app e processo backend
+status: non_iniziato
+step: 8-ter
+fase: 1A
+updated: 2026-07-22
+---
+
 # Ciclo di vita dell'app e processo backend
+
+## Decisioni chiave
+
+| Aspetto | Scelta |
+|---------|--------|
+| Fase 1-3 | CLI standalone (ogni comando = processo separato) |
+| Fase 4+ | Backend process long-running (watcher + REST + MCP) |
+| Rilevamento backend | PID file + ping `/health` |
+| Thread safety | State mutation dal thread principale, callback via coda thread-safe |
+| MCP stdio (Fase 4+) | Bridge verso REST, non standalone |
+| Packaging | pywebview (consigliato) / Tauri / Electron / browser |
 
 Questo documento descrive come Knowledge Space viene eseguito: entry point, modalità di esecuzione (CLI standalone / backend process), lifecycle del processo, e relazione tra i componenti runtime. Per l'architettura dei pacchetti: vedi [10-architecture.md](10-architecture.md).
 
@@ -229,7 +248,7 @@ def detect_backend() -> bool:
 
 ## 5. Protocollo CLI ↔ backend
 
-La CLI comunica con il backend tramite REST API nello stesso formato usato dal frontend (vedi [97-rest-api.md](97-rest-api.md)). Ogni comando CLI mappa a un endpoint REST:
+La CLI comunica con il backend tramite REST API nello stesso formato usato dal frontend (vedi [87-rest-api.md](87-rest-api.md)). Ogni comando CLI mappa a un endpoint REST:
 
 | Comando CLI | Endpoint REST | Metodo |
 |---|---|---|

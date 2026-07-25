@@ -1,4 +1,22 @@
+---
+title: Strategie di chunking
+status: implementato
+step: 5
+fase: 1A
+updated: 2026-07-22
+---
+
 # Strategie di chunking
+
+## Decisioni chiave
+
+| Method | Descrizione | Richiede embedding |
+|--------|-------------|:---:|
+| `fixed_size` | Split a lunghezza fissa (no-overlap o sliding window) | No |
+| `recursive` | Split gerarchico con separatori annidati | No |
+| `semantic` | Split per similarità semantica tra frasi | Sì |
+| `sentence` | Split per confini di frase | No |
+| `markdown` | Split per header Markdown, code block intatti | No |
 
 ## Obiettivo
 

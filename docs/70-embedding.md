@@ -1,4 +1,23 @@
+---
+title: Embedding configurabile per base
+status: implementato
+step: 6
+fase: 1A
+updated: 2026-07-22
+---
+
 # Embedding configurabile per base
+
+## Decisioni chiave
+
+| Aspetto | Scelta |
+|---------|--------|
+| Modelli locali | 7 (mpnet, MiniLM, gte, bge-large, bge-m3, e5-small, e5-large) |
+| Modelli remoti | 5 (OpenAI ×2, Cohere, Voyage ×2) |
+| Collection Chroma | Una per base, creata con `dim` del modello |
+| Cambio modello | Bloccato se collection non vuota |
+| Validazione chunk | Errore se chunk > `max_context_tokens` |
+| Chiavi API | Env var o `UserSettings`, mai nei TOML |
 
 ## Obiettivo
 

@@ -1,4 +1,6 @@
-# 32 — Esempio di `defaults.toml`
+> ⚠️ **Deprecato.** Contenuto spostato in [30-configuration.md §Appendix A](30-configuration.md#appendix-a--esempio-defaultstoml). Conservato per riferimento storico. Non aggiornare.
+
+# 32 — Esempio di `defaults.toml` (deprecato)
 
 Configurazione predefinita per tutte le basi del workspace. Vedi [30-configuration.md](30-configuration.md) per la struttura completa.
 
