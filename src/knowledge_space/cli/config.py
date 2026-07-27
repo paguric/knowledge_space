@@ -221,10 +221,10 @@ def _collection_non_empty(manager: Any, base_name: str) -> bool:
 def show(
     scope: Optional[str] = typer.Argument(
         None,
-        metavar="[SCOPE]",
-        help="Cosa mostrare: nome o percorso di una base, oppure 'defaults' "
-             "per i default del workspace. Se omesso e sei dentro una base, "
-             "usa quella; altrimenti mostra i default del workspace.",
+        metavar="[BASE]",
+        help="Base da mostrare: nome o percorso di una base. "
+             "Se omesso, rileva automaticamente la base dalla "
+             "directory corrente o mostra i default del workspace.",
     ),
     workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
     json_output: bool = typer.Option(False, "--json", help="Output JSON."),
@@ -235,9 +235,7 @@ def show(
     ws = get_workspace(ctx, workspace)
     config_loader = ctx.base_config_loader_factory(ws.path)
 
-    if scope and scope.strip().lower() == "defaults":
-        scope = None  # forza ramo workspace defaults
-    elif scope:
+    if scope:
         scope = resolve_base_name(scope, workspace=ws)
     else:
         scope = resolve_base_from_cwd(ws)
