@@ -3,7 +3,8 @@
 ``BaseConfig`` racchiude le tre sezioni di configurazione di una base di
 conoscenza: ``ingestion``, ``chunking`` e ``embedding``. I valori vengono
 caricati da file TOML con una cascata di default (hardcoded → workspace →
-base). La libreria non scrive mai i TOML: li legge soltanto.
+base). Il modulo offre anche funzioni di scaffolding (``ensure_defaults_toml``,
+``ensure_base_toml``) per creare i TOML template alla prima registrazione.
 """
 
 from __future__ import annotations
@@ -33,9 +34,9 @@ class IngestionConfig(BaseModel):
 class ChunkingConfig(BaseModel):
     """Sezione ``[chunking]`` del TOML."""
 
-    method: str = "fixed_size"
-    chunk_size: int = 1000
-    chunk_overlap: int = 200
+    method: str = "recursive"
+    chunk_size: int = 800
+    chunk_overlap: int = 120
     separator: str = "\n\n"
     params: Dict[str, Any] = Field(default_factory=dict)
 
@@ -445,6 +446,111 @@ class BaseConfigLoader:
             with open(defaults_path, "rb") as f:
                 config = config.override(BaseConfig.from_toml(tomllib.load(f)))
         return config
+
+
+# --------------------------------------------------------------------------- #
+# Template TOML e scaffolding
+# --------------------------------------------------------------------------- #
+
+
+DEFAULTS_TOML_TEMPLATE: str = """\
+# defaults.toml — Configurazione default per tutte le basi del workspace
+# Sovrascrivibile per-base in <base>/.knowledge-space/base.toml
+
+[ingestion]
+library = "docling"
+# params = {}
+
+[chunking]
+method = "recursive"
+chunk_size = 800
+chunk_overlap = 120
+separator = "\\n\\n"
+
+[embedding]
+model = "sentence-transformers/all-mpnet-base-v2"
+# device = "cpu"
+# api_base = ""
+
+[pre_retrieval]
+# [[pre_retrieval.stages]]
+# method = "identity"
+
+[retrieval]
+method = "dense"
+query_mode = "original"
+top_k = 10
+
+[post_retrieval]
+method = "identity"
+
+[graph]
+enabled = false
+on_chunk_change = "lazy"
+retriever = "hybrid_cypher"
+resolver = "exact"
+"""
+
+BASE_TOML_TEMPLATE: str = """\
+# base.toml — Configurazione specifica per questa base
+#
+# Cascata di configurazione:
+#   1. default hardcoded
+#   2. <workspace>/.knowledge-space/defaults.toml
+#   3. <base>/.knowledge-space/base.toml (questo file)
+#
+# Sovrascrive solo i campi qui presenti; gli altri ereditano dalla cascata.
+# Con soli commenti (come questo template), la base eredita tutto da
+# defaults.toml / hardcoded.
+
+# [chunking]
+# chunk_size = 500
+# chunk_overlap = 100
+
+# [embedding]
+# model = "sentence-transformers/all-MiniLM-L6-v2"
+# device = "cpu"
+"""
+
+
+def ensure_defaults_toml(
+    workspace_path: Path,
+    dot_folder_name: str = ".knowledge-space",
+) -> tuple[Path, bool]:
+    """Crea ``<workspace>/<dot>/defaults.toml`` se assente.
+
+    Se il file esiste già non viene sovrascritto.
+
+    Returns:
+        ``(path, created)`` — il path del file e ``True`` se è stato creato.
+    """
+    dot_dir = Path(workspace_path) / dot_folder_name
+    target = dot_dir / "defaults.toml"
+    if target.exists():
+        return target, False
+    dot_dir.mkdir(parents=True, exist_ok=True)
+    target.write_text(DEFAULTS_TOML_TEMPLATE, encoding="utf-8")
+    return target, True
+
+
+def ensure_base_toml(
+    base_path: Path,
+    dot_folder_name: str = ".knowledge-space",
+) -> tuple[Path, bool]:
+    """Crea ``<base>/<dot>/base.toml`` se assente.
+
+    Se il file esiste già non viene sovrascritto.
+
+    Returns:
+        ``(path, created)`` — il path del file e ``True`` se è stato creato.
+    """
+    dot_dir = Path(base_path) / dot_folder_name
+    target = dot_dir / "base.toml"
+    if target.exists():
+        return target, False
+    dot_dir.mkdir(parents=True, exist_ok=True)
+    target.write_text(BASE_TOML_TEMPLATE, encoding="utf-8")
+    return target, True
 
 
 # --------------------------------------------------------------------------- #

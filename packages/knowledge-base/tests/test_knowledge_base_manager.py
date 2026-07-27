@@ -20,6 +20,7 @@ reale (verifica end-to-end dell'incapsulamento).
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -678,3 +679,72 @@ class TestMigrateState:
         # non cambia
         assert entry.file_id == file_id
         assert entry.content_hash == content_hash
+
+
+# --------------------------------------------------------------------------- #
+# Warning dedup: add_file emette al più 1 warning per defaults.toml
+# --------------------------------------------------------------------------- #
+
+
+class TestWarningDedup:
+    def test_add_file_single_warning_for_missing_defaults_toml(
+        self, workspace: Workspace, tmp_path: Path, caplog
+    ):
+        """Una singola add_file con defaults.toml assente emette al più 1
+        warning 'defaults.toml non trovato'."""
+        from knowledge_base.base_config import BaseConfigLoader
+
+        chroma_path = tmp_path / "chroma"
+
+        def _config_path_for(ws_path: Path) -> Path:
+            return Path(ws_path) / ".knowledge-space" / "config.json"
+
+        cfg_path = _config_path_for(workspace.path)
+        cfg_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Loader reale che percorre la cascata TOML (defaults.toml assente)
+        real_loader = BaseConfigLoader(workspace_path=workspace.path)
+
+        def _loader(base_name: str) -> BaseConfig:
+            cfg = real_loader.load(base_name)
+            # Sovrascrive modello/method/library per compatibilità con gli stub
+            cfg.embedding.model = "stub-embedder"
+            cfg.chunking.method = "stub"
+            cfg.ingestion.library = "stub"
+            return cfg
+
+        m = KnowledgeBaseManager(
+            workspace=workspace,
+            config_loader=_loader,
+            config_path_for=_config_path_for,
+            chroma_path=chroma_path,
+            ingestion_factory=_stub_ingestion_factory,
+            chunking_factory=_stub_chunking_factory,
+            embedder_factory=_stub_embedder_factory,
+        )
+        m.add(workspace.path / "kb1")
+        src = _write_source(workspace.path / "kb1", "doc.md", "p1\n\np2")
+
+        with caplog.at_level(logging.WARNING):
+            m.add_file("kb1", src)
+
+        warning_count = sum(
+            1 for r in caplog.records
+            if "defaults.toml" in r.message and "non trovato" in r.message
+        )
+        assert warning_count == 1, (
+            f"Atteso 1 warning, trovati {warning_count}: "
+            + str([r.message for r in caplog.records if "defaults.toml" in r.message])
+        )
+
+    def test_check_config_change_without_config_kwarg_falls_back(
+        self, manager: KnowledgeBaseManager, workspace: Workspace
+    ):
+        """check_config_change() senza config= ricade sul config_loader."""
+        manager.add(workspace.path / "kb1")
+        # Base vuota, collection vuota → no raise
+        manager.check_config_change("kb1")
+        # Con config esplicito funziona ugualmente
+        from knowledge_base.base_config import BaseConfig
+
+        manager.check_config_change("kb1", config=BaseConfig())

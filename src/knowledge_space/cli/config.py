@@ -11,6 +11,7 @@ from typing import Optional
 
 import typer
 
+from knowledge_base.base_config import DEFAULTS_TOML_TEMPLATE
 from knowledge_space.cli.common import (
     get_context,
     get_workspace,
@@ -145,44 +146,6 @@ def init(
             typer.echo("Annullato.")
             return
 
-    template = """\
-# defaults.toml — Configurazione default per tutte le basi del workspace
-# Sovrascrivibile per-base in <base>/.knowledge-space/base.toml
-
-[ingestion]
-library = "docling"
-# params = {}
-
-[chunking]
-method = "fixed_size"
-chunk_size = 1000
-chunk_overlap = 200
-separator = "\\n\\n"
-
-[embedding]
-model = "sentence-transformers/all-mpnet-base-v2"
-# device = "cpu"
-# api_base = ""
-
-[pre_retrieval]
-# [[pre_retrieval.stages]]
-# method = "identity"
-
-[retrieval]
-method = "dense"
-query_mode = "original"
-top_k = 10
-
-[post_retrieval]
-method = "identity"
-
-[graph]
-enabled = false
-on_chunk_change = "lazy"
-retriever = "hybrid_cypher"
-resolver = "exact"
-"""
-
     defaults_path.parent.mkdir(parents=True, exist_ok=True)
-    defaults_path.write_text(template, encoding="utf-8")
+    defaults_path.write_text(DEFAULTS_TOML_TEMPLATE, encoding="utf-8")
     typer.echo(f"Template generato: {defaults_path}")

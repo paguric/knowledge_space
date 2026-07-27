@@ -41,8 +41,8 @@ class ChunkingStrategy(Protocol):
 ```toml
 [chunking]
 method = "fixed_size"
-chunk_size = 1000
-chunk_overlap = 200       # 0 = no-overlap, >0 = sliding window
+chunk_size = 800
+chunk_overlap = 120       # 0 = no-overlap, >0 = sliding window
 separator = "\n\n"
 ```
 
@@ -51,8 +51,8 @@ separator = "\n\n"
 ```toml
 [chunking]
 method = "recursive"
-chunk_size = 1000
-chunk_overlap = 200
+chunk_size = 800
+chunk_overlap = 120
 separators = ["\n\n", "\n", " ", ""]
 ```
 

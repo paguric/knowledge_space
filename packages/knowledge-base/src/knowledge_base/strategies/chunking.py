@@ -84,8 +84,8 @@ class FixedSizeChunking(BaseChunking):
 
     def __init__(
         self,
-        chunk_size: int = 1000,
-        chunk_overlap: int = 200,
+        chunk_size: int = 800,
+        chunk_overlap: int = 120,
         separator: str = "\n\n",
         **params,
     ) -> None:
@@ -104,7 +104,29 @@ class FixedSizeChunking(BaseChunking):
             length_function=len,
             is_separator_regex=False,
         )
-        return splitter.split_text(text)
+        pieces = splitter.split_text(text)
+
+        # Safety-net: se un pezzo supera chunk_size (paragrafo monolitico),
+        # ri-splittalo con RecursiveCharacterTextSplitter.
+        oversized = [p for p in pieces if len(p) > self.chunk_size]
+        if oversized:
+            from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+            fallback = RecursiveCharacterTextSplitter(
+                chunk_size=self.chunk_size,
+                chunk_overlap=self.chunk_overlap,
+                length_function=len,
+                is_separator_regex=False,
+            )
+            result: List[str] = []
+            for piece in pieces:
+                if len(piece) > self.chunk_size:
+                    result.extend(fallback.split_text(piece))
+                else:
+                    result.append(piece)
+            return result
+
+        return pieces
 
 
 # --------------------------------------------------------------------------- #
@@ -131,8 +153,8 @@ class RecursiveChunking(BaseChunking):
 
     def __init__(
         self,
-        chunk_size: int = 1000,
-        chunk_overlap: int = 200,
+        chunk_size: int = 800,
+        chunk_overlap: int = 120,
         separators: Optional[List[str]] = None,
         **params,
     ) -> None:

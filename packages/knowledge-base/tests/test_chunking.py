@@ -170,8 +170,8 @@ class TestFixedSizeChunking:
 
     def test_default_params(self):
         chunker = FixedSizeChunking()
-        assert chunker.chunk_size == 1000
-        assert chunker.chunk_overlap == 200
+        assert chunker.chunk_size == 800
+        assert chunker.chunk_overlap == 120
         assert chunker.separator == "\n\n"
 
     def test_instantiable_from_config_kwargs(self):
@@ -441,3 +441,42 @@ class TestMarkdownChunking:
         chunks = MarkdownChunking().split(text)
         assert len(chunks) >= 1
         assert chunks[0]["text"].strip() == text.strip()
+
+
+# --------------------------------------------------------------------------- #
+# Test di regressione: default compatibili con max_ctx=384
+# --------------------------------------------------------------------------- #
+
+
+class TestDefaultsMaxContext:
+    """Verifica che i default producano chunk dentro il context window."""
+
+    MONOLITHIC_5K = ("Paragrafo molto lungo senza doppi newline. " * 200)[:5000]
+
+    def test_recursive_monolithic_text_all_chunks_within_size(self):
+        """RecursiveChunking: testo monolitico 5000 char → tutti i chunk <= 800."""
+        chunker = RecursiveChunking()  # default: 800/120
+        chunks = chunker.split(self.MONOLITHIC_5K)
+        assert len(chunks) > 1
+        for c in chunks:
+            assert len(c["text"]) <= 800, (
+                f"Chunk troppo lungo: {len(c['text'])} char"
+            )
+
+    def test_fixed_size_monolithic_text_all_chunks_within_size(self):
+        """FixedSizeChunking (con safety-net): testo monolitico → tutti i chunk <= chunk_size."""
+        chunker = FixedSizeChunking()  # default: 800/120
+        chunks = chunker.split(self.MONOLITHIC_5K)
+        assert len(chunks) > 1
+        for c in chunks:
+            assert len(c["text"]) <= 800, (
+                f"Chunk troppo lungo: {len(c['text'])} char"
+            )
+
+    def test_default_chunk_size_fits_embedding_context(self):
+        """800 char → 200 token stimati (//4), ben dentro 384."""
+        from knowledge_base.strategies.embedding import estimate_tokens
+
+        assert estimate_tokens("a" * 800) <= 384
+        # Margine anche per italiano (~3 char/token): 800/3 ≈ 267 < 384
+        assert 800 // 3 < 384

@@ -309,7 +309,9 @@ class KnowledgeBaseManager:
     # Blocco cambio config (trigger 3/4/5)
     # ..................................................................... #
 
-    def check_config_change(self, base_name: str) -> None:
+    def check_config_change(
+        self, base_name: str, *, config: Optional[BaseConfig] = None
+    ) -> None:
         """Verifica il blocco cambio config all'avvio.
 
         Confronta ``BaseConfig`` caricata con i valori registrati
@@ -317,9 +319,15 @@ class KnowledgeBaseManager:
         collection Chroma della base non è vuota. Solleva
         :class:`ConfigChangeBlockedError` se il cambio richiede reindex
         esplicito.
+
+        Args:
+            base_name: nome della base.
+            config: configurazione già caricata. Se ``None``, viene caricata
+                dal config_loader (retro-compatibilità).
         """
         kb = self._load_base_by_name(base_name)
-        config = self._load_base_config(base_name)
+        if config is None:
+            config = self._load_base_config(base_name)
         check_config_change_blocked(
             base_name,
             config,
@@ -355,7 +363,7 @@ class KnowledgeBaseManager:
 
         config = self._load_base_config(base_name)
         # Blocco cambio config (trigger 3/4/5) — controlla prima di operare.
-        self.check_config_change(base_name)
+        self.check_config_change(base_name, config=config)
 
         key = src.name
         existing = kb.files.get(key)
@@ -395,7 +403,7 @@ class KnowledgeBaseManager:
             file_id = uuid.uuid4().hex
 
         # 5. Persistenza chunk su disco + Chroma upsert (diff incrementale)
-        self._persist_chunks(base_name, file_id, src.name, raw_chunks, new_chunk_hashes, existing)
+        self._persist_chunks(base_name, file_id, src.name, raw_chunks, new_chunk_hashes, existing, config=config)
 
         # 6. Update modello FileEntry
         if existing is None:
@@ -442,6 +450,8 @@ class KnowledgeBaseManager:
         new_chunks: List[Dict[str, Any]],
         new_hashes: List[str],
         existing: Optional[FileEntry],
+        *,
+        config: BaseConfig,
     ) -> None:
         """Scrive i chunk su disco, fa upsert Chroma (solo cambiati) e
         cancella chunk/record Chroma scomparsi.
@@ -464,7 +474,6 @@ class KnowledgeBaseManager:
         metas_to_upsert: List[Dict[str, Any]] = []
         # Embedding via embedder (richiede lo stesso vector space del modello
         # registrato — l'embedder cache garantisce consistenza intra-run).
-        config = self._load_base_config(base_name)
         embedder = self._get_embedder(config.embedding.model)
         col = self._get_collection(base_name, dim=embedder.metadata.dim)
 

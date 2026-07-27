@@ -24,7 +24,7 @@ Ogni base di conoscenza ha la propria configurazione TOML, con cascata di defaul
 
 | | Stato | Configurazione |
 |---|------|----------------|
-| Cosa | domini, basi, file, chunk, flag `active`, mtime | ingestion, chunking, embedding, parametri |
+| Cosa | domini, basi, file, chunk, flag `active`, mtime, snapshot config registrato per base (per blocco cambio config) | ingestion, chunking, embedding, parametri |
 | Cambia spesso? | Sì, a runtime | No, raramente |
 | Chi lo scrive | il programma | l'utente (a mano) |
 | Formato | JSON | TOML |
@@ -112,9 +112,9 @@ library = "docling"
 params.use_gpu = false
 
 [chunking]
-method = "fixed_size"
-chunk_size = 1000
-chunk_overlap = 200
+method = "recursive"
+chunk_size = 800
+chunk_overlap = 120
 separator = "\n\n"
 
 [embedding]

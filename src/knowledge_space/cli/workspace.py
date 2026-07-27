@@ -13,6 +13,7 @@ from typing import Optional
 
 import typer
 
+from knowledge_base.base_config import ensure_base_toml, ensure_defaults_toml
 from knowledge_space.cli.common import (
     get_context,
     output_json,
@@ -47,6 +48,17 @@ def add(
             typer.echo(f"  {n_bases} basi scoperte automaticamente")
     else:
         typer.echo(f"Workspace già registrato: {ws_path}")
+
+    # Scaffolding TOML (idempotente, anche per workspace già registrati)
+    _, created = ensure_defaults_toml(ws_path, ctx.runtime_paths.dot_folder_name)
+    if created:
+        typer.echo(f"  defaults.toml creato")
+    # Crea base.toml per ogni base presente (auto-scoperte o preesistenti)
+    workspace = ctx.workspace_manager.load(ws_path)
+    for kb in workspace.bases.values():
+        _, base_created = ensure_base_toml(kb.path, ctx.runtime_paths.dot_folder_name)
+        if base_created:
+            typer.echo(f"  base.toml creato per {kb.path.name}")
 
 
 @app.command("list")

@@ -13,6 +13,7 @@ from typing import Optional
 
 import typer
 
+from knowledge_base.base_config import ensure_base_toml, ensure_defaults_toml
 from knowledge_space.cli.common import (
     get_context,
     get_workspace,
@@ -39,6 +40,14 @@ def add(
         kb = manager.add(Path(path))
         base_name = Path(path).name
         typer.echo(f"Base aggiunta: {base_name}")
+
+        # Scaffolding TOML (idempotente)
+        _, ws_created = ensure_defaults_toml(ws.path, ctx.runtime_paths.dot_folder_name)
+        if ws_created:
+            typer.echo(f"  defaults.toml creato")
+        _, base_created = ensure_base_toml(Path(path), ctx.runtime_paths.dot_folder_name)
+        if base_created:
+            typer.echo(f"  base.toml creato per {base_name}")
 
         if sync:
             indexed = 0

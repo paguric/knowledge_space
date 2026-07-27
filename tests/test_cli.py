@@ -162,6 +162,61 @@ class TestWorkspace:
         assert "path" in data
         assert "bases" in data
 
+    def test_workspace_add_does_not_pollute_real_xdg(self, workspace_dir: Path):
+        """Verifica che la fixture di isolamento XDG impedisca la scrittura
+        nell'indice globale reale (regressione per inquinamento sotto /tmp).
+
+        Con isolamento XDG attivo, ogni test parte da indice vuoto:
+        l'unico workspace visibile è quello registrato qui dentro."""
+        runner.invoke(app, ["workspace", "add", str(workspace_dir)])
+        result = runner.invoke(app, ["workspace", "list", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        resolved = str(Path(workspace_dir).resolve())
+        # L'indice contiene esattamente il workspace appena registrato
+        assert len(data) == 1
+        assert data[0] == resolved
+        # Non deve apparire l'indice globale reale (nessun path utente)
+        assert all("My Workspace" not in p for p in data)
+
+    def test_workspace_add_creates_defaults_toml(self, workspace_dir: Path):
+        """workspace add crea defaults.toml nella dotfolder del workspace."""
+        result = runner.invoke(app, ["workspace", "add", str(workspace_dir)])
+        assert result.exit_code == 0
+        defaults_path = workspace_dir / ".knowledge-space" / "defaults.toml"
+        assert defaults_path.exists()
+        # Il template contiene sezioni TOML commentate/attive
+        content = defaults_path.read_text(encoding="utf-8")
+        assert "[ingestion]" in content
+        assert "[embedding]" in content
+
+    def test_workspace_add_does_not_overwrite_modified_defaults_toml(
+        self, workspace_dir: Path
+    ):
+        """Secondo add non sovrascrive un defaults.toml modificato dall'utente."""
+        # Primo add crea il template
+        runner.invoke(app, ["workspace", "add", str(workspace_dir)])
+        defaults_path = workspace_dir / ".knowledge-space" / "defaults.toml"
+        assert defaults_path.exists()
+        # L'utente modifica il file
+        custom = "# custom\n[chunking]\nchunk_size = 42\n"
+        defaults_path.write_text(custom, encoding="utf-8")
+        # Secondo add: non sovrascrive
+        runner.invoke(app, ["workspace", "add", str(workspace_dir)])
+        assert defaults_path.read_text(encoding="utf-8") == custom
+
+    def test_workspace_add_creates_base_toml_for_discovered_bases(
+        self, workspace_dir: Path, base_dir: Path
+    ):
+        """workspace add crea base.toml per le basi auto-scoperte dalla sync."""
+        result = runner.invoke(app, ["workspace", "add", str(workspace_dir)])
+        assert result.exit_code == 0
+        base_toml = base_dir / ".knowledge-space" / "base.toml"
+        assert base_toml.exists()
+        content = base_toml.read_text(encoding="utf-8")
+        # Il template base ha solo commenti, nessun valore attivo
+        assert "# [chunking]" in content
+
 
 # --------------------------------------------------------------------------- #
 # Test domain
@@ -274,6 +329,22 @@ class TestBase:
         )
         assert result.exit_code == 0
         assert "my_base" in result.output
+
+    def test_base_add_creates_toml_files(
+        self, workspace_dir: Path, base_dir: Path
+    ):
+        """base add crea base.toml e (se mancante) defaults.toml."""
+        result = runner.invoke(
+            app,
+            ["base", "add", str(base_dir), "--workspace", str(workspace_dir)],
+        )
+        assert result.exit_code == 0
+        # base.toml creato per la base
+        base_toml = base_dir / ".knowledge-space" / "base.toml"
+        assert base_toml.exists()
+        # defaults.toml creato nel workspace (se non esisteva)
+        defaults_toml = workspace_dir / ".knowledge-space" / "defaults.toml"
+        assert defaults_toml.exists()
 
     def test_base_list(self, workspace_dir: Path, base_dir: Path):
         runner.invoke(

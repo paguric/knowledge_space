@@ -5,10 +5,14 @@ import logging
 import pytest
 
 from knowledge_base.base_config import (
+    BASE_TOML_TEMPLATE,
+    DEFAULTS_TOML_TEMPLATE,
     BaseConfig,
     BaseConfigLoader,
     ConfigChangeBlockedError,
     check_config_change_blocked,
+    ensure_base_toml,
+    ensure_defaults_toml,
 )
 from knowledge_base.strategies import (
     StrategyRegistry,
@@ -71,9 +75,9 @@ def _make_workspace(tmp_path, *, defaults=None, base_toml=None, base_name="kb1")
 def test_base_config_hardcoded_defaults():
     cfg = BaseConfig()
     assert cfg.ingestion.library == "docling"
-    assert cfg.chunking.method == "fixed_size"
-    assert cfg.chunking.chunk_size == 1000
-    assert cfg.chunking.chunk_overlap == 200
+    assert cfg.chunking.method == "recursive"
+    assert cfg.chunking.chunk_size == 800
+    assert cfg.chunking.chunk_overlap == 120
     assert cfg.embedding.model == "sentence-transformers/all-mpnet-base-v2"
     assert cfg.embedding.device is None
 
@@ -193,8 +197,8 @@ def test_invalid_type_warns_and_section_falls_back(tmp_path, caplog):
         cfg = loader.load("kb1")
 
     # l'intera sezione cade ai default hardcoded
-    assert cfg.chunking.chunk_size == 1000
-    assert cfg.chunking.method == "fixed_size"
+    assert cfg.chunking.chunk_size == 800
+    assert cfg.chunking.method == "recursive"
     assert any("invalidi" in r.message for r in caplog.records)
 
 
@@ -261,16 +265,15 @@ def test_embedding_metadata_discoverable():
     assert "multilingual" in instance.metadata.languages
 
 
-def test_chunking_fixed_size_instantiable_from_config():
+def test_chunking_instantiable_from_config():
     """Il chunker di default si istanzia con i parametri della BaseConfig."""
     cfg = BaseConfig()
     cls = chunking_registry.get(cfg.chunking.method)
     chunker = cls(
         chunk_size=cfg.chunking.chunk_size,
         chunk_overlap=cfg.chunking.chunk_overlap,
-        separator=cfg.chunking.separator,
     )
-    assert chunker.chunk_size == 1000
+    assert chunker.chunk_size == 800
     chunks = chunker.split("paragrafo uno.\n\nparagrafo due.")
     assert len(chunks) >= 1
 
@@ -341,7 +344,7 @@ def test_block_on_chunking_method_change():
         check_config_change_blocked(
             "kb1",
             cfg,
-            registered_chunking_method="recursive",
+            registered_chunking_method="fixed_size",
             collection_non_empty=True,
         )
     assert "--chunking-change" in str(exc_info.value)
@@ -367,7 +370,7 @@ def test_block_reports_all_simultaneous_changes():
             "kb1",
             cfg,
             registered_embedding_model="altro-modello",
-            registered_chunking_method="recursive",
+            registered_chunking_method="fixed_size",
             registered_ingestion_library="markitdown",
             collection_non_empty=True,
         )
@@ -377,3 +380,118 @@ def test_block_reports_all_simultaneous_changes():
     assert "--model-change" in msg
     assert "--chunking-change" in msg
     assert "--ingestion-change" in msg
+
+
+# --------------------------------------------------------------------------- #
+# from_toml su dict vuoto (template con soli commenti)
+# --------------------------------------------------------------------------- #
+
+
+def test_from_toml_empty_dict_returns_hardcoded_defaults():
+    """``from_toml({})`` (file con soli commenti → dict vuoto) non solleva."""
+    cfg = BaseConfig.from_toml({})
+    assert cfg == BaseConfig()
+    assert cfg.ingestion.library == "docling"
+    assert cfg.chunking.chunk_size == 800
+    assert cfg.embedding.model == "sentence-transformers/all-mpnet-base-v2"
+
+
+# --------------------------------------------------------------------------- #
+# ensure_defaults_toml / ensure_base_toml
+# --------------------------------------------------------------------------- #
+
+
+def test_ensure_defaults_toml_creates_file(tmp_path):
+    """Crea defaults.toml se assente, ritorna (path, True)."""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    path, created = ensure_defaults_toml(ws)
+    assert created is True
+    assert path.exists()
+    content = path.read_text(encoding="utf-8")
+    assert content == DEFAULTS_TOML_TEMPLATE
+    # La dotfolder è stata creata
+    assert (ws / ".knowledge-space").is_dir()
+
+
+def test_ensure_defaults_toml_idempotent(tmp_path):
+    """Seconda chiamata non sovrascrive, ritorna (path, False)."""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    path1, created1 = ensure_defaults_toml(ws)
+    path2, created2 = ensure_defaults_toml(ws)
+    assert created1 is True
+    assert created2 is False
+    assert path1 == path2
+
+
+def test_ensure_defaults_toml_preserves_existing(tmp_path):
+    """Non sovrascrive un defaults.toml già presente (modificato dall'utente)."""
+    ws = tmp_path / "ws"
+    dot = ws / ".knowledge-space"
+    dot.mkdir(parents=True)
+    existing = dot / "defaults.toml"
+    custom = "# custom config\n[chunking]\nchunk_size = 42\n"
+    existing.write_text(custom, encoding="utf-8")
+
+    path, created = ensure_defaults_toml(ws)
+    assert created is False
+    assert existing.read_text(encoding="utf-8") == custom
+
+
+def test_ensure_base_toml_creates_file(tmp_path):
+    """Crea base.toml se assente, ritorna (path, True)."""
+    base = tmp_path / "base"
+    base.mkdir()
+    path, created = ensure_base_toml(base)
+    assert created is True
+    assert path.exists()
+    content = path.read_text(encoding="utf-8")
+    assert content == BASE_TOML_TEMPLATE
+    assert (base / ".knowledge-space").is_dir()
+
+
+def test_ensure_base_toml_idempotent(tmp_path):
+    """Seconda chiamata non sovrascrive, ritorna (path, False)."""
+    base = tmp_path / "base"
+    base.mkdir()
+    path1, created1 = ensure_base_toml(base)
+    path2, created2 = ensure_base_toml(base)
+    assert created1 is True
+    assert created2 is False
+    assert path1 == path2
+
+
+def test_ensure_base_toml_preserves_existing(tmp_path):
+    """Non sovrascrive un base.toml già presente."""
+    base = tmp_path / "base"
+    dot = base / ".knowledge-space"
+    dot.mkdir(parents=True)
+    existing = dot / "base.toml"
+    custom = "[chunking]\nchunk_size = 999\n"
+    existing.write_text(custom, encoding="utf-8")
+
+    path, created = ensure_base_toml(base)
+    assert created is False
+    assert existing.read_text(encoding="utf-8") == custom
+
+
+def test_base_toml_template_has_only_comments():
+    """Il template base.toml contiene solo commenti, nessun valore attivo."""
+    # Il template deve parsare come dict vuoto da TOML
+    import tomllib
+
+    data = tomllib.loads(BASE_TOML_TEMPLATE)
+    assert data == {}
+
+
+def test_defaults_toml_template_is_valid_toml():
+    """Il template defaults.toml è TOML valido e imposta i campi attesi."""
+    import tomllib
+
+    data = tomllib.loads(DEFAULTS_TOML_TEMPLATE)
+    assert data["ingestion"]["library"] == "docling"
+    assert data["chunking"]["method"] == "recursive"
+    assert data["chunking"]["chunk_size"] == 800
+    assert data["chunking"]["chunk_overlap"] == 120
+    assert data["embedding"]["model"] == "sentence-transformers/all-mpnet-base-v2"
