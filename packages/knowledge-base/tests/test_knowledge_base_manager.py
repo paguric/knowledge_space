@@ -31,6 +31,7 @@ from knowledge_base.knowledge_base_manager import (
     BaseNotFoundError,
     ChunkPersistError,
     KnowledgeBaseManager,
+    chroma_collection_name,
 )
 from knowledge_base.models import (
     ChunkRef,
@@ -194,6 +195,36 @@ def _write_source(base_path: Path, name: str, content: str) -> Path:
 # --------------------------------------------------------------------------- #
 # Setup base + pipeline add_file
 # --------------------------------------------------------------------------- #
+
+
+class TestChromaCollectionName:
+    """Nomi collection Chroma validi anche con spazi/caratteri speciali."""
+
+    def test_simple_name_unchanged(self):
+        assert chroma_collection_name("kb1") == "ks_kb1"
+
+    def test_spaces_are_slugified(self):
+        name = chroma_collection_name("Paper Accademici")
+        assert " " not in name
+        assert name.startswith("ks_")
+        # regole Chroma
+        import re
+
+        assert re.fullmatch(
+            r"[a-zA-Z0-9]([a-zA-Z0-9._-]{0,510}[a-zA-Z0-9])?",
+            name,
+        )
+        assert 3 <= len(name) <= 512
+
+    def test_collision_resistant(self):
+        a = chroma_collection_name("A B")
+        b = chroma_collection_name("A_B")
+        assert a != b
+
+    def test_stable(self):
+        assert chroma_collection_name("Paper Accademici") == chroma_collection_name(
+            "Paper Accademici"
+        )
 
 
 class TestAddBase:

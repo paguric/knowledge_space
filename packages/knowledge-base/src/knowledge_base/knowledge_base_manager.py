@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -90,6 +91,45 @@ class FileAlreadyIndexedError(ValueError):
 
 class ChunkPersistError(RuntimeError):
     """Sollevata quando un chunk supera il limite ``max_context_tokens``."""
+
+
+# Chroma: 3–512 char, [a-zA-Z0-9._-], start/end alnum.
+_CHROMA_NAME_RE = re.compile(
+    r"^(?:[a-zA-Z0-9]{1,2}|[a-zA-Z0-9][a-zA-Z0-9._-]{0,510}[a-zA-Z0-9])$"
+)
+
+
+def chroma_collection_name(base_name: str) -> str:
+    """Deriva un nome collection Chroma valido dal nome della base.
+
+    Se ``ks_<base_name>`` è già conforme alle regole Chroma, lo restituisce
+    invariato (retrocompatibilità). Altrimenti slugifica i caratteri non
+    ammessi e aggiunge un suffisso hash a 8 hex del nome originale per
+    evitare collisioni (es. ``A B`` vs ``A_B``).
+    """
+    candidate = f"ks_{base_name}"
+    if 3 <= len(candidate) <= 512 and _CHROMA_NAME_RE.match(candidate):
+        return candidate
+
+    slug = re.sub(r"[^a-zA-Z0-9._-]+", "_", base_name)
+    slug = re.sub(r"_+", "_", slug).strip(".-_")
+    if not slug:
+        slug = "base"
+    if not slug[0].isalnum():
+        slug = f"b{slug}"
+    if not slug[-1].isalnum():
+        slug = f"{slug}0"
+
+    digest = hashlib.sha1(base_name.encode("utf-8")).hexdigest()[:8]
+    # ks_ (3) + slug + _ (1) + digest (8)
+    max_slug = 512 - 3 - 1 - 8
+    slug = slug[:max_slug]
+    if not slug[-1].isalnum():
+        slug = f"{slug.rstrip('._-')}0" or "base"
+    name = f"ks_{slug}_{digest}"
+    # digest è hex → fine alnum garantita; inizio ks_ + slug alnum garantito
+    assert _CHROMA_NAME_RE.match(name), name
+    return name
 
 
 # --------------------------------------------------------------------------- #
@@ -245,7 +285,15 @@ class KnowledgeBaseManager:
     # IDs in upsert/delete.
 
     def _collection_name(self, base_name: str) -> str:
-        return f"ks_{base_name}"
+        """Nome collection Chroma valido per la base.
+
+        Chroma richiede 3–512 caratteri in ``[a-zA-Z0-9._-]``, con inizio e
+        fine alfanumerici. I nomi base con spazi (es. ``Paper Accademici``)
+        non sono ammessi grezzi: vengono slugificati e disambiguati con un
+        hash corto del nome originale. I nomi già validi restano
+        ``ks_<base_name>`` (retrocompatibilità con le collection esistenti).
+        """
+        return chroma_collection_name(base_name)
 
     def _get_collection(self, base_name: str, dim: int):
         client = self._chroma_client()
