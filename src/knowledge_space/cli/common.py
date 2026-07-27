@@ -47,7 +47,8 @@ def resolve_base_name(name: str, *, workspace: object) -> str:
     Strategia a due fasi:
     1. Se il nome sembra un path (contiene ``/``, ``\\``, inizia con
        ``.``) prova la risoluzione: risolve il path e cerca la base il
-       cui ``kb.path.resolve()`` coincide.
+       cui ``kb.path`` (risolto vs ``workspace.path`` se relativo)
+       coincide.
     2. Fallback: normalizza con :func:`normalize_base_name` e cerca per
        nome esatto in ``workspace.bases``.
 
@@ -62,13 +63,16 @@ def resolve_base_name(name: str, *, workspace: object) -> str:
     """
     from pathlib import Path as _Path
 
+    ws_root = _Path(workspace.path).resolve()
+
     # Fase 1: lookup per path
     looks_like_path = any(str(name).startswith(p) or "/" in name or "\\" in name for p in (".", "~"))
     if looks_like_path:
         try:
             target = _Path(name).resolve()
             for bname, kb in workspace.bases.items():
-                if kb.path.resolve() == target:
+                kb_abs = kb.path if kb.path.is_absolute() else (ws_root / kb.path)
+                if kb_abs.resolve() == target:
                     return bname
         except Exception:
             pass
@@ -103,16 +107,19 @@ def resolve_base_from_cwd(workspace: object) -> Optional[str]:
     """Cerca se il cwd è dentro una base registrata del workspace.
 
     Risale la gerarchia di directory dal cwd verso la root; se trova una
-    directory il cui path risolto corrisponde a ``kb.path`` di una base,
+    directory il cui path assoluto corrisponde a ``kb.path`` di una base
+    (risolto eventualmente contro ``workspace.path`` se relativo),
     restituisce il nome di quella base. Altrimenti ``None``.
     """
     from pathlib import Path as _Path
 
+    ws_root = _Path(workspace.path).resolve()
     cwd = _Path.cwd()
     current = cwd
     while True:
         for bname, kb in workspace.bases.items():
-            if kb.path.resolve() == current:
+            kb_abs = kb.path if kb.path.is_absolute() else (ws_root / kb.path)
+            if kb_abs.resolve() == current:
                 return bname
         parent = current.parent
         if parent == current:

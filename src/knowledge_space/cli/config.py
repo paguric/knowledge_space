@@ -219,11 +219,12 @@ def _collection_non_empty(manager: Any, base_name: str) -> bool:
 
 @app.command()
 def show(
-    base_name: Optional[str] = typer.Argument(
+    scope: Optional[str] = typer.Argument(
         None,
-        help="Nome o percorso della base. Se omesso, usa la base della "
-             "directory corrente (o i default del workspace se non sei in "
-             "una base).",
+        metavar="[SCOPE]",
+        help="Cosa mostrare: nome o percorso di una base, oppure 'defaults' "
+             "per i default del workspace. Se omesso e sei dentro una base, "
+             "usa quella; altrimenti mostra i default del workspace.",
     ),
     workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
     json_output: bool = typer.Option(False, "--json", help="Output JSON."),
@@ -234,19 +235,21 @@ def show(
     ws = get_workspace(ctx, workspace)
     config_loader = ctx.base_config_loader_factory(ws.path)
 
-    if base_name:
-        base_name = resolve_base_name(base_name, workspace=ws)
+    if scope and scope.strip().lower() == "defaults":
+        scope = None  # forza ramo workspace defaults
+    elif scope:
+        scope = resolve_base_name(scope, workspace=ws)
     else:
-        base_name = resolve_base_from_cwd(ws)
+        scope = resolve_base_from_cwd(ws)
 
-    if base_name:
-        if base_name not in ws.bases:
-            typer.echo(f"Base non trovata: {base_name}", err=True)
+    if scope:
+        if scope not in ws.bases:
+            typer.echo(f"Base non trovata: {scope}", err=True)
             raise typer.Exit(1)
 
-        config = config_loader.load(base_name)
+        config = config_loader.load(scope)
         config_data = {
-            "base": base_name,
+            "base": scope,
             "ingestion": {
                 "library": config.ingestion.library,
                 "params": config.ingestion.params,
@@ -310,7 +313,8 @@ def show(
     if json_output:
         output_json(config_data)
     else:
-        typer.echo(f"Configurazione{' per ' + base_name if base_name else ' workspace'}:")
+        label = f" per {scope}" if scope else " workspace"
+        typer.echo(f"Configurazione{label}:")
         _print_config(config_data, indent=2)
 
 
