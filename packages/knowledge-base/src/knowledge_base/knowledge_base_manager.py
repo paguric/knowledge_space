@@ -32,6 +32,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -335,11 +336,9 @@ class KnowledgeBaseManager:
         return kb
 
     def remove(self, base_name: str) -> bool:
-        """Rimuove una base dal workspace e cancella la collection Chroma.
+        """Rimuove una base dal workspace, cancella collection Chroma e chunk su disco.
 
-        Restituisce ``True`` se era presente. I chunk su disco NON sono
-        cancellati qui: l'utente potrebbe volerli recuperare; il watcher o
-        una ``purge_base`` futura provvederà. Modello conservativo.
+        Restituisce ``True`` se era presente.
         """
         if base_name not in self._workspace.bases:
             return False
@@ -355,6 +354,18 @@ class KnowledgeBaseManager:
                 )
             else:
                 logger.warning("Delete collection %s fallito: %s", base_name, exc)
+        # Elimina chunk su disco per tutti i file della base
+        kb = self._workspace.bases[base_name]
+        for file_entry in kb.files.values():
+            if file_entry.file_id:
+                chunks_dir = self._chunks_dir(base_name, file_entry.file_id)
+                if chunks_dir.exists():
+                    shutil.rmtree(chunks_dir)
+        # Rimuovi la dotfolder della base se vuota
+        try:
+            shutil.rmtree(self._base_dot_dir(base_name))
+        except Exception:
+            pass
         del self._workspace.bases[base_name]
         self._save()
         return True

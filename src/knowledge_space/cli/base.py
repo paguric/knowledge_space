@@ -20,6 +20,7 @@ from knowledge_space.cli.common import (
     normalize_base_name,
     output_json,
     output_table,
+    resolve_base_name,
 )
 
 app = typer.Typer(help="Gestione basi di conoscenza.")
@@ -111,6 +112,7 @@ def list_bases(
 @app.command()
 def remove(
     name: str = typer.Argument(help="Nome della base."),
+    force: bool = typer.Option(False, "--force", "-y", help="Salta la conferma."),
     workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
 ) -> None:
@@ -120,6 +122,27 @@ def remove(
     manager = ctx.base_manager_factory(ws)
 
     name = normalize_base_name(name)
+
+    # Mostra warning con conferma se la base contiene file/chunk
+    if not force:
+        kb = ws.bases.get(name)
+        n_files = len(kb.files) if kb else 0
+        n_chunks = sum(len(f.chunks) for f in kb.files.values()) if kb else 0
+
+        if n_files > 0 or n_chunks > 0:
+            typer.echo(
+                f"Attenzione: la base '{name}' contiene {n_files} file "
+                f"e {n_chunks} chunk indicizzati."
+            )
+            typer.echo(
+                "L'operazione eliminerà definitivamente tutti i chunk "
+                "e gli embedding calcolati."
+            )
+            conferma = typer.confirm("Procedere con la rimozione?", default=False)
+            if not conferma:
+                typer.echo("Operazione annullata.")
+                raise typer.Exit(0)
+
     removed = manager.remove(name)
     if removed:
         typer.echo(f"Base rimossa: {name}")
@@ -138,7 +161,7 @@ def info(
     """Mostra dettagli e configurazione di una base."""
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
-    name = normalize_base_name(name)
+    name = resolve_base_name(name, workspace=ws)
 
     if name not in ws.bases:
         typer.echo(f"Base non trovata: {name}", err=True)

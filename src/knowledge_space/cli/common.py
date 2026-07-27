@@ -30,9 +30,51 @@ def normalize_base_name(name: str) -> str:
     ``ks base add`` (che usa già ``Path(...).name``).
 
     Accetta anche un path relativo/assoluto: restituisce solo l'ultimo
-    componente.
+    componente. Casi speciali: ``.`` e ``..`` restano invariati (non
+    vengono ridotti a stringa vuota).
     """
-    return Path(name).name
+    p = Path(name)
+    result = p.name
+    # Path('.').name == '' — recupera dal path risolto
+    if not result and name in (".", ".."):
+        result = p.resolve().name
+    return result
+
+
+def resolve_base_name(name: str, *, workspace: object) -> str:
+    """Risolve un nome base da argomento/opzione CLI.
+
+    Strategia a due fasi:
+    1. Se il nome sembra un path (contiene ``/``, ``\\``, inizia con
+       ``.``) prova la risoluzione: risolve il path e cerca la base il
+       cui ``kb.path.resolve()`` coincide.
+    2. Fallback: normalizza con :func:`normalize_base_name` e cerca per
+       nome esatto in ``workspace.bases``.
+
+    Args:
+        name: nome o path della base.
+        workspace: oggetto ``Workspace`` (da ``knowledge_base.models``).
+
+    Returns:
+        Il nome normalizzato della base (chiave in ``workspace.bases``),
+        oppure ``name`` normalizzato (il chiamante deve verificare la
+        presenza in ``workspace.bases``).
+    """
+    from pathlib import Path as _Path
+
+    # Fase 1: lookup per path
+    looks_like_path = any(str(name).startswith(p) or "/" in name or "\\" in name for p in (".", "~"))
+    if looks_like_path:
+        try:
+            target = _Path(name).resolve()
+            for bname, kb in workspace.bases.items():
+                if kb.path.resolve() == target:
+                    return bname
+        except Exception:
+            pass
+
+    # Fase 2: normalizza e cerca per nome
+    return normalize_base_name(name)
 
 
 def get_context(verbose: bool = False) -> AppContext:

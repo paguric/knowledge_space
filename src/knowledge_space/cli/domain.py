@@ -20,6 +20,7 @@ from knowledge_space.cli.common import (
     normalize_base_name,
     output_json,
     output_table,
+    resolve_base_name,
 )
 
 app = typer.Typer(help="Gestione domini.")
@@ -98,7 +99,7 @@ def add_base(
     """Aggiunge una base a un dominio."""
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
-    base_name = normalize_base_name(base_name)
+    base_name = resolve_base_name(base_name, workspace=ws)
 
     added = ctx.domain_manager.add_base(ws, domain_name, base_name)
     if added:
@@ -121,7 +122,7 @@ def remove_base(
     """Rimuove una base da un dominio."""
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
-    base_name = normalize_base_name(base_name)
+    base_name = resolve_base_name(base_name, workspace=ws)
 
     removed = ctx.domain_manager.remove_base(ws, domain_name, base_name)
     if removed:

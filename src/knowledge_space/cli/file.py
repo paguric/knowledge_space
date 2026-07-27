@@ -18,6 +18,7 @@ from knowledge_space.cli.common import (
     normalize_base_name,
     output_json,
     output_table,
+    resolve_base_name,
 )
 
 app = typer.Typer(help="Gestione file indicizzati.")
@@ -34,7 +35,7 @@ def add(
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
     manager = ctx.base_manager_factory(ws)
-    base_name = normalize_base_name(base_name)
+    base_name = resolve_base_name(base_name, workspace=ws)
 
     try:
         entry = manager.add_file(base_name, Path(path))
@@ -67,7 +68,7 @@ def list_files(
     # Raccogli file da tutte le basi o da una specifica
     bases_to_scan = {}
     if base_name:
-        base_name = normalize_base_name(base_name)
+        base_name = resolve_base_name(base_name, workspace=ws)
         if base_name not in ws.bases:
             typer.echo(f"Base non trovata: {base_name}", err=True)
             raise typer.Exit(1)
@@ -120,7 +121,7 @@ def sync(
 
     bases_to_scan = {}
     if base_name:
-        base_name = normalize_base_name(base_name)
+        base_name = resolve_base_name(base_name, workspace=ws)
         if base_name not in ws.bases:
             typer.echo(f"Base non trovata: {base_name}", err=True)
             raise typer.Exit(1)
@@ -171,7 +172,7 @@ def remove(
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
     manager = ctx.base_manager_factory(ws)
-    base_name = normalize_base_name(base_name)
+    base_name = resolve_base_name(base_name, workspace=ws)
 
     try:
         removed = manager.remove_file(base_name, file_name)

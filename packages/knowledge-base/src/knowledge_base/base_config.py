@@ -553,6 +553,23 @@ def ensure_base_toml(
     return target, True
 
 
+def write_toml(path: Path, data: Dict[str, Any]) -> None:
+    """Scrive un dict come file TOML usando ``tomli-w``.
+
+    I commenti eventualmente presenti nel file vengono persi (Fase 2).
+    La cartella padre viene creata se necessario.
+
+    Args:
+        path: path del file TOML da scrivere.
+        data: dizionario da serializzare.
+    """
+    import tomli_w
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "wb") as f:
+        tomli_w.dump(data, f)
+
+
 # --------------------------------------------------------------------------- #
 # Blocco cambio config (trigger 3/4/5 di 45-indexing-incrementale.md)
 # --------------------------------------------------------------------------- #

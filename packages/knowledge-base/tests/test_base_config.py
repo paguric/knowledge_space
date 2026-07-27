@@ -13,6 +13,7 @@ from knowledge_base.base_config import (
     check_config_change_blocked,
     ensure_base_toml,
     ensure_defaults_toml,
+    write_toml,
 )
 from knowledge_base.strategies import (
     StrategyRegistry,
@@ -495,3 +496,70 @@ def test_defaults_toml_template_is_valid_toml():
     assert data["chunking"]["chunk_size"] == 800
     assert data["chunking"]["chunk_overlap"] == 120
     assert data["embedding"]["model"] == "sentence-transformers/all-mpnet-base-v2"
+
+
+# --------------------------------------------------------------------------- #
+# write_toml — roundtrip e comportamento
+# --------------------------------------------------------------------------- #
+
+
+def test_write_toml_roundtrip(tmp_path):
+    """Scrivi → leggi → i valori corrispondono."""
+    import tomllib
+
+    path = tmp_path / "test.toml"
+    data = {
+        "ingestion": {"library": "markitdown"},
+        "chunking": {"method": "fixed_size", "chunk_size": 500},
+    }
+    write_toml(path, data)
+
+    with open(path, "rb") as f:
+        loaded = tomllib.load(f)
+    assert loaded["ingestion"]["library"] == "markitdown"
+    assert loaded["chunking"]["chunk_size"] == 500
+    assert loaded["chunking"]["method"] == "fixed_size"
+
+
+def test_write_toml_creates_parent_dirs(tmp_path):
+    """La cartella padre viene creata se necessario."""
+    path = tmp_path / "deep" / "nested" / "config.toml"
+    write_toml(path, {"section": {"key": "value"}})
+    assert path.exists()
+
+
+def test_write_toml_overwrites_existing(tmp_path):
+    """Sovrascrive un file esistente."""
+    import tomllib
+
+    path = tmp_path / "test.toml"
+    write_toml(path, {"a": {"x": 1}})
+    write_toml(path, {"a": {"x": 2}, "b": {"y": 3}})
+
+    with open(path, "rb") as f:
+        loaded = tomllib.load(f)
+    assert loaded["a"]["x"] == 2
+    assert loaded["b"]["y"] == 3
+
+
+def test_write_toml_handles_various_types(tmp_path):
+    """Gestisce tipi nativi: str, int, float, bool, list."""
+    import tomllib
+
+    path = tmp_path / "types.toml"
+    data = {
+        "s": {"str_val": "hello"},
+        "i": {"int_val": 42},
+        "f": {"float_val": 3.14},
+        "b": {"bool_val": True},
+        "l": {"list_val": ["a", "b", "c"]},
+    }
+    write_toml(path, data)
+
+    with open(path, "rb") as f:
+        loaded = tomllib.load(f)
+    assert loaded["s"]["str_val"] == "hello"
+    assert loaded["i"]["int_val"] == 42
+    assert loaded["f"]["float_val"] == 3.14
+    assert loaded["b"]["bool_val"] is True
+    assert loaded["l"]["list_val"] == ["a", "b", "c"]

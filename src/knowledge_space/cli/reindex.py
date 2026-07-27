@@ -14,7 +14,7 @@ import typer
 from knowledge_space.cli.common import (
     get_context,
     get_workspace,
-    normalize_base_name,
+    resolve_base_name,
 )
 
 
@@ -37,7 +37,7 @@ def reindex_command(
     if all_bases:
         bases_to_reindex = list(ws.bases.keys())
     elif base_name:
-        base_name = normalize_base_name(base_name)
+        base_name = resolve_base_name(base_name, workspace=ws)
         if base_name not in ws.bases:
             typer.echo(f"Base non trovata: {base_name}", err=True)
             raise typer.Exit(1)

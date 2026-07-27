@@ -14,8 +14,8 @@ import typer
 from knowledge_space.cli.common import (
     get_context,
     get_workspace,
-    normalize_base_name,
     output_json,
+    resolve_base_name,
 )
 
 
@@ -127,7 +127,7 @@ def tree_command(
     app_ctx = get_context(verbose=verbose)
     ws = get_workspace(app_ctx, workspace)
     if base is not None:
-        base = normalize_base_name(base)
+        base = resolve_base_name(base, workspace=ws)
 
     if json_output:
         tree_data = _build_tree(ws, base)

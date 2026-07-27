@@ -426,6 +426,168 @@ class TestBase:
         data = json.loads(result.output)
         assert data["name"] == "my_base"
 
+    def test_base_remove_with_files_shows_warning(
+        self, workspace_dir: Path, base_dir: Path
+    ):
+        """Rimozione di una base con file mostra warning e richiede conferma."""
+        from knowledge_base.models import (
+            ChunkRef,
+            FileEntry,
+            KnowledgeBase,
+            WorkspaceConfigData,
+        )
+        from knowledge_base.persistence import WorkspaceConfig
+
+        # Scrivi state.json con un file e chunk
+        config_path = workspace_dir / ".knowledge-space" / "state.json"
+        file_entry = FileEntry(
+            name="doc.md",
+            file_id="abc123def456",
+            mtime=0.0,
+            added="2026-01-01T00:00:00",
+            content_hash="hash123",
+            active=True,
+            chunks=[
+                ChunkRef(index=0, content_hash="c0"),
+                ChunkRef(index=1, content_hash="c1"),
+            ],
+        )
+        kb = KnowledgeBase(
+            path=base_dir,
+            files={"doc.md": file_entry},
+        )
+        cfg_data = WorkspaceConfigData(bases={"my_base": kb})
+        ws_config = WorkspaceConfig(config_path, workspace_dir)
+        ws_config.save(cfg_data)
+
+        # Crea cartella chunks fittizia
+        chunks_dir = base_dir / ".knowledge-space" / "chunks" / "abc123def456"
+        chunks_dir.mkdir(parents=True, exist_ok=True)
+        (chunks_dir / "abc123def456_chunk_0.md").write_text("p1")
+        (chunks_dir / "abc123def456_chunk_1.md").write_text("p2")
+
+        # Senza conferma (input="n\n"): annulla
+        result = runner.invoke(
+            app,
+            ["base", "remove", "my_base", "--workspace", str(workspace_dir)],
+            input="n\n",
+        )
+        assert result.exit_code == 0
+        assert "Attenzione" in result.output
+        assert "annullata" in result.output.lower()
+        # Base non rimossa: state.json ancora presente
+        assert config_path.exists()
+
+    def test_base_remove_with_files_confirm_deletes(
+        self, workspace_dir: Path, base_dir: Path
+    ):
+        """Conferma sì → base rimossa e chunk cancellati."""
+        from knowledge_base.models import (
+            ChunkRef,
+            FileEntry,
+            KnowledgeBase,
+            WorkspaceConfigData,
+        )
+        from knowledge_base.persistence import WorkspaceConfig
+
+        config_path = workspace_dir / ".knowledge-space" / "state.json"
+        file_entry = FileEntry(
+            name="doc.md",
+            file_id="abc123def456",
+            mtime=0.0,
+            added="2026-01-01T00:00:00",
+            content_hash="hash123",
+            active=True,
+            chunks=[
+                ChunkRef(index=0, content_hash="c0"),
+                ChunkRef(index=1, content_hash="c1"),
+            ],
+        )
+        kb = KnowledgeBase(
+            path=base_dir,
+            files={"doc.md": file_entry},
+        )
+        cfg_data = WorkspaceConfigData(bases={"my_base": kb})
+        ws_config = WorkspaceConfig(config_path, workspace_dir)
+        ws_config.save(cfg_data)
+
+        chunks_dir = base_dir / ".knowledge-space" / "chunks" / "abc123def456"
+        chunks_dir.mkdir(parents=True, exist_ok=True)
+        (chunks_dir / "abc123def456_chunk_0.md").write_text("p1")
+        (chunks_dir / "abc123def456_chunk_1.md").write_text("p2")
+
+        result = runner.invoke(
+            app,
+            ["base", "remove", "my_base", "--workspace", str(workspace_dir)],
+            input="y\n",
+        )
+        assert result.exit_code == 0
+        assert "rimossa" in result.output.lower() or "rimosso" in result.output.lower()
+        assert not chunks_dir.exists()
+
+    def test_base_remove_force_flag(
+        self, workspace_dir: Path, base_dir: Path
+    ):
+        """--force salta la conferma."""
+        from knowledge_base.models import (
+            ChunkRef,
+            FileEntry,
+            KnowledgeBase,
+            WorkspaceConfigData,
+        )
+        from knowledge_base.persistence import WorkspaceConfig
+
+        config_path = workspace_dir / ".knowledge-space" / "state.json"
+        file_entry = FileEntry(
+            name="doc.md",
+            file_id="abc123def456",
+            mtime=0.0,
+            added="2026-01-01T00:00:00",
+            content_hash="hash123",
+            active=True,
+            chunks=[
+                ChunkRef(index=0, content_hash="c0"),
+            ],
+        )
+        kb = KnowledgeBase(
+            path=base_dir,
+            files={"doc.md": file_entry},
+        )
+        cfg_data = WorkspaceConfigData(bases={"my_base": kb})
+        ws_config = WorkspaceConfig(config_path, workspace_dir)
+        ws_config.save(cfg_data)
+
+        chunks_dir = base_dir / ".knowledge-space" / "chunks" / "abc123def456"
+        chunks_dir.mkdir(parents=True, exist_ok=True)
+        (chunks_dir / "abc123def456_chunk_0.md").write_text("p1")
+
+        result = runner.invoke(
+            app,
+            [
+                "base", "remove", "my_base",
+                "--force",
+                "--workspace", str(workspace_dir),
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Procedere" not in result.output
+        assert "rimossa" in result.output.lower() or "rimosso" in result.output.lower()
+
+    def test_base_remove_empty_base_no_warning(
+        self, workspace_dir: Path, base_dir: Path
+    ):
+        """Base senza file: nessun warning, rimozione diretta."""
+        runner.invoke(
+            app, ["base", "add", str(base_dir), "--workspace", str(workspace_dir)]
+        )
+        result = runner.invoke(
+            app,
+            ["base", "remove", "my_base", "--workspace", str(workspace_dir)],
+        )
+        assert result.exit_code == 0
+        assert "Attenzione" not in result.output
+        assert "rimossa" in result.output.lower() or "rimosso" in result.output.lower()
+
 
 # --------------------------------------------------------------------------- #
 # Test file
@@ -613,6 +775,227 @@ class TestConfig:
         # Verifica che il file sia stato creato
         defaults_path = workspace_dir / ".knowledge-space" / "defaults.toml"
         assert defaults_path.exists()
+
+    # --- config set ---
+
+    def test_config_set_defaults(self, workspace_dir: Path):
+        """config set defaults modifica defaults.toml."""
+        result = runner.invoke(
+            app,
+            ["config", "set", "defaults", "chunking.chunk_size", "500",
+             "--workspace", str(workspace_dir)],
+        )
+        assert result.exit_code == 0
+        assert "chunking.chunk_size" in result.output
+        assert "500" in result.output
+
+        # Verifica il contenuto del file
+        defaults_path = workspace_dir / ".knowledge-space" / "defaults.toml"
+        assert defaults_path.exists()
+        import tomllib
+
+        with open(defaults_path, "rb") as f:
+            data = tomllib.load(f)
+        assert data["chunking"]["chunk_size"] == 500
+
+    def test_config_set_creates_defaults_if_missing(self, workspace_dir: Path):
+        """config set crea defaults.toml se assente."""
+        defaults_path = workspace_dir / ".knowledge-space" / "defaults.toml"
+        assert not defaults_path.exists()
+
+        result = runner.invoke(
+            app,
+            ["config", "set", "defaults", "embedding.model", "my/model",
+             "--workspace", str(workspace_dir)],
+        )
+        assert result.exit_code == 0
+        assert defaults_path.exists()
+
+        import tomllib
+
+        with open(defaults_path, "rb") as f:
+            data = tomllib.load(f)
+        assert data["embedding"]["model"] == "my/model"
+
+    def test_config_set_base(self, workspace_dir: Path, base_dir: Path):
+        """config set su base crea base.toml e scrive il valore."""
+        runner.invoke(
+            app, ["base", "add", str(base_dir), "--workspace", str(workspace_dir)]
+        )
+        result = runner.invoke(
+            app,
+            ["config", "set", "my_base", "embedding.model", "BAAI/bge-m3",
+             "--workspace", str(workspace_dir)],
+        )
+        assert result.exit_code == 0
+
+        base_toml = base_dir / ".knowledge-space" / "base.toml"
+        assert base_toml.exists()
+        import tomllib
+
+        with open(base_toml, "rb") as f:
+            data = tomllib.load(f)
+        assert data["embedding"]["model"] == "BAAI/bge-m3"
+
+    def test_config_set_invalid_scope(self, workspace_dir: Path):
+        """Scope non riconosciuto → errore."""
+        result = runner.invoke(
+            app,
+            ["config", "set", "nonexistent", "chunking.chunk_size", "500",
+             "--workspace", str(workspace_dir)],
+        )
+        assert result.exit_code == 1
+
+    def test_config_set_invalid_key(self, workspace_dir: Path):
+        """Chiave non valida → errore."""
+        result = runner.invoke(
+            app,
+            ["config", "set", "defaults", "badkey",
+             "500", "--workspace", str(workspace_dir)],
+        )
+        assert result.exit_code == 1
+
+    def test_config_set_unknown_section(self, workspace_dir: Path):
+        """Sezione sconosciuta → errore."""
+        result = runner.invoke(
+            app,
+            ["config", "set", "defaults", "nosuch.field", "x",
+             "--workspace", str(workspace_dir)],
+        )
+        assert result.exit_code == 1
+
+    def test_config_set_unknown_field(self, workspace_dir: Path):
+        """Campo inesistente nella sezione → errore."""
+        result = runner.invoke(
+            app,
+            ["config", "set", "defaults", "chunking.nonexistent", "500",
+             "--workspace", str(workspace_dir)],
+        )
+        assert result.exit_code == 1
+
+    def test_config_set_preserves_other_keys(self, workspace_dir: Path):
+        """config set non distrugge le chiavi esistenti."""
+        # Prima set
+        runner.invoke(
+            app,
+            ["config", "set", "defaults", "chunking.chunk_size", "500",
+             "--workspace", str(workspace_dir)],
+        )
+        # Seconda set su chiave diversa
+        runner.invoke(
+            app,
+            ["config", "set", "defaults", "embedding.model", "my/model",
+             "--workspace", str(workspace_dir)],
+        )
+        import tomllib
+
+        defaults_path = workspace_dir / ".knowledge-space" / "defaults.toml"
+        with open(defaults_path, "rb") as f:
+            data = tomllib.load(f)
+        assert data["chunking"]["chunk_size"] == 500
+        assert data["embedding"]["model"] == "my/model"
+
+    def test_config_set_bool_value(self, workspace_dir: Path):
+        """Valori booleani vengono parsati correttamente."""
+        result = runner.invoke(
+            app,
+            ["config", "set", "defaults", "graph.enabled", "true",
+             "--workspace", str(workspace_dir)],
+        )
+        assert result.exit_code == 0
+
+        import tomllib
+
+        defaults_path = workspace_dir / ".knowledge-space" / "defaults.toml"
+        with open(defaults_path, "rb") as f:
+            data = tomllib.load(f)
+        assert data["graph"]["enabled"] is True
+
+    # --- config unset ---
+
+    def test_config_unset_removes_key(self, workspace_dir: Path):
+        """config unset rimuove la chiave dal TOML."""
+        # Set prima
+        runner.invoke(
+            app,
+            ["config", "set", "defaults", "chunking.chunk_size", "500",
+             "--workspace", str(workspace_dir)],
+        )
+        import tomllib
+
+        defaults_path = workspace_dir / ".knowledge-space" / "defaults.toml"
+        with open(defaults_path, "rb") as f:
+            data = tomllib.load(f)
+        assert "chunk_size" in data.get("chunking", {})
+
+        # Unset
+        result = runner.invoke(
+            app,
+            ["config", "unset", "defaults", "chunking.chunk_size",
+             "--workspace", str(workspace_dir)],
+        )
+        assert result.exit_code == 0
+        assert "rimossa" in result.output.lower()
+
+        with open(defaults_path, "rb") as f:
+            data = tomllib.load(f)
+        assert "chunk_size" not in data.get("chunking", {})
+
+    def test_config_unset_missing_file(self, workspace_dir: Path):
+        """config unset su file inesistente → no-op con messaggio."""
+        result = runner.invoke(
+            app,
+            ["config", "unset", "defaults", "chunking.chunk_size",
+             "--workspace", str(workspace_dir)],
+        )
+        assert result.exit_code == 0
+        assert "non esiste" in result.output.lower()
+
+    def test_config_unset_missing_key(self, workspace_dir: Path):
+        """config unset su chiave assente → messaggio informativo."""
+        # Crea il file con init
+        runner.invoke(
+            app, ["config", "init", "--workspace", str(workspace_dir)]
+        )
+        result = runner.invoke(
+            app,
+            ["config", "unset", "defaults", "chunking.nonexistent",
+             "--workspace", str(workspace_dir)],
+        )
+        assert result.exit_code == 0
+        assert "non presente" in result.output.lower()
+
+    # --- config edit ---
+
+    def test_config_edit_creates_file_and_opens_editor(
+        self, workspace_dir: Path, monkeypatch
+    ):
+        """config edit crea il TOML e apre l'editor."""
+        # Mock EDITOR a 'true' (no-op)
+        monkeypatch.setenv("EDITOR", "true")
+        defaults_path = workspace_dir / ".knowledge-space" / "defaults.toml"
+        assert not defaults_path.exists()
+
+        result = runner.invoke(
+            app,
+            ["config", "edit", "defaults", "--workspace", str(workspace_dir)],
+        )
+        assert result.exit_code == 0
+        assert defaults_path.exists()
+
+    def test_config_edit_base(self, workspace_dir: Path, base_dir: Path, monkeypatch):
+        """config edit su base apre base.toml."""
+        monkeypatch.setenv("EDITOR", "true")
+        runner.invoke(
+            app, ["base", "add", str(base_dir), "--workspace", str(workspace_dir)]
+        )
+        result = runner.invoke(
+            app,
+            ["config", "edit", "my_base", "--workspace", str(workspace_dir)],
+        )
+        assert result.exit_code == 0
+        base_toml = base_dir / ".knowledge-space" / "base.toml"
+        assert base_toml.exists()
 
 
 # --------------------------------------------------------------------------- #

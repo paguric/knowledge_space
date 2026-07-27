@@ -251,6 +251,21 @@ class TestAddBase:
         # idempotent
         assert manager.remove("kb1") is False
 
+    def test_remove_deletes_chunks_on_disk(
+        self, manager: KnowledgeBaseManager, workspace: Workspace
+    ):
+        """Dopo remove, i chunk su disco non esistono più."""
+        manager.add(workspace.path / "kb1")
+        src = _write_source(workspace.path / "kb1", "doc.md", "p1\n\np2")
+        entry = manager.add_file("kb1", src)
+        chunks_dir = (
+            workspace.path / "kb1" / ".knowledge-space" / "chunks" / entry.file_id
+        )
+        assert chunks_dir.is_dir()
+
+        manager.remove("kb1")
+        assert not chunks_dir.exists()
+
 
 class TestAddFilePipeline:
     def test_add_file_creates_file_entry_with_file_id(

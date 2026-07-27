@@ -14,8 +14,8 @@ import typer
 from knowledge_space.cli.common import (
     get_context,
     get_workspace,
-    normalize_base_name,
     output_json,
+    resolve_base_name,
 )
 
 app = typer.Typer(help="Gestione chunk.")
@@ -32,7 +32,7 @@ def list_chunks(
     """Elenca i chunk di un file."""
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
-    base_name = normalize_base_name(base_name)
+    base_name = resolve_base_name(base_name, workspace=ws)
 
     if base_name not in ws.bases:
         typer.echo(f"Base non trovata: {base_name}", err=True)

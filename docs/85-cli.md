@@ -1,6 +1,6 @@
 # CLI standalone
 
-> **Stato:** non iniziato | **Step:** 13 | **Fase:** 3 | **Aggiornato:** 22 luglio 2026
+> **Stato:** parziale (config set/unset/edit implementati) | **Step:** 13 | **Fase:** 3 | **Aggiornato:** 22 luglio 2026
 
 ## Panoramica
 
@@ -171,10 +171,11 @@ Interfaccia a riga di comando (Typer) per gestire workspace, domini, basi, file,
 
 ### Fasi di implementazione
 
-- [ ] Aggiungere `typer` alle dipendenze
-- [ ] Creare `knowledge_space/cli.py`
-- [ ] Implementare comandi per workspace, domini, basi, file, chunk
-- [ ] Implementare search, reindex, graph, config, auth, models
+- [x] Aggiungere `typer` alle dipendenze
+- [x] Creare `knowledge_space/cli.py`
+- [x] Implementare comandi per workspace, domini, basi, file, chunk
+- [x] Implementare config show/init/set/unset/edit
+- [ ] Implementare search, reindex, graph, auth, models
 - [ ] Implementare profili
 - [ ] Autocompletamento shell
 - [ ] Test di integrazione (standalone mode)
