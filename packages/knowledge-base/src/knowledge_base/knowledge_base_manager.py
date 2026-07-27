@@ -295,12 +295,18 @@ class KnowledgeBaseManager:
         """
         if base_name not in self._workspace.bases:
             return False
-        # Drop collection Chroma
+        # Drop collection Chroma (no-op se non è mai stata creata / già assente).
         try:
             client = self._chroma_client()
             client.delete_collection(name=self._collection_name(base_name))
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Delete collection %s fallito: %s", base_name, exc)
+            msg = str(exc).lower()
+            if "does not exist" in msg or "not found" in msg:
+                logger.debug(
+                    "Collection Chroma assente per %s (ok): %s", base_name, exc
+                )
+            else:
+                logger.warning("Delete collection %s fallito: %s", base_name, exc)
         del self._workspace.bases[base_name]
         self._save()
         return True
