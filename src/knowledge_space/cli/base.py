@@ -17,6 +17,7 @@ from knowledge_base.base_config import ensure_base_toml, ensure_defaults_toml
 from knowledge_space.cli.common import (
     get_context,
     get_workspace,
+    normalize_base_name,
     output_json,
     output_table,
 )
@@ -118,6 +119,7 @@ def remove(
     ws = get_workspace(ctx, workspace)
     manager = ctx.base_manager_factory(ws)
 
+    name = normalize_base_name(name)
     removed = manager.remove(name)
     if removed:
         typer.echo(f"Base rimossa: {name}")
@@ -136,6 +138,7 @@ def info(
     """Mostra dettagli e configurazione di una base."""
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
+    name = normalize_base_name(name)
 
     if name not in ws.bases:
         typer.echo(f"Base non trovata: {name}", err=True)

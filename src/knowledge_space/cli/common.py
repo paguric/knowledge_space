@@ -21,6 +21,20 @@ from knowledge_space.context import AppContext
 from knowledge_space.runtime_paths import RuntimePaths
 
 
+def normalize_base_name(name: str) -> str:
+    """Normalizza un nome base ricevuto da argomento/opzione CLI.
+
+    La tab-completion della shell aggiunge spesso uno slash finale alle
+    directory (es. ``Progetto di Tesi/``). ``Path.name`` lo rimuove, così
+    la chiave coincide con quella registrata in ``ws.bases`` da
+    ``ks base add`` (che usa già ``Path(...).name``).
+
+    Accetta anche un path relativo/assoluto: restituisce solo l'ultimo
+    componente.
+    """
+    return Path(name).name
+
+
 def get_context(verbose: bool = False) -> AppContext:
     """Crea un ``AppContext`` temporaneo per il comando corrente.
 

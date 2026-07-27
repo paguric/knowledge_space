@@ -26,6 +26,7 @@ import pytest
 from typer.testing import CliRunner
 
 from knowledge_space.cli import app
+from knowledge_space.cli.common import normalize_base_name
 
 runner = CliRunner()
 
@@ -377,6 +378,23 @@ class TestBase:
         )
         assert result.exit_code == 0
         assert "rimossa" in result.output.lower() or "rimosso" in result.output.lower()
+
+    def test_base_remove_trailing_slash(self, workspace_dir: Path, base_dir: Path):
+        """Tab-completion aggiunge spesso '/' al nome: non deve far fallire remove."""
+        runner.invoke(
+            app, ["base", "add", str(base_dir), "--workspace", str(workspace_dir)]
+        )
+        result = runner.invoke(
+            app,
+            ["base", "remove", "my_base/", "--workspace", str(workspace_dir)],
+        )
+        assert result.exit_code == 0
+        assert "rimossa" in result.output.lower() or "rimosso" in result.output.lower()
+
+    def test_normalize_base_name_strips_slash(self):
+        assert normalize_base_name("Progetto di Tesi/") == "Progetto di Tesi"
+        assert normalize_base_name("Progetto di Tesi") == "Progetto di Tesi"
+        assert normalize_base_name("./my_base/") == "my_base"
 
     def test_base_remove_nonexistent(self, workspace_dir: Path):
         result = runner.invoke(

@@ -15,6 +15,7 @@ from knowledge_base.base_config import DEFAULTS_TOML_TEMPLATE
 from knowledge_space.cli.common import (
     get_context,
     get_workspace,
+    normalize_base_name,
     output_json,
 )
 
@@ -34,6 +35,7 @@ def show(
     config_loader = ctx.base_config_loader_factory(ws.path)
 
     if base_name:
+        base_name = normalize_base_name(base_name)
         # Config specifica per base
         if base_name not in ws.bases:
             typer.echo(f"Base non trovata: {base_name}", err=True)

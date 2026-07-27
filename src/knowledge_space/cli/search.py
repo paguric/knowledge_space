@@ -14,6 +14,7 @@ import typer
 from knowledge_space.cli.common import (
     get_context,
     get_workspace,
+    normalize_base_name,
     output_json,
 )
 
@@ -38,6 +39,7 @@ def search_command(
     # Costruisci la collection factory
     bases_to_search = {}
     if base_name:
+        base_name = normalize_base_name(base_name)
         if base_name not in ws.bases:
             typer.echo(f"Base non trovata: {base_name}", err=True)
             raise typer.Exit(1)
