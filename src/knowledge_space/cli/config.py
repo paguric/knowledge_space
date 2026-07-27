@@ -32,6 +32,7 @@ from knowledge_space.cli.common import (
     get_workspace,
     normalize_base_name,
     output_json,
+    resolve_base_from_cwd,
     resolve_base_name,
 )
 
@@ -218,7 +219,12 @@ def _collection_non_empty(manager: Any, base_name: str) -> bool:
 
 @app.command()
 def show(
-    base_name: Optional[str] = typer.Argument(None, help="Nome della base (opzionale)."),
+    base_name: Optional[str] = typer.Argument(
+        None,
+        help="Nome o percorso della base. Se omesso, usa la base della "
+             "directory corrente (o i default del workspace se non sei in "
+             "una base).",
+    ),
     workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
     json_output: bool = typer.Option(False, "--json", help="Output JSON."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
@@ -230,7 +236,10 @@ def show(
 
     if base_name:
         base_name = resolve_base_name(base_name, workspace=ws)
-        # Config specifica per base
+    else:
+        base_name = resolve_base_from_cwd(ws)
+
+    if base_name:
         if base_name not in ws.bases:
             typer.echo(f"Base non trovata: {base_name}", err=True)
             raise typer.Exit(1)

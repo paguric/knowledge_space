@@ -99,6 +99,28 @@ def get_context(verbose: bool = False) -> AppContext:
     return build_app_context()
 
 
+def resolve_base_from_cwd(workspace: object) -> Optional[str]:
+    """Cerca se il cwd è dentro una base registrata del workspace.
+
+    Risale la gerarchia di directory dal cwd verso la root; se trova una
+    directory il cui path risolto corrisponde a ``kb.path`` di una base,
+    restituisce il nome di quella base. Altrimenti ``None``.
+    """
+    from pathlib import Path as _Path
+
+    cwd = _Path.cwd()
+    current = cwd
+    while True:
+        for bname, kb in workspace.bases.items():
+            if kb.path.resolve() == current:
+                return bname
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return None
+
+
 def resolve_workspace_path(
     ctx: AppContext,
     workspace_path: Optional[str] = None,
