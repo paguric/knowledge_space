@@ -31,13 +31,16 @@ pip install -e .
 uv pip install -e . --system
 ```
 
-## Avvio automatico del server
+## Avvio automatico del server *(da implementare — Step 14)*
 
-`ks serve` avvia il server MCP e attiva i watcher filesystem su tutti i workspace
+> ⚠️ Questa sezione descrive funzionalità **non ancora implementata**.
+> `ks serve`, il server MCP e il watcher filesystem saranno disponibili con lo Step 14.
+
+`ks serve` avvierà il server MCP e attiverà i watcher filesystem su tutti i workspace
 registrati: qualsiasi modifica al filesystem (file aggiunti, spostati, rimossi)
 viene rilevata in tempo reale e sincronizzata automaticamente.
 
-Su Linux il modo più semplice è un **systemd user service**:
+Su Linux il modo più semplice sarà un **systemd user service**:
 
 ```bash
 # 1. Abilita il linger per avviare servizi senza login
