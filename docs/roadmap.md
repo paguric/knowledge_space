@@ -31,7 +31,10 @@ Tabella compatta di tutto il progetto. Leggi questa sezione per capire **dove si
 | 12-bis | Logging operazioni applicazione | 2 | 🟡 In corso | Step 12 | `docs/specs/feat-002-logging-operazioni.md` |
 | 13 | CLI con Typer | 3 | ✅ Fatto | Step 8-ter, 12 | — |
 | Bug 003 | Refactor `info`+`tree` → `status` unificato | — | 🟡 In corso | Step 1, 13 | `docs/specs/bug-003-tree-status-workspace.md` |
-| 14 | Server MCP | 3 | ❌ Non iniziato | Step 8-ter | — |
+| 14 | Server MCP | 3 | ✅ Fatto | Step 8-ter, 13 | `docs/specs/feat-003-ks-serve-watch-mcp.md` |
+| Bug 005 | Fix watcher: `on_any_event` → `on_created/moved/deleted` + debounce | — | ✅ Fatto | Step 14 | `docs/specs/bug-005-watcher-on-any-event.md` |
+| Bug 006 | Fix MCP: `on_list_tools` non esiste in MCP 2.0 | — | ✅ Fatto | Step 14 | `docs/specs/bug-006-mcp-v2-api.md` |
+| Bug 007 | Fix sync: ricorsione sottocartelle + ingest automatico file | — | ✅ Fatto | Step 14 | `docs/specs/bug-007-sync-ricorsione-e-ingest.md` |
 | 15 | Backend REST | 4 | ❌ Non iniziato | Step 13 | — |
 | 16 | Frontend React | 4 | ❌ Non iniziato | Step 15 | — |
 | 17 | Polish e documentazione | 4 | ❌ Non iniziato | Step 16 | — |
