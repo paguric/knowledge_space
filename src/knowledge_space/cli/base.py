@@ -8,10 +8,13 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Optional
 
 import typer
+
+logger = logging.getLogger(__name__)
 
 from knowledge_base.base_config import ensure_base_toml, ensure_defaults_toml
 from knowledge_space.cli.common import (
@@ -39,8 +42,10 @@ def add(
     manager = ctx.base_manager_factory(ws)
 
     try:
+        logger.info("Aggiunta base: %s", path)
         kb = manager.add(Path(path))
         base_name = Path(path).name
+        logger.info("Base aggiunta: %s", base_name)
         typer.echo(f"Base aggiunta: {base_name}")
 
         # Scaffolding TOML (idempotente)
@@ -53,17 +58,22 @@ def add(
 
         if sync:
             indexed = 0
+            logger.info("Sync automatico file per base %s", base_name)
             for entry in Path(path).iterdir():
                 if not entry.is_file() or entry.name.startswith("."):
                     continue
                 try:
                     file_entry = manager.add_file(base_name, entry)
+                    logger.debug("File %s indicizzato: %d chunk", entry.name, len(file_entry.chunks))
                     typer.echo(f"  {file_entry.name} → {len(file_entry.chunks)} chunk")
                     indexed += 1
                 except Exception as exc:
+                    logger.error("Errore indicizzazione %s: %s", entry.name, exc)
                     typer.echo(f"  {entry.name}: errore — {exc}", err=True)
+            logger.info("Sync completato: %d file indicizzati", indexed)
             typer.echo(f"{indexed} file indicizzati")
     except ValueError as exc:
+        logger.error("Errore aggiunta base: %s", exc)
         typer.echo(f"Errore: {exc}", err=True)
         raise typer.Exit(1)
 
@@ -77,6 +87,7 @@ def list_bases(
     """Elenca le basi del workspace."""
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
+    logger.info("Elenco basi del workspace")
 
     if json_output:
         output_json([
@@ -122,6 +133,7 @@ def remove(
     manager = ctx.base_manager_factory(ws)
 
     name = normalize_base_name(name)
+    logger.info("Rimozione base: %s", name)
 
     # Mostra warning con conferma se la base contiene file/chunk
     if not force:
@@ -140,13 +152,16 @@ def remove(
             )
             conferma = typer.confirm("Procedere con la rimozione?", default=False)
             if not conferma:
+                logger.info("Rimozione base annullata dall'utente")
                 typer.echo("Operazione annullata.")
                 raise typer.Exit(0)
 
     removed = manager.remove(name)
     if removed:
+        logger.info("Base rimossa: %s", name)
         typer.echo(f"Base rimossa: {name}")
     else:
+        logger.warning("Base non trovata: %s", name)
         typer.echo(f"Base non trovata: {name}", err=True)
         raise typer.Exit(1)
 
@@ -162,6 +177,7 @@ def info(
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
     name = resolve_base_name(name, workspace=ws)
+    logger.info("Info base: %s", name)
 
     if name not in ws.bases:
         typer.echo(f"Base non trovata: {name}", err=True)

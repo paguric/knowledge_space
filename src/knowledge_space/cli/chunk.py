@@ -6,10 +6,13 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Optional
 
 import typer
+
+logger = logging.getLogger(__name__)
 
 from knowledge_space.cli.common import (
     get_context,
@@ -33,13 +36,16 @@ def list_chunks(
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
     base_name = resolve_base_name(base_name, workspace=ws)
+    logger.info("Elenco chunk per file %s nella base %s", file_name, base_name)
 
     if base_name not in ws.bases:
+        logger.warning("Base non trovata: %s", base_name)
         typer.echo(f"Base non trovata: {base_name}", err=True)
         raise typer.Exit(1)
 
     kb = ws.bases[base_name]
     if file_name not in kb.files:
+        logger.warning("File non trovato: %s", file_name)
         typer.echo(f"File non trovato: {file_name}", err=True)
         raise typer.Exit(1)
 
@@ -77,10 +83,12 @@ def show(
     """Mostra il testo di un chunk."""
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
+    logger.info("Visualizzazione chunk: %s", chunk_id)
 
     # Parsa chunk_id: base::file_id::index
     parts = chunk_id.split("::")
     if len(parts) != 3:
+        logger.error("Formato chunk_id non valido: %s", chunk_id)
         typer.echo(
             "Errore: formato chunk_id non valido. Usa: base::file_id::index",
             err=True,
@@ -91,10 +99,12 @@ def show(
     try:
         index = int(index_str)
     except ValueError:
+        logger.error("Indice chunk non valido: %s", index_str)
         typer.echo("Errore: indice chunk non valido.", err=True)
         raise typer.Exit(1)
 
     if base_name not in ws.bases:
+        logger.warning("Base non trovata: %s", base_name)
         typer.echo(f"Base non trovata: {base_name}", err=True)
         raise typer.Exit(1)
 

@@ -7,9 +7,12 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, Optional
 
 import typer
+
+logger = logging.getLogger(__name__)
 
 from knowledge_space.cli.common import (
     get_context,
@@ -126,8 +129,10 @@ def tree_command(
     """Mostra la struttura ad albero del workspace."""
     app_ctx = get_context(verbose=verbose)
     ws = get_workspace(app_ctx, workspace)
+    logger.info("Visualizzazione albero workspace")
     if base is not None:
         base = resolve_base_name(base, workspace=ws)
+        logger.debug("Filtro base: %s", base)
 
     if json_output:
         tree_data = _build_tree(ws, base)

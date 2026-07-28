@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 import typer
@@ -13,6 +14,8 @@ import typer
 from knowledge_base.strategies import embedding_registry
 
 from knowledge_space.cli.common import output_json
+
+logger = logging.getLogger(__name__)
 
 app = typer.Typer(help="Gestione modelli di embedding.")
 
@@ -23,6 +26,7 @@ def list_models(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
 ) -> None:
     """Elenca i modelli di embedding disponibili."""
+    logger.info("Elenco modelli embedding")
     models = []
     for name in embedding_registry.list_names():
         factory = embedding_registry.get(name)
@@ -69,6 +73,7 @@ def info(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
 ) -> None:
     """Mostra dettagli di un modello di embedding."""
+    logger.info("Info modello: %s", name)
     if not embedding_registry.contains(name):
         typer.echo(f"Modello non trovato: {name}", err=True)
         typer.echo(f"Modelli disponibili: {', '.join(embedding_registry.list_names())}")

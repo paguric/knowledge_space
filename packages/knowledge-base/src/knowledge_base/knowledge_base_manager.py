@@ -325,6 +325,7 @@ class KnowledgeBaseManager:
         Solleva :class:`ValueError` se la cartella non esiste o la base è
         già registrata."""
         p = Path(base_path)
+        logger.info("Aggiunta base: %s", p)
         if not p.is_dir():
             raise ValueError(f"La cartella base non esiste: {p}")
         name = p.name
@@ -333,6 +334,7 @@ class KnowledgeBaseManager:
         kb = KnowledgeBase(path=p)
         self._workspace.bases[name] = kb
         self._save()
+        logger.info("Base aggiunta: %s", name)
         return kb
 
     def remove(self, base_name: str) -> bool:
@@ -340,7 +342,9 @@ class KnowledgeBaseManager:
 
         Restituisce ``True`` se era presente.
         """
+        logger.info("Rimozione base: %s", base_name)
         if base_name not in self._workspace.bases:
+            logger.warning("Base non trovata: %s", base_name)
             return False
         # Drop collection Chroma (no-op se non è mai stata creata / già assente).
         try:
@@ -368,6 +372,7 @@ class KnowledgeBaseManager:
             pass
         del self._workspace.bases[base_name]
         self._save()
+        logger.info("Base rimossa: %s", base_name)
         return True
 
     # ..................................................................... #
@@ -423,6 +428,7 @@ class KnowledgeBaseManager:
         """
         kb = self._load_base_by_name(base_name)
         src = Path(source_path)
+        logger.info("Pipeline ingestion per file %s nella base %s", src.name, base_name)
         if not src.is_file():
             raise FileNotFoundError(f"File sorgente non trovato: {src}")
 
@@ -501,6 +507,7 @@ class KnowledgeBaseManager:
         kb.ingestion_library = config.ingestion.library
 
         self._save()
+        logger.info("File %s indicizzato: %d chunk", src.name, len(existing.chunks))
         return existing
 
     # ..................................................................... #
@@ -602,8 +609,10 @@ class KnowledgeBaseManager:
         """Rimuove un file dalla base: cancella chunk da disco e i suoi
         record Chroma. Restituisce ``True`` se era presente.
         """
+        logger.info("Rimozione file %s dalla base %s", source_name, base_name)
         kb = self._load_base_by_name(base_name)
         if source_name not in kb.files:
+            logger.warning("File non trovato: %s", source_name)
             return False
         entry = kb.files[source_name]
         file_id = entry.file_id
@@ -626,6 +635,7 @@ class KnowledgeBaseManager:
                 chunks_dir.rmdir()
         del kb.files[source_name]
         self._save()
+        logger.info("File rimosso: %s", source_name)
         return True
 
     # ..................................................................... #
@@ -645,6 +655,7 @@ class KnowledgeBaseManager:
         (chiamato esplicitamente dalla CLI o dal watcher). La sync registra
         lo stato ma non attiva pipeline pesanti.
         """
+        logger.info("Sync base: %s", base_name)
         kb = self._load_base_by_name(base_name)
         base_path = kb.path
         if not base_path.is_dir():

@@ -5,9 +5,12 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 import typer
+
+logger = logging.getLogger(__name__)
 
 from knowledge_space.cli.common import (
     get_context,
@@ -24,6 +27,7 @@ def status_command(
 ) -> None:
     """Mostra una panoramica dello stato del workspace."""
     ctx = get_context(verbose=verbose)
+    logger.info("Visualizzazione stato workspace")
 
     # Workspace info
     ws_path = None
@@ -33,6 +37,7 @@ def status_command(
         pass
 
     if ws_path is None:
+        logger.warning("Nessun workspace trovato")
         if json_output:
             output_json({"error": "Nessun workspace trovato."})
         else:

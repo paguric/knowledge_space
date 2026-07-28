@@ -15,12 +15,15 @@ basi standalone (nessun dominio).
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Callable, List, Optional
 
 from knowledge_base.models import Domain, KnowledgeBase, Workspace
 from knowledge_base.persistence import WorkspaceConfig
+
+logger = logging.getLogger(__name__)
 
 ConfigPathFor = Callable[[Path], Path]
 
@@ -74,33 +77,41 @@ class DomainManager:
         domain = Domain(name=name, base_names=list(base_names or []))
         workspace.domains.append(domain)
         self._save(workspace)
+        logger.info("Dominio creato: %s", name)
         return domain
 
     def delete(self, workspace: Workspace, name: str) -> bool:
         """Rimuove un dominio per nome. Restituisce ``True`` se esisteva."""
+        logger.info("Rimozione dominio: %s", name)
         for i, d in enumerate(workspace.domains):
             if d.name == name:
                 del workspace.domains[i]
                 self._save(workspace)
+                logger.info("Dominio rimosso: %s", name)
                 return True
+        logger.warning("Dominio non trovato: %s", name)
         return False
 
     def activate(self, workspace: Workspace, name: str) -> bool:
         """Attiva un dominio. Restituisce ``False`` se non esiste."""
         d = self._find(workspace, name)
         if d is None:
+            logger.warning("Dominio non trovato per attivazione: %s", name)
             return False
         d.active = True
         self._save(workspace)
+        logger.info("Dominio attivato: %s", name)
         return True
 
     def deactivate(self, workspace: Workspace, name: str) -> bool:
         """Disattiva un dominio. Restituisce ``False`` se non esiste."""
         d = self._find(workspace, name)
         if d is None:
+            logger.warning("Dominio non trovato per disattivazione: %s", name)
             return False
         d.active = False
         self._save(workspace)
+        logger.info("Dominio disattivato: %s", name)
         return True
 
     def add_base(self, workspace: Workspace, domain_name: str, base_name: str) -> bool:
@@ -149,6 +160,7 @@ class DomainManager:
         loro ``base_names``.
         """
         ws_path = workspace.path
+        logger.info("Auto-generazione domini da struttura cartelle: %s", ws_path)
         if not ws_path.is_dir():
             return workspace
 

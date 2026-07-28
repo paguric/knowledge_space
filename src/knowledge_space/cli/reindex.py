@@ -6,10 +6,13 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Optional
 
 import typer
+
+logger = logging.getLogger(__name__)
 
 from knowledge_space.cli.common import (
     get_context,
@@ -28,8 +31,10 @@ def reindex_command(
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
     manager = ctx.base_manager_factory(ws)
+    logger.info("Reindicizzazione basi")
 
     if not all_bases and not base_name:
+        logger.warning("Nessuna base specificata per reindex")
         typer.echo("Specifica una base o usa --all.", err=True)
         raise typer.Exit(1)
 
@@ -45,13 +50,16 @@ def reindex_command(
 
     for bname in bases_to_reindex:
         kb = ws.bases[bname]
+        logger.info("Reindicizzazione base: %s", bname)
         typer.echo(f"Reindicizzazione base: {bname}")
 
         if not kb.files:
+            logger.info("Nessun file nella base %s, skip", bname)
             typer.echo(f"  Nessun file nella base {bname}, skip.")
             continue
 
         file_names = list(kb.files.keys())
+        logger.info("File da reindicizzare in %s: %d", bname, len(file_names))
         typer.echo(f"  File da reindicizzare: {len(file_names)}")
 
         errors = 0
@@ -65,12 +73,16 @@ def reindex_command(
 
             try:
                 result = manager.add_file(bname, file_path)
+                logger.info("File %s reindicizzato: %d chunk", fname, len(result.chunks))
                 typer.echo(f"  ✓ {fname} ({len(result.chunks)} chunk)")
             except Exception as exc:
+                logger.error("Errore reindicizzazione %s: %s", fname, exc)
                 typer.echo(f"  ✗ {fname}: {exc}", err=True)
                 errors += 1
 
         if errors:
+            logger.warning("Reindicizzazione %s completata con %d errori", bname, errors)
             typer.echo(f"  Completato con {errors} errori.")
         else:
+            logger.info("Reindicizzazione %s completata con successo", bname)
             typer.echo(f"  Completato con successo.")

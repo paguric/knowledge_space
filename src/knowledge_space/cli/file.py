@@ -7,10 +7,13 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Optional
 
 import typer
+
+logger = logging.getLogger(__name__)
 
 from knowledge_space.cli.common import (
     get_context,
@@ -36,20 +39,25 @@ def add(
     ws = get_workspace(ctx, workspace)
     manager = ctx.base_manager_factory(ws)
     base_name = resolve_base_name(base_name, workspace=ws)
+    logger.info("Aggiunta file %s alla base %s", path, base_name)
 
     try:
         entry = manager.add_file(base_name, Path(path))
+        logger.info("File indicizzato: %s (%d chunk)", entry.name, len(entry.chunks))
         typer.echo(
             f"File indicizzato: {entry.name} "
             f"(file_id={entry.file_id}, chunk={len(entry.chunks)})"
         )
     except FileNotFoundError as exc:
+        logger.error("File non trovato: %s", exc)
         typer.echo(f"Errore: {exc}", err=True)
         raise typer.Exit(1)
     except KeyError as exc:
+        logger.error("Base non trovata: %s", exc)
         typer.echo(f"Errore: base non trovata: {exc}", err=True)
         raise typer.Exit(1)
     except Exception as exc:
+        logger.error("Errore durante l'ingestion: %s", exc)
         typer.echo(f"Errore durante l'ingestion: {exc}", err=True)
         raise typer.Exit(1)
 
@@ -64,6 +72,7 @@ def list_files(
     """Elenca i file indicizzati."""
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
+    logger.info("Elenco file indicizzati")
 
     # Raccogli file da tutte le basi o da una specifica
     bases_to_scan = {}
@@ -118,6 +127,7 @@ def sync(
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
     manager = ctx.base_manager_factory(ws)
+    logger.info("Sync file per basi")
 
     bases_to_scan = {}
     if base_name:
@@ -147,17 +157,20 @@ def sync(
             # Nuovo file: indicizza
             try:
                 file_entry = manager.add_file(bname, entry)
+                logger.info("File %s indicizzato in %s: %d chunk", file_entry.name, bname, len(file_entry.chunks))
                 typer.echo(
                     f"  [{bname}] {file_entry.name} → "
                     f"{len(file_entry.chunks)} chunk"
                 )
                 total_indexed += 1
             except Exception as exc:
+                logger.error("Errore sync file %s in %s: %s", entry.name, bname, exc)
                 typer.echo(f"  [{bname}] {entry.name}: errore — {exc}", err=True)
 
     if total_indexed == 0 and total_skipped == 0:
         typer.echo("Nessun file trovato nelle basi.")
     else:
+        logger.info("Sync completato: %d indicizzati, %d già presenti", total_indexed, total_skipped)
         typer.echo(f"\nIndicizzati: {total_indexed}, già presenti: {total_skipped}")
 
 
@@ -173,14 +186,18 @@ def remove(
     ws = get_workspace(ctx, workspace)
     manager = ctx.base_manager_factory(ws)
     base_name = resolve_base_name(base_name, workspace=ws)
+    logger.info("Rimozione file %s dalla base %s", file_name, base_name)
 
     try:
         removed = manager.remove_file(base_name, file_name)
         if removed:
+            logger.info("File rimosso: %s", file_name)
             typer.echo(f"File rimosso: {file_name}")
         else:
+            logger.warning("File non trovato: %s", file_name)
             typer.echo(f"File non trovato: {file_name}", err=True)
             raise typer.Exit(1)
     except KeyError as exc:
+        logger.error("Base non trovata: %s", exc)
         typer.echo(f"Errore: base non trovata: {exc}", err=True)
         raise typer.Exit(1)

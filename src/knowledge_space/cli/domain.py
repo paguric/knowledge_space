@@ -10,9 +10,12 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 import typer
+
+logger = logging.getLogger(__name__)
 
 from knowledge_space.cli.common import (
     get_context,
@@ -35,11 +38,14 @@ def new(
     """Crea un nuovo dominio nel workspace."""
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
+    logger.info("Creazione dominio: %s", name)
 
     try:
         domain = ctx.domain_manager.create(ws, name)
+        logger.info("Dominio creato: %s", domain.name)
         typer.echo(f"Dominio creato: {domain.name}")
     except ValueError as exc:
+        logger.error("Errore creazione dominio: %s", exc)
         typer.echo(f"Errore: {exc}", err=True)
         raise typer.Exit(1)
 
@@ -53,6 +59,7 @@ def list_domains(
     """Elenca i domini del workspace."""
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
+    logger.info("Elenco domini")
 
     if json_output:
         output_json([
@@ -80,11 +87,14 @@ def remove(
     """Rimuove un dominio."""
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
+    logger.info("Rimozione dominio: %s", name)
 
     removed = ctx.domain_manager.delete(ws, name)
     if removed:
+        logger.info("Dominio rimosso: %s", name)
         typer.echo(f"Dominio rimosso: {name}")
     else:
+        logger.warning("Dominio non trovato: %s", name)
         typer.echo(f"Dominio non trovato: {name}", err=True)
         raise typer.Exit(1)
 
@@ -100,11 +110,14 @@ def add_base(
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
     base_name = resolve_base_name(base_name, workspace=ws)
+    logger.info("Aggiunta base %s al dominio %s", base_name, domain_name)
 
     added = ctx.domain_manager.add_base(ws, domain_name, base_name)
     if added:
+        logger.info("Base %s aggiunta al dominio %s", base_name, domain_name)
         typer.echo(f"Base '{base_name}' aggiunta al dominio '{domain_name}'")
     else:
+        logger.warning("Errore aggiunta base %s al dominio %s", base_name, domain_name)
         typer.echo(
             f"Errore: dominio '{domain_name}' non trovato o base già presente.",
             err=True,
@@ -123,11 +136,14 @@ def remove_base(
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
     base_name = resolve_base_name(base_name, workspace=ws)
+    logger.info("Rimozione base %s dal dominio %s", base_name, domain_name)
 
     removed = ctx.domain_manager.remove_base(ws, domain_name, base_name)
     if removed:
+        logger.info("Base %s rimossa dal dominio %s", base_name, domain_name)
         typer.echo(f"Base '{base_name}' rimossa dal dominio '{domain_name}'")
     else:
+        logger.warning("Errore rimozione base %s dal dominio %s", base_name, domain_name)
         typer.echo(
             f"Errore: dominio '{domain_name}' non trovato o base non presente.",
             err=True,
@@ -143,8 +159,10 @@ def auto_generate(
     """Genera domini dalla struttura delle cartelle del workspace."""
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
+    logger.info("Auto-generazione domini da struttura cartelle")
 
     ws = ctx.domain_manager.auto_generate(ws)
+    logger.info("Domini generati: %d", len(ws.domains))
     typer.echo(f"Domini generati: {len(ws.domains)}")
     for d in ws.domains:
         typer.echo(f"  {d.name}: {', '.join(d.base_names) or '(vuoto)'}")

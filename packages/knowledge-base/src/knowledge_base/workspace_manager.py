@@ -9,11 +9,14 @@ mappa un path di workspace nel path del suo ``config.json``.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Callable, List, Optional
 
 from knowledge_base.models import KnowledgeBase, Workspace
 from knowledge_base.persistence import GlobalIndex, WorkspaceConfig
+
+logger = logging.getLogger(__name__)
 
 # Funzione che, dato il path di un workspace, restituisce il path del suo
 # file di configurazione (config.json). L'applicazione decide la convenzione.
@@ -45,22 +48,36 @@ class WorkspaceManager:
         """Registra un workspace e ne crea il ``config.json`` di default.
         Restituisce ``True`` se era nuovo."""
         ws = Path(path)
+        logger.info("Registrazione workspace: %s", ws)
         added = self._index.add_workspace(ws)
         if added:
             self._config(ws).init_default()
+            logger.info("Workspace registrato: %s", ws)
+        else:
+            logger.info("Workspace già registrato: %s", ws)
         return added
 
     def remove(self, path: Path) -> bool:
         """Deregistra un workspace. Restituisce ``True`` se era presente.
         Non cancella i file su disco."""
-        return self._index.remove_workspace(Path(path))
+        ws = Path(path)
+        logger.info("Rimozione workspace: %s", ws)
+        removed = self._index.remove_workspace(ws)
+        if removed:
+            logger.info("Workspace rimosso: %s", ws)
+        else:
+            logger.warning("Workspace non trovato: %s", ws)
+        return removed
 
     def list(self) -> List[Path]:
         """Restituisce i path dei workspace registrati."""
-        return self._index.list_workspaces()
+        workspaces = self._index.list_workspaces()
+        logger.debug("Workspace registrati: %d", len(workspaces))
+        return workspaces
 
     def set_last_workspace(self, path: Path) -> None:
         """Imposta l'ultimo workspace usato."""
+        logger.debug("Ultimo workspace impostato: %s", path)
         self._index.set_last_workspace(Path(path))
 
     def get_last_workspace(self) -> Optional[Path]:
@@ -68,7 +85,9 @@ class WorkspaceManager:
 
     def load(self, path: Path) -> Workspace:
         """Carica il modello :class:`Workspace` dal suo ``config.json``."""
-        return self._config(Path(path)).to_workspace()
+        ws_path = Path(path)
+        logger.debug("Caricamento workspace: %s", ws_path)
+        return self._config(ws_path).to_workspace()
 
     # ..................................................................... #
     # Sincronizzazione col filesystem
@@ -82,10 +101,11 @@ class WorkspaceManager:
         Restituisce il modello aggiornato (lo stesso oggetto, mutato in place)
         e ne persiste lo stato sul ``config.json``.
 
-        La sincronizzazione a livello di file (mtime, chunks) Ã¨ demandata
+        La sincronizzazione a livello di file (mtime, chunks) è demandata
         allo Step 3 (``KnowledgeBaseManager``).
         """
         ws_path = workspace.path
+        logger.info("Sincronizzazione workspace: %s", ws_path)
 
         # 1. Scopre cartelle-figlie come nuove basi.
         if ws_path.is_dir():

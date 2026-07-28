@@ -161,6 +161,7 @@ class SearchService:
         Returns:
             Lista di :class:`RetrievalResult` ordinati per rilevanza.
         """
+        logger.info("Ricerca: query='%s', top_k=%d", query, top_k)
         if config is None:
             config = SearchConfig()
 
@@ -190,6 +191,7 @@ class SearchService:
             query, all_results, config.post_retrieval, top_k
         )
 
+        logger.info("Ricerca completata: %d risultati", len(final_results))
         return final_results
 
     def _run_pre_retrieval_stage(

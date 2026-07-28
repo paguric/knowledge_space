@@ -7,9 +7,12 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 import typer
+
+logger = logging.getLogger(__name__)
 
 from knowledge_space.cli.common import (
     get_context,
@@ -30,9 +33,11 @@ def search_command(
     """Esegue una ricerca vettoriale sulle basi del workspace."""
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
+    logger.info("Ricerca: query='%s', base=%s, top_k=%d", query, base_name, top_k)
 
     # Verifica che esistano basi
     if not ws.bases:
+        logger.warning("Nessuna base nel workspace per la ricerca")
         typer.echo("Nessuna base nel workspace. Aggiungi una base prima di cercare.", err=True)
         raise typer.Exit(1)
 
@@ -105,11 +110,13 @@ def search_command(
                         "text": document[:200] if document else "",
                     })
         except Exception as exc:
+            logger.error("Ricerca fallita per base %s: %s", bname, exc)
             typer.echo(f"Warning: ricerca fallita per {bname}: {exc}", err=True)
 
     # Ordina per score e limita
     all_results.sort(key=lambda r: r["score"], reverse=True)
     all_results = all_results[:top_k]
+    logger.info("Ricerca completata: %d risultati", len(all_results))
 
     if json_output:
         output_json(all_results)

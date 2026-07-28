@@ -15,7 +15,8 @@
 
 ``setup_logging()`` è idempotente: chiamate multiple non duplicano
 handler. Usa ``logging.getLogger("knowledge_space")`` come logger
-radice dell'app.
+radice dell'app; i log di ``knowledge_base.*`` vengono propagati
+automaticamente a questo logger.
 """
 
 from __future__ import annotations
@@ -28,6 +29,9 @@ from typing import Optional
 
 # Logger radice dell'applicazione.
 _APP_LOGGER_NAME = "knowledge_space"
+
+# Logger della libreria knowledge_base (propaga al logger radice dell'app).
+_LIB_LOGGER_NAME = "knowledge_base"
 
 # Livello di default per l'handler di console.
 _CONSOLE_DEFAULT_LEVEL = logging.INFO
@@ -61,17 +65,22 @@ def setup_logging(
     log_file: str = "ks.log",
     max_bytes: int = 5 * 1024 * 1024,
     backup_count: int = 3,
+    console_level: Optional[int] = None,
 ) -> None:
     """Configura il logging per Knowledge Space.
 
     Args:
         log_dir: Directory dove scrivere il file di log
             (es. ``RuntimePaths.state_home / "logs"``).
-        verbose: Se ``True``, console handler a DEBUG; altrimenti INFO.
+        verbose: Se ``True``, console handler a DEBUG; altrimenti usa
+            ``console_level`` se fornito, altrimenti INFO.
         log_file: Nome del file di log (default ``ks.log``).
         max_bytes: Dimensione massima del file di log prima del rotate
             (default 5 MB).
         backup_count: Numero di backup da mantenere (default 3).
+        console_level: Livello esplicito per il console handler.
+            Ha precedenza su ``verbose``. Utile per la CLI che vuole
+            WARNING di default senza interferire con l'output.
     """
     global _configured
 
@@ -86,14 +95,20 @@ def setup_logging(
 
     # Determina i livelli dai parametri e dall'env var.
     env_level = _parse_env_level()
-    console_level = env_level if env_level is not None else (
-        logging.DEBUG if verbose else _CONSOLE_DEFAULT_LEVEL
-    )
+    if console_level is not None:
+        effective_console = console_level
+    elif env_level is not None:
+        effective_console = env_level
+    elif verbose:
+        effective_console = logging.DEBUG
+    else:
+        effective_console = _CONSOLE_DEFAULT_LEVEL
     file_level = env_level if env_level is not None else _FILE_DEFAULT_LEVEL
 
-    # Logger radice dell'app.
-    app_logger = logging.getLogger(_APP_LOGGER_NAME)
-    app_logger.setLevel(logging.DEBUG)  # il minimo del logger è sempre DEBUG
+    # Logger radice: tutti i log di knowledge_space.* e knowledge_base.*
+    # propagano al root logger, dove gli handler sono registrati.
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)  # il minimo è sempre DEBUG
 
     # File handler.
     file_handler = RotatingFileHandler(
@@ -105,14 +120,20 @@ def setup_logging(
     file_handler.setLevel(file_level)
     file_handler.setFormatter(logging.Formatter(_FILE_FORMAT))
     file_handler.set_name("ks_file")
-    app_logger.addHandler(file_handler)
+    root_logger.addHandler(file_handler)
 
     # Console handler.
     console_handler = logging.StreamHandler(sys.stderr)
-    console_handler.setLevel(console_level)
+    console_handler.setLevel(effective_console)
     console_handler.setFormatter(logging.Formatter(_CONSOLE_FORMAT))
     console_handler.set_name("ks_console")
-    app_logger.addHandler(console_handler)
+    root_logger.addHandler(console_handler)
+
+    # Configura il logger della libreria knowledge_base: propaga
+    # al root logger così i suoi log finiscono sugli stessi handler.
+    lib_logger = logging.getLogger(_LIB_LOGGER_NAME)
+    lib_logger.setLevel(logging.DEBUG)
+    lib_logger.propagate = True
 
     # Silenzia le librerie verbose.
     _silence_noisy_libraries(env_level)
@@ -124,12 +145,14 @@ def setup_logging(
 
 
 def _reset_handlers() -> None:
-    """Rimuove tutti gli handler dal logger dell'app per garantire
+    """Rimuove tutti gli handler ``ks_*`` dal logger root per garantire
     l'idempotenza."""
-    app_logger = logging.getLogger(_APP_LOGGER_NAME)
-    for handler in app_logger.handlers[:]:
-        app_logger.removeHandler(handler)
-        handler.close()
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers[:]:
+        name = handler.name or ""
+        if name.startswith("ks_"):
+            root_logger.removeHandler(handler)
+            handler.close()
 
 
 def _parse_env_level() -> Optional[int]:

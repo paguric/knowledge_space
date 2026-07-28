@@ -8,10 +8,13 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Optional
 
 import typer
+
+logger = logging.getLogger(__name__)
 
 from knowledge_base.base_config import ensure_base_toml, ensure_defaults_toml
 from knowledge_space.cli.common import (
@@ -32,8 +35,10 @@ def add(
     """Registra un nuovo workspace."""
     ctx = get_context(verbose=verbose)
     ws_path = Path(path).resolve()
+    logger.info("Aggiunta workspace: %s", ws_path)
 
     if not ws_path.is_dir():
+        logger.error("Cartella workspace non trovata: %s", ws_path)
         typer.echo(f"Errore: la cartella non esiste: {ws_path}", err=True)
         raise typer.Exit(1)
 
@@ -43,10 +48,12 @@ def add(
         workspace = ctx.workspace_manager.load(ws_path)
         ctx.workspace_manager.sync(workspace)
         n_bases = len(workspace.bases)
+        logger.info("Workspace registrato con %d basi scoperte", n_bases)
         typer.echo(f"Workspace registrato: {ws_path}")
         if n_bases:
             typer.echo(f"  {n_bases} basi scoperte automaticamente")
     else:
+        logger.info("Workspace già registrato: %s", ws_path)
         typer.echo(f"Workspace già registrato: {ws_path}")
 
     # Scaffolding TOML (idempotente, anche per workspace già registrati)
@@ -68,6 +75,7 @@ def list_workspaces(
 ) -> None:
     """Elenca i workspace registrati."""
     ctx = get_context(verbose=verbose)
+    logger.info("Elenco workspace")
     workspaces = ctx.workspace_manager.list()
 
     if json_output:
@@ -88,11 +96,14 @@ def remove(
     """Rimuove un workspace dal registro (non cancella i file)."""
     ctx = get_context(verbose=verbose)
     ws_path = Path(path).resolve()
+    logger.info("Rimozione workspace: %s", ws_path)
 
     removed = ctx.workspace_manager.remove(ws_path)
     if removed:
+        logger.info("Workspace rimosso: %s", ws_path)
         typer.echo(f"Workspace rimosso: {ws_path}")
     else:
+        logger.warning("Workspace non trovato: %s", ws_path)
         typer.echo(f"Workspace non trovato: {ws_path}", err=True)
         raise typer.Exit(1)
 
@@ -106,6 +117,7 @@ def info(
     """Mostra informazioni sul workspace."""
     ctx = get_context(verbose=verbose)
     ws_path = resolve_workspace_path(ctx, path)
+    logger.info("Info workspace: %s", ws_path)
     workspace = ctx.workspace_manager.load(ws_path)
 
     n_bases = len(workspace.bases)

@@ -41,6 +41,111 @@ logger = logging.getLogger(__name__)
 app = typer.Typer(help="Gestione configurazione.")
 
 # --------------------------------------------------------------------------- #
+# Autocomplete e help per le chiavi config
+# --------------------------------------------------------------------------- #
+
+
+def _build_keys_help() -> str:
+    """Genera una tabella testuale delle chiavi configurabili da BaseConfig.
+
+    Itera sui model_fields di BaseConfig, per ogni sezione itera sui campi
+    della sotto-sezione Pydantic, e produce una tabella con tipo e default.
+    """
+    cfg = BaseConfig()
+    lines = []
+    # Header
+    lines.append(f"{'KEY':<40} {'TIPO':<20} {'DEFAULT'}")
+    lines.append(f"{'—'*40} {'—'*20} {'—'*30}")
+
+    for section_name, field_info in BaseConfig.model_fields.items():
+        # Ottieni l'istanza della sotto-sezione
+        section_instance = getattr(cfg, section_name)
+        section_type = type(section_instance)
+
+        # Per ogni campo nella sotto-sezione
+        for field_name, sub_field in section_type.model_fields.items():
+            key = f"{section_name}.{field_name}"
+            default_val = getattr(section_instance, field_name)
+
+            # Determina il tipo
+            ann = sub_field.annotation
+            if ann is int:
+                tipo = "int"
+            elif ann is float:
+                tipo = "float"
+            elif ann is bool:
+                tipo = "bool"
+            elif ann is str:
+                tipo = "str"
+            elif ann is Optional[str]:
+                tipo = "str | None"
+            elif ann is Optional[int]:
+                tipo = "int | None"
+            elif "Dict" in str(ann) or "dict" in str(ann):
+                tipo = "dict"
+            elif "List" in str(ann) or "list" in str(ann):
+                tipo = "list"
+            else:
+                tipo = str(ann).replace("typing.", "").replace("knowledge_base.base_config.", "")
+
+            # Formatta il default
+            if isinstance(default_val, str):
+                # Escape newlines per visualizzazione compatta
+                escaped = default_val.replace("\n", "\\n")
+                if len(escaped) > 30:
+                    default_str = f'"{escaped[:27]}..."'
+                else:
+                    default_str = f'"{escaped}"'
+            elif isinstance(default_val, list):
+                if not default_val:
+                    default_str = "list()"
+                else:
+                    truncated = str(default_val)
+                    if len(truncated) > 30:
+                        default_str = truncated[:27] + "..."
+                    else:
+                        default_str = truncated
+            elif isinstance(default_val, dict):
+                if not default_val:
+                    default_str = "dict()"
+                else:
+                    default_str = str(default_val)
+            elif default_val is None:
+                default_str = "None"
+            else:
+                default_str = str(default_val)
+
+            lines.append(f"{key:<40} {tipo:<20} {default_str}")
+
+    return "\n".join(lines)
+
+
+def _all_valid_keys() -> list[str]:
+    """Restituisce la lista di tutte le chiavi dotted valide per config set/unset."""
+    cfg = BaseConfig()
+    keys = []
+    for section_name in BaseConfig.model_fields:
+        section_instance = getattr(cfg, section_name)
+        section_type = type(section_instance)
+        for field_name in section_type.model_fields:
+            keys.append(f"{section_name}.{field_name}")
+    return keys
+
+
+def _key_autocomplete(
+    ctx: typer.Context,
+    args: list[str],
+    incomplete: str,
+) -> list[tuple[str, str]]:
+    """Autocomplete per l'argomento key in config set/unset."""
+    keys = _all_valid_keys()
+    return [(k, "") for k in keys if k.startswith(incomplete)]
+
+
+# Precomputa la tabella chiavi per l'help (evita valutazione lazy nella docstring)
+_KEYS_HELP_TABLE: str = _build_keys_help()
+
+# --------------------------------------------------------------------------- #
 # Trigger di reindex
 # --------------------------------------------------------------------------- #
 
@@ -234,6 +339,7 @@ def show(
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
     config_loader = ctx.base_config_loader_factory(ws.path)
+    logger.info("Visualizzazione configurazione")
 
     if scope:
         scope = resolve_base_name(scope, workspace=ws)
@@ -241,6 +347,7 @@ def show(
         scope = resolve_base_from_cwd(ws)
 
     if scope:
+        logger.info("Configurazione per base: %s", scope)
         if scope not in ws.bases:
             typer.echo(f"Base non trovata: {scope}", err=True)
             raise typer.Exit(1)
@@ -343,10 +450,12 @@ def init(
     """Genera un defaults.toml template nel workspace."""
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
+    logger.info("Generazione defaults.toml template")
 
     defaults_path = ws.path / ctx.runtime_paths.dot_folder_name / "defaults.toml"
 
     if defaults_path.exists():
+        logger.info("defaults.toml già esistente: %s", defaults_path)
         typer.echo(f"defaults.toml già esistente: {defaults_path}")
         overwrite = typer.confirm("Sovrascrivere?")
         if not overwrite:
@@ -355,20 +464,26 @@ def init(
 
     defaults_path.parent.mkdir(parents=True, exist_ok=True)
     defaults_path.write_text(DEFAULTS_TOML_TEMPLATE, encoding="utf-8")
+    logger.info("Template defaults.toml generato: %s", defaults_path)
     typer.echo(f"Template generato: {defaults_path}")
 
 
-@app.command()
+@app.command(
+    help=f"Imposta una preferenza nel file TOML (defaults.toml o base.toml).\n\nChiavi disponibili:\n\n{_KEYS_HELP_TABLE}",
+)
 def set(  # noqa: A001 — ombreggia la builtin, ma è il nome CLI voluto
     scope: str = typer.Argument(help="Scope: 'defaults' o nome di una base."),
-    key: str = typer.Argument(help="Chiave dotted (es. chunking.chunk_size)."),
+    key: str = typer.Argument(
+        help="Chiave dotted (es. chunking.chunk_size).",
+        autocompletion=_key_autocomplete,
+    ),
     value: str = typer.Argument(help="Valore da assegnare."),
     workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
 ) -> None:
-    """Imposta una preferenza nel file TOML (defaults.toml o base.toml)."""
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
+    logger.info("Config set: scope=%s, key=%s, value=%s", scope, key, value)
 
     # Valida che la chiave esista nel modello BaseConfig
     _validate_key(key)
@@ -423,19 +538,24 @@ def set(  # noqa: A001 — ombreggia la builtin, ma è il nome CLI voluto
 
     # 6. Salva
     write_toml(toml_path, data)
+    logger.info("Config salvata: %s = %s in %s", key, _format_value(new_value), label)
     typer.echo(f"{key} = {_format_value(new_value)} salvato in {label}")
 
 
 @app.command()
 def unset(
     scope: str = typer.Argument(help="Scope: 'defaults' o nome di una base."),
-    key: str = typer.Argument(help="Chiave dotted da rimuovere (es. chunking.chunk_size)."),
+    key: str = typer.Argument(
+        help="Chiave dotted da rimuovere (es. chunking.chunk_size).",
+        autocompletion=_key_autocomplete,
+    ),
     workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
 ) -> None:
     """Rimuove una chiave dal file TOML (il valore torna al default della cascata)."""
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
+    logger.info("Config unset: scope=%s, key=%s", scope, key)
 
     # Per unset: valida solo il formato (dotted key), non l'esistenza nel modello
     parts = key.split(".")
@@ -508,6 +628,7 @@ def unset(
 
     # 5. Salva
     write_toml(toml_path, data)
+    logger.info("Config chiave rimossa: %s da %s", key, label)
     typer.echo(f"Chiave '{key}' rimossa da {label}.")
 
 
@@ -520,12 +641,14 @@ def edit_cmd(
     """Apre il file TOML nell'editor ($EDITOR, fallback nano)."""
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
+    logger.info("Config edit: scope=%s", scope)
 
     # Assicurati che il file esista
     toml_path, label = _resolve_scope(scope, ws, ctx)
     _ensure_toml_exists(scope, ws, ctx)
 
     editor = os.environ.get("EDITOR", "nano")
+    logger.info("Apertura editor %s per %s", editor, label)
     typer.echo(f"Apertura {label} con {editor}...")
     result = subprocess.run([editor, str(toml_path)])
     if result.returncode != 0:

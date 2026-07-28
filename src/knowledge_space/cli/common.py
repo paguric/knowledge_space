@@ -84,21 +84,29 @@ def resolve_base_name(name: str, *, workspace: object) -> str:
 def get_context(verbose: bool = False) -> AppContext:
     """Crea un ``AppContext`` temporaneo per il comando corrente.
 
+    Configura il logging su file tramite ``setup_logging()`` usando
+    ``RuntimePaths.state_home`` come directory di log.
+
     Args:
-        verbose: se ``True``, imposta logging DEBUG.
+        verbose: se ``True``, imposta console handler a DEBUG.
 
     Returns:
         ``AppContext`` completamente cablato.
     """
-    # Setup logging opzionale
-    if verbose:
-        import logging
+    from knowledge_space.logging import setup_logging
+    from knowledge_space.runtime_paths import RuntimePaths
 
-        logging.basicConfig(level=logging.DEBUG, format="%(name)s %(levelname)s: %(message)s")
-    else:
-        import logging
+    # Crea RuntimePaths temporaneo per ottenere la directory di log.
+    rp = RuntimePaths.default()
+    rp.ensure_dirs()
 
-        logging.basicConfig(level=logging.WARNING, format="%(message)s")
+    # Configura logging su file. Il console handler resta a WARNING
+    # per non interferire con l'output CLI (typer.echo).
+    # Con --verbose il console handler passa a DEBUG.
+    import logging as _logging
+
+    console_level = _logging.DEBUG if verbose else _logging.WARNING
+    setup_logging(log_dir=rp.state_home, console_level=console_level)
 
     return build_app_context()
 
