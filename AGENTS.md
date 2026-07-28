@@ -118,16 +118,19 @@ RestartSec=5
 
 **Nota:** NON mettere `Environment=XDG_STATE_HOME=...` nel service — il servizio deve usare il default `~/.local/state/KnowledgeSpace/`.
 
-**Dopo ogni modifica al codice:** `systemctl --user daemon-reload && systemctl --user restart ks-serve`
+**Dopo ogni modifica al codice (obbligatorio in questo ordine):**
+1. `cd ~/università/as25-26-sp/progtes/knowledge_space && uv sync` — ricompila i `.pth` e sincronizza i package
+2. `systemctl --user daemon-reload` — ricarica la configurazione systemd
+3. `systemctl --user restart ks-serve` — riavvia con il codice nuovo
 
-### Bug in corso (bug-lead al lavoro)
+> **Senza `uv sync` il servizio continua a usare il bytecode/linking vecchio** (i package sono `.pth`-linked alla source tree, ma è buona norma ricompilare prima di riavviare).
 
-- **Bug 008** (`docs/specs/bug-008-ingest-file-in-existing-base.md`): `sync_and_ingest()` indicizza solo basi NUOVE. File creati DOPO la base non vengono indicizzati.
-  - Root cause: la logica in `sync_and_ingest()` itera solo su `basi_nuove`, non controlla file nuovi in basi esistenti.
-  - Fix: verificare anche file con mtime > ultima sync per ogni base.
-- **Bug 009** (`docs/specs/bug-009-dot-knowledge-space-non-escluso.md`): `_discover_bases_recursive()` non esclude `.knowledge-space`. Le sottocartelle `chroma/`, `chunks/` vengono registrate come basi.
-  - Root cause: `entry.name.startswith(".")` esclude solo cartelle col nome che inizia con `.`, ma `.knowledge-space/chroma/uuid` ha `name=uuid`.
-  - Fix: filtrare `if ".knowledge-space" in entry.parts`.
+### Bug in corso
+
+Entrambi già risolti da bug-lead (commit `ee4c905`).
+
+- **Bug 008** (`docs/specs/bug-008-ingest-file-in-existing-base.md`): `sync_and_ingest()` indicizza solo basi NUOVE. File creati DOPO la base non vengono indicizzati. → `_ingest_files_in_base()`, `_ingest_new_files_in_existing_base()` (mtime check).
+- **Bug 009** (`docs/specs/bug-009-dot-knowledge-space-non-escluso.md`): `_discover_bases_recursive()` non esclude `.knowledge-space`. Le sottocartelle `chroma/`, `chunks/` vengono registrate come basi. → Filtra `if ".knowledge-space" in entry.parts`.
 
 ### Bug risolti di recente
 
@@ -135,13 +138,15 @@ RestartSec=5
 |-----|-----------|-----|
 | Bug 005 | `on_any_event` non è un metodo watchdog | → `on_created`/`on_deleted`/`on_moved` + debounce |
 | Bug 006 | MCP 2.0 API (`add_request_handler`) vs 1.x (`@server.on_list_tools`) | → `add_request_handler("tools/list", ...)` |
+| Bug 008 | `sync_and_ingest()` non indicizzava file in basi esistenti | → mtime check per file nuovi/modificati |
+| Bug 009 | `.knowledge-space` non escluso da `rglob` | → filtro `entry.parts` |
 | Bug 007 | `sync()` non ricorsivo + no ingest | → `_discover_bases_recursive()` + `sync_and_ingest()` |
 | Bug 004 | Rimosso — systemd+serve lo copre | — |
-| Bug 003 | Refactor `info`+`tree` → `status` | 🟡 in corso (delegato a bug-lead) |
+| Bug 003 | Refactor `info`+`tree` → `status` | 🟡 ancora da delegare |
 
 ### Bug ancora da fare
 
-- **Bug 003**: collapse `info`+`tree` → `status` (KISS). Spec: `docs/specs/bug-003-tree-status-workspace.md`.
+- **Bug 003**: collapse `info`+`tree` → `status` (KISS). Spec: `docs/specs/bug-003-tree-status-workspace.md`. Delegare a bug-lead.
 
 ### Step aperti
 
@@ -153,10 +158,10 @@ RestartSec=5
 
 ### Prossimi passi suggeriti
 
-1. Attendere bug-lead per bug-008 e bug-009, poi riavviare servizio e testare.
-2. Delegare bug-003 a bug-lead.
-3. Verificare che `ks serve` su SSE accetti connessioni da un client MCP.
-4. Test end-to-end: `mkdir → base registrata → file indicizzato → search funziona`.
+1. Verificare che `ks serve` su SSE accetti connessioni da un client MCP.
+2. Delegare bug-003 a bug-lead (refactor `info`+`tree` → `status`).
+3. Test end-to-end: `mkdir → base registrata → file indicizzato → search funziona`.
+4. Testare che anche i workspace aggiunti DOPO l'avvio del servizio vengano monitorati.
 
 ### Convenzioni stabilite durante questa sessione
 
