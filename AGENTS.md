@@ -84,3 +84,84 @@ ks --help
 - If you are a bug/feature sub-agent, read the assigned spec from `docs/specs/` next.
 - Ask the master for clarification rather than guessing.
 - Summarize findings before writing code: "Here is what I found, here is what I plan to change."
+
+---
+
+## Session summary (2026-07-28 — da aggiornare al join)
+
+### Stato attuale del repo
+
+**Branch:** `dev` · **Ultimo commit:** `8b3cf9a` (chore: aggiorna roadmap — Step 14, bug 005/006/007 ✅)
+
+**Commit principali su dev** (dal più recente):
+| Commit | Descrizione |
+|--------|-------------|
+| `8b3cf9a` | chore: aggiorna roadmap — Step 14, bug 005/006/007 ✅ |
+| `a1d917d` | fix: sync() ricorsivo + sync_and_ingest() con ingest automatica basi nuove |
+| `e407e42` | fix: server MCP compatibile con MCP 2.0 |
+| `e83b41c` | fix README: usa --sse nel service file |
+| `e60a5c2` | fix README: rimuovi 'da implementare' da ks serve |
+| `92d02a3` | fix: watcher con debounce 500ms |
+
+**Suite test:** 609 passed, 13 failed (preesistenti, embedding/retrieval), 4 skipped.
+
+### systemd service ks-serve
+
+Percorso: `~/.config/systemd/user/ks-serve.service`
+
+```ini
+[Service]
+ExecStart=/usr/bin/bash -c 'cd "$HOME/università/as25-26-sp/progtes/knowledge_space" && uv run ks serve --sse'
+Restart=always
+RestartSec=5
+```
+
+**Nota:** NON mettere `Environment=XDG_STATE_HOME=...` nel service — il servizio deve usare il default `~/.local/state/KnowledgeSpace/`.
+
+**Dopo ogni modifica al codice:** `systemctl --user daemon-reload && systemctl --user restart ks-serve`
+
+### Bug in corso (bug-lead al lavoro)
+
+- **Bug 008** (`docs/specs/bug-008-ingest-file-in-existing-base.md`): `sync_and_ingest()` indicizza solo basi NUOVE. File creati DOPO la base non vengono indicizzati.
+  - Root cause: la logica in `sync_and_ingest()` itera solo su `basi_nuove`, non controlla file nuovi in basi esistenti.
+  - Fix: verificare anche file con mtime > ultima sync per ogni base.
+- **Bug 009** (`docs/specs/bug-009-dot-knowledge-space-non-escluso.md`): `_discover_bases_recursive()` non esclude `.knowledge-space`. Le sottocartelle `chroma/`, `chunks/` vengono registrate come basi.
+  - Root cause: `entry.name.startswith(".")` esclude solo cartelle col nome che inizia con `.`, ma `.knowledge-space/chroma/uuid` ha `name=uuid`.
+  - Fix: filtrare `if ".knowledge-space" in entry.parts`.
+
+### Bug risolti di recente
+
+| Bug | Root cause | Fix |
+|-----|-----------|-----|
+| Bug 005 | `on_any_event` non è un metodo watchdog | → `on_created`/`on_deleted`/`on_moved` + debounce |
+| Bug 006 | MCP 2.0 API (`add_request_handler`) vs 1.x (`@server.on_list_tools`) | → `add_request_handler("tools/list", ...)` |
+| Bug 007 | `sync()` non ricorsivo + no ingest | → `_discover_bases_recursive()` + `sync_and_ingest()` |
+| Bug 004 | Rimosso — systemd+serve lo copre | — |
+| Bug 003 | Refactor `info`+`tree` → `status` | 🟡 in corso (delegato a bug-lead) |
+
+### Bug ancora da fare
+
+- **Bug 003**: collapse `info`+`tree` → `status` (KISS). Spec: `docs/specs/bug-003-tree-status-workspace.md`.
+
+### Step aperti
+
+- **Step 14 — Server MCP + Watcher**: sostanzialmente completo. `ks serve --sse` gira come servizio systemd con watcher attivi.
+- **Step 12-bis — Logging**: completo (`feat-002`). Commit `45d4361`.
+- **Step 15 — Backend REST**: non iniziato.
+- **Step 16 — Frontend React**: non iniziato.
+- **Step 17 — Polish e documentazione**: non iniziato.
+
+### Prossimi passi suggeriti
+
+1. Attendere bug-lead per bug-008 e bug-009, poi riavviare servizio e testare.
+2. Delegare bug-003 a bug-lead.
+3. Verificare che `ks serve` su SSE accetti connessioni da un client MCP.
+4. Test end-to-end: `mkdir → base registrata → file indicizzato → search funziona`.
+
+### Convenzioni stabilite durante questa sessione
+
+- Il master **non scrive codice** — delega sempre a sub-agenti.
+- Sub-agenti leggono `AGENTS.md`, `docs/00a-repo-context.md` e lo spec assegnato prima di iniziare.
+- Spec files vanno in `docs/specs/*.md`, creati dal master, mai modificati dai sub-agenti.
+- I sub-agenti comunicano al master: branch, file cambiati, test risultati, domande aperte.
+- Comandi `ketch` richiedono `/skill:ketch` caricato prima.
