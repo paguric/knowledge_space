@@ -9,14 +9,28 @@ Pipeline di ingestione, indicizzazione e retrieval su documenti. Architettura mo
 git clone <repo-url>
 cd knowledge_space
 
-# Installa con uv (consigliato)
+# Installa con uv (consigliato per sviluppo)
 uv sync
+```
 
-# Oppure con pip
+> **Nota:** dopo `uv sync`, il comando `ks` è disponibile via `uv run ks` (consigliato),
+oppure attivando il venv con `source .venv/bin/activate`.
+
+Per un'installazione **system-wide** permanente (senza bisogno di `uv run` o attivazione):
+
+```bash
+# Con pip (installa globalmente, richiede che la variabile d'ambiente PATH
+# includa la directory degli script di pip)
 pip install -e .
+
+# Oppure con uv, installando il pacchetto nell'ambiente Python di sistema
+uv pip install -e . --system
 ```
 
 ## Utilizzo rapido
+
+> Se hai usato `uv sync` senza attivare il venv, anteponi `uv run` a ogni comando:
+> `uv run ks --help`, `uv run ks workspace add ...`, ecc.
 
 ```bash
 # Mostra tutti i comandi disponibili
