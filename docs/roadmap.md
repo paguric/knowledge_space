@@ -39,6 +39,7 @@ Tabella compatta di tutto il progetto. Leggi questa sezione per capire **dove si
 | Feature 004 | Watcher dinamico su workspaces.json | 2 | ✅ Fatto | Step 14 | `docs/specs/feat-004-workspace-watcher-dinamico.md` |
 | Bug 009 | Fix .knowledge-space non escluso da scoperta ricorsiva basi | — | ✅ Fatto | Step 14 | `docs/specs/bug-009-dot-knowledge-space-non-escluso.md` |
 | Bug 010 | Fix watcher: ignora eventi FS dentro .knowledge-space (loop infinito ingest-chunk) | — | ✅ Fatto | Step 14 | `docs/specs/bug-010-watcher-filtra-knowledge-space.md` |
+| Bug 011 | Fix `sync_and_ingest` non persiste file dopo ingest → re-ingestioni multiple | — | ✅ Fatto | Step 14 | `docs/specs/bug-011-persistenza-file-dopo-ingest.md` |
 | 15 | Backend REST | 4 | ❌ Non iniziato | Step 13 | — |
 | 16 | Frontend React | 4 | ❌ Non iniziato | Step 15 | — |
 | 17 | Polish e documentazione | 4 | ❌ Non iniziato | Step 16 | — |
