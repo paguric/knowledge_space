@@ -157,12 +157,13 @@ def _make_server(
 
     # --- Handler: list_tools ---
 
-    @server.on_list_tools  # type: ignore[attr-defined]
     async def _list_tools(
         ctx: ServerRequestContext,
-        params: types.PaginatedRequestParams | None = None,
+        params: types.PaginatedRequestParams,
     ) -> types.ListToolsResult:
         return types.ListToolsResult(tools=_TOOLS)
+
+    server.add_request_handler("tools/list", types.PaginatedRequestParams, _list_tools)
 
     # --- Helper: risolvi workspace ---
 
@@ -191,7 +192,6 @@ def _make_server(
 
     # --- Handler: call_tool ---
 
-    @server.on_call_tool  # type: ignore[attr-defined]
     async def _call_tool(
         ctx: ServerRequestContext,
         params: types.CallToolRequestParams,
@@ -212,6 +212,8 @@ def _make_server(
                 content=[types.TextContent(type="text", text=f"Errore: {exc}")],
                 isError=True,
             )
+
+    server.add_request_handler("tools/call", types.CallToolRequestParams, _call_tool)
 
     async def _dispatch_tool(name: str, args: dict[str, Any]) -> str:
         """Dispatcha la chiamata al tool e restituisce il risultato come testo."""
