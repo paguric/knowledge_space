@@ -215,6 +215,8 @@ class WorkspaceManager:
                 base_manager, workspace, base_name
             )
 
+        # 3. Persisti i file indicizzati.
+        self._save(workspace)
         return workspace
 
     def _ingest_files_in_base(
