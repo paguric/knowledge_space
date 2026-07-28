@@ -79,23 +79,11 @@ def build_app_context(
     def _config_path_for(ws_path: Path) -> Path:
         return runtime_paths.workspace_state_file(ws_path)
 
-    workspace_manager = WorkspaceManager(
-        global_index=global_index,
-        config_path_for=_config_path_for,
-    )
-
-    # 5. DomainManager
-    domain_manager = DomainManager(
-        config_path_for=_config_path_for,
-    )
-
-    # 6. Embedder factory
+    # 5. Embedder factory (definito prima di WorkspaceManager perché serve
+    #    al base_manager_factory iniettato nel watcher)
     _embedder = embedder_factory or _default_embedder_factory
 
-    # 7. LLM factory
-    _llm = llm_factory or _default_llm_factory
-
-    # 8. Base manager factory (dato un Workspace)
+    # 6. Base manager factory (dato un Workspace)
     def _base_manager_factory(workspace: Workspace) -> KnowledgeBaseManager:
         config_loader_fn = _base_config_loader_factory(workspace.path)
 
@@ -109,6 +97,20 @@ def build_app_context(
             embedder_factory=_embedder,
             dot_folder_name=runtime_paths.dot_folder_name,
         )
+
+    workspace_manager = WorkspaceManager(
+        global_index=global_index,
+        config_path_for=_config_path_for,
+        base_manager_factory=_base_manager_factory,
+    )
+
+    # 7. DomainManager
+    domain_manager = DomainManager(
+        config_path_for=_config_path_for,
+    )
+
+    # 8. LLM factory
+    _llm = llm_factory or _default_llm_factory
 
     return AppContext(
         runtime_paths=runtime_paths,
