@@ -31,16 +31,13 @@ pip install -e .
 uv pip install -e . --system
 ```
 
-## Avvio automatico del server *(da implementare — Step 14)*
+## Avvio automatico del server
 
-> ⚠️ Questa sezione descrive funzionalità **non ancora implementata**.
-> `ks serve`, il server MCP e il watcher filesystem saranno disponibili con lo Step 14.
-
-`ks serve` avvierà il server MCP e attiverà i watcher filesystem su tutti i workspace
+`ks serve` avvia il server MCP e attiva i watcher filesystem su tutti i workspace
 registrati: qualsiasi modifica al filesystem (file aggiunti, spostati, rimossi)
 viene rilevata in tempo reale e sincronizzata automaticamente.
 
-Su Linux il modo più semplice sarà un **systemd user service**:
+Su Linux il modo più semplice è un **systemd user service**:
 
 ```bash
 # 1. Abilita il linger per avviare servizi senza login
@@ -53,10 +50,10 @@ cat > ~/.config/systemd/user/ks-serve.service << 'EOF'
 Description=Knowledge Space — MCP server + watcher
 
 [Service]
-ExecStart=%h/.local/bin/ks serve
+# Usa 'uv run' dalla directory del progetto così ha tutte le dipendenze.
+ExecStart=/usr/bin/bash -c 'cd "$HOME/università/as25-26-sp/progtes/knowledge_space" && uv run ks serve'
 Restart=always
 RestartSec=5
-Environment=XDG_STATE_HOME=%t/KnowledgeSpace
 
 [Install]
 WantedBy=default.target
@@ -76,9 +73,9 @@ systemctl --user restart ks-serve  # riavvia
 systemctl --user stop ks-serve     # ferma
 ```
 
-> **Nota:** `%h` in ExecStart si espande nella home dell'utente, quindi il path
-> `%h/.local/bin/ks` funziona qualunque sia la home. Assicurati che la directory
-> `~/.local/bin` sia in `PATH` (lo è di default su quasi tutte le distro moderne).
+> **Nota:** `$HOME` in ExecStart si espande nella home dell'utente. La directory
+> del progetto deve essere allineata con il path indicato (modifica il percorso
+> se il repo è altrove).
 
 ## Utilizzo rapido
 
