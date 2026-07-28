@@ -997,6 +997,73 @@ class TestConfig:
         base_toml = base_dir / ".knowledge-space" / "base.toml"
         assert base_toml.exists()
 
+    # --- help e autocomplete ---
+
+    def test_config_set_help_contains_keys(self):
+        """config set --help mostra le chiavi configurabili."""
+        result = runner.invoke(app, ["config", "set", "--help"])
+        assert result.exit_code == 0
+        # Verifica che alcune chiavi attese siano presenti
+        assert "chunking.method" in result.output
+        assert "chunking.chunk_size" in result.output
+        assert "embedding.model" in result.output
+        assert "ingestion.library" in result.output
+        assert "graph.enabled" in result.output
+
+    def test_build_keys_help_contains_expected_keys(self):
+        """_build_keys_help() produce una tabella con le chiavi attese."""
+        from knowledge_space.cli.config import _build_keys_help
+
+        help_text = _build_keys_help()
+        # Header
+        assert "KEY" in help_text
+        assert "TIPO" in help_text
+        assert "DEFAULT" in help_text
+        # Chiavi specifiche
+        assert "chunking.method" in help_text
+        assert "chunking.chunk_size" in help_text
+        assert "embedding.model" in help_text
+        assert "ingestion.library" in help_text
+        assert "graph.enabled" in help_text
+        assert "retrieval.method" in help_text
+        assert "post_retrieval.method" in help_text
+        # Tipi
+        assert "int" in help_text
+        assert "str" in help_text
+        assert "bool" in help_text
+        # Valori default
+        assert '"recursive"' in help_text
+        assert '800' in help_text
+        assert '"docling"' in help_text
+
+    def test_all_valid_keys_returns_expected_keys(self):
+        """_all_valid_keys() restituisce tutte le chiavi dotted."""
+        from knowledge_space.cli.config import _all_valid_keys
+
+        keys = _all_valid_keys()
+        assert "chunking.method" in keys
+        assert "chunking.chunk_size" in keys
+        assert "embedding.model" in keys
+        assert "ingestion.library" in keys
+        assert "graph.enabled" in keys
+        assert len(keys) >= 20  # Almeno 20 chiavi totali
+
+    def test_key_autocomplete_filters_correctly(self):
+        """_key_autocomplete filtra le chiavi che iniziano con incomplete."""
+        from knowledge_space.cli.config import _key_autocomplete
+
+        # Simula contesto Typer minimale
+        class FakeCtx:
+            pass
+
+        results = _key_autocomplete(FakeCtx(), [], "chunking.")
+        assert len(results) >= 3  # method, chunk_size, chunk_overlap, separator, params
+        for key, desc in results:
+            assert key.startswith("chunking.")
+
+        results_empty = _key_autocomplete(FakeCtx(), [], "nonexistent.")
+        assert results_empty == []
+
 
 # --------------------------------------------------------------------------- #
 # Test models

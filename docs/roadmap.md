@@ -1,6 +1,6 @@
 # Roadmap — Knowledge Space
 
-> **Ultimo aggiornamento:** 25 luglio 2026
+> **Ultimo aggiornamento:** 28 luglio 2026
 
 ---
 
@@ -28,7 +28,10 @@ Tabella compatta di tutto il progetto. Leggi questa sezione per capire **dove si
 | 10 | Profili di configurazione | 2 | ❌ Non iniziato | Step 3 | — |
 | 11 | Test end-to-end | 2 | ❌ Non iniziato | Step 8, 9 | — |
 | 12 | Logging su file | 2 | ✅ Fatto | Step 8-ter | — |
+| 12-bis | Logging operazioni applicazione | 2 | 🟡 In corso | Step 12 | `docs/specs/feat-002-logging-operazioni.md` |
 | 13 | CLI con Typer | 3 | ✅ Fatto | Step 8-ter, 12 | — |
+| Bug 003 | Fix `tree`/`status` multi-workspace | — | 🟡 In corso | Step 1, 13 | `docs/specs/bug-003-tree-status-workspace.md` |
+| Bug 004 | Fix `mv cartella/` → sync workspace | — | 🟡 In corso | Step 1, 13 | `docs/specs/bug-004-mv-trigger-base.md` |
 | 14 | Server MCP | 3 | ❌ Non iniziato | Step 8-ter | — |
 | 15 | Backend REST | 4 | ❌ Non iniziato | Step 13 | — |
 | 16 | Frontend React | 4 | ❌ Non iniziato | Step 15 | — |
@@ -531,6 +534,19 @@ Pipeline completa (ingest → chunk → embed → retrieve) sul dataset legale p
 - Silenzio librerie verbose: chromadb, sentence_transformers, urllib3, httpx, httpcore, watchdog
 - Idempotente: chiamate multiple non duplicano handler
 - 25 test
+
+---
+
+### Step 12-bis — Logging operazioni applicazione 🟡
+
+**Obiettivo:** Ogni operazione significativa (CLI e manager) deve generare messaggi di log su `ks.log`
+per permettere il debugging.
+
+**Dipende da:** Step 12 (logging su file configurato).
+
+**Piano:** `docs/specs/feat-002-logging-operazioni.md`.
+
+**Stato:** assegnato a sotto-agente.
 
 ---
 
