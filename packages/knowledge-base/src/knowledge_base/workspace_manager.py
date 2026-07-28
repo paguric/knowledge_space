@@ -2,7 +2,7 @@
 
 Il :class:`WorkspaceManager` incapsula le operazioni di CRUD sui workspace
 e la sincronizzazione del modello col filesystem, usando i loader di
-:mod:`knowledge_base.persistence`. Non conosce né il nome dell'app nÃ© i
+:mod:`knowledge_base.persistence`. Non conosce né il nome dell'app né i
 path XDG: riceve ``GlobalIndex`` e una funzione ``config_path_for`` che
 mappa un path di workspace nel path del suo ``config.json``.
 """
@@ -10,6 +10,7 @@ mappa un path di workspace nel path del suo ``config.json``.
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
 from typing import Callable, List, Optional
 
@@ -146,6 +147,7 @@ class WorkspaceManager:
         self,
         workspace: Workspace,
         observer_factory: Optional[Callable[[], object]] = None,
+        debounce_seconds: float = 0.5,
     ) -> "WorkspaceWatcher":
         """Avvia un watcher che richiama :meth:`sync` al verificarsi di
         eventi sul filesystem del workspace. Restituisce un oggetto
@@ -153,24 +155,33 @@ class WorkspaceManager:
 
         ``observer_factory`` permette di iniettare un observer fittizio nei
         test; di default usa il :class:`watchdog.observers.Observer` reale.
+        ``debounce_seconds`` controlla l'intervallo di debounce (default 500ms).
         """
-        return WorkspaceWatcher(self, workspace, observer_factory)
+        return WorkspaceWatcher(self, workspace, observer_factory, debounce_seconds)
 
 
 class WorkspaceWatcher:
     """Wrapper attorno a un observer watchdog che sincronizza il workspace
-    quando cambia il filesystem. Testabile iniettando un observer fittizio."""
+    quando cambia il filesystem. Testabile iniettando un observer fittizio.
+
+    Nota: ``sync()`` scopre e registra le cartelle-figlie come basi, ma
+    **non indicizza** i file al loro interno (comportamento voluto).
+    L'indicizzazione dei file è demandata a ``KnowledgeBaseManager.ingest()``.
+    """
 
     def __init__(
         self,
         manager: WorkspaceManager,
         workspace: Workspace,
         observer_factory: Optional[Callable[[], object]] = None,
+        debounce_seconds: float = 0.5,
     ) -> None:
         from watchdog.events import FileSystemEventHandler
 
         self._manager = manager
         self._workspace = workspace
+        self._timer: threading.Timer | None = None
+        self._debounce_seconds = debounce_seconds
 
         if observer_factory is None:
             from watchdog.observers import Observer
@@ -179,13 +190,48 @@ class WorkspaceWatcher:
 
         self._observer = observer_factory()
 
-        manager_ref = self
+        watcher_ref = self
 
         class _Handler(FileSystemEventHandler):
-            def on_any_event(self_inner, event):  # type: ignore[override]
-                manager_ref._manager.sync(manager_ref._workspace)
+            """Handler che intercetta creazioni, cancellazioni e spostamenti.
+
+            Ogni evento resetta il timer di debounce; ``sync()`` viene
+            eseguito solo dopo che gli eventi si sono calmati per
+            ``debounce_seconds``.
+            """
+
+            def on_created(self_inner, event):  # type: ignore[override]
+                logger.info("Evento FS on_created: %s", getattr(event, "src_path", "?"))
+                watcher_ref._schedule_sync()
+
+            def on_deleted(self_inner, event):  # type: ignore[override]
+                logger.info("Evento FS on_deleted: %s", getattr(event, "src_path", "?"))
+                watcher_ref._schedule_sync()
+
+            def on_moved(self_inner, event):  # type: ignore[override]
+                logger.info("Evento FS on_moved: %s -> %s",
+                            getattr(event, "src_path", "?"),
+                            getattr(event, "dest_path", "?"))
+                watcher_ref._schedule_sync()
 
         self._handler = _Handler()
+
+    def _schedule_sync(self) -> None:
+        """Pianifica una sincronizzazione con debounce.
+
+        Ogni chiamata resetta il timer: ``sync()`` viene eseguito solo
+        dopo che gli eventi FS si sono calmati per ``_debounce_seconds``.
+        """
+        if self._timer is not None:
+            self._timer.cancel()
+        self._timer = threading.Timer(self._debounce_seconds, self._do_sync)
+        self._timer.start()
+
+    def _do_sync(self) -> None:
+        """Esegue la sincronizzazione e azzera il timer."""
+        logger.info("Debounce scaduto, esecuzione sync() su %s", self._workspace.path)
+        self._manager.sync(self._workspace)
+        self._timer = None
 
     def start(self) -> None:
         self._observer.schedule(self._handler, str(self._workspace.path), recursive=True)

@@ -125,6 +125,7 @@ def test_sync_is_idempotent(tmp_path):
 def test_start_watching_with_fake_observer(tmp_path):
     """Verifica che il watcher, usando un observer fittizio, chiami sync
     quando dispatcha un evento, senza avviare thread reali."""
+    import time
 
     class FakeObserver:
         def __init__(self):
@@ -144,8 +145,8 @@ def test_start_watching_with_fake_observer(tmp_path):
         def join(self):
             pass
 
-        def dispatch(self, event=None):
-            self.handler.on_any_event(event)
+        def dispatch_created(self, event=None):
+            self.handler.on_created(event)
 
     mgr = _make_manager(tmp_path)
     ws_path = tmp_path / "ws_watch"
@@ -154,11 +155,13 @@ def test_start_watching_with_fake_observer(tmp_path):
     ws = mgr.load(ws_path)
     (ws_path / "kb_new").mkdir()
 
-    watcher = mgr.start_watching(ws, observer_factory=FakeObserver)
+    watcher = mgr.start_watching(ws, observer_factory=FakeObserver, debounce_seconds=0.0)
     fake = watcher._observer  # type: ignore[attr-defined]
     watcher.start()
     # simula un evento FS
-    fake.dispatch(None)
+    fake.dispatch_created(None)
+    # attendi che il debounce thread completi
+    time.sleep(0.05)
     watcher.stop()
 
     assert "kb_new" in ws.bases
