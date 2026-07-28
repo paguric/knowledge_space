@@ -42,8 +42,8 @@ def _discover_bases_recursive(ws_path: Path) -> dict[str, KnowledgeBase]:
     for entry in ws_path.rglob("*"):
         if not entry.is_dir():
             continue
-        # Salta cartelle nascoste e .knowledge-space
-        if entry.name.startswith(".") or entry.name == ".knowledge-space":
+        # Salta cartelle nascoste e qualsiasi cartella dentro .knowledge-space
+        if entry.name.startswith(".") or ".knowledge-space" in entry.parts:
             continue
         rel = entry.relative_to(ws_path)
         base_name = str(rel)
@@ -162,13 +162,16 @@ class WorkspaceManager:
         return workspace
 
     def sync_and_ingest(self, workspace: Workspace) -> Workspace:
-        """Sincronizza il workspace e indicizza i file nelle basi nuove.
+        """Sincronizza il workspace e indicizza i file nuovi o modificati.
 
         1. Chiama :meth:`sync` per scoprire le basi.
         2. Per ogni base **nuova** (non presente prima della sync), tenta
            l'indicizzazione dei file tramite il ``base_manager_factory``
            iniettato nel costruttore.
-        3. Se nessun ``base_manager_factory`` è configurato, salta l'ingest
+        3. Per ogni base **esistente**, verifica se ci sono file nuovi
+           (non presenti nel modello) o modificati (mtime diverso) e li
+           indicaizza.
+        4. Se nessun ``base_manager_factory`` è configurato, salta l'ingest
            con un WARNING.
 
         Returns:
@@ -181,16 +184,17 @@ class WorkspaceManager:
 
         basi_dopo: set[str] = set(workspace.bases)
         basi_nuove = basi_dopo - basi_prima
+        basi_esistenti = basi_dopo & basi_prima
 
-        if not basi_nuove:
-            logger.info("Nessuna base nuova da indicizzare")
+        if not basi_dopo:
+            logger.info("Nessuna base nel workspace")
             return workspace
 
         if self._base_manager_factory is None:
             logger.warning(
                 "Base manager factory non configurata: impossibile indicizzare "
-                "le basi nuove: %s",
-                basi_nuove,
+                "i file nelle basi: %s",
+                basi_dopo,
             )
             return workspace
 
@@ -201,35 +205,106 @@ class WorkspaceManager:
             logger.error("Errore nella creazione del base manager: %s", exc)
             return workspace
 
+        # 1. Indicizza file nelle basi NUOVE.
         for base_name in basi_nuove:
-            kb = workspace.bases[base_name]
-            base_path = kb.path
-            if not base_path.is_dir():
-                continue
+            self._ingest_files_in_base(base_manager, workspace, base_name)
 
-            # Trova i file nella base (non ricorsivo: solo primo livello).
-            files = [
-                f for f in base_path.iterdir()
-                if f.is_file() and not f.name.startswith(".")
-            ]
-            if not files:
-                logger.info("Base %s: nessun file da indicizzare", base_name)
-                continue
-
-            logger.info("Base %s: indicizzazione di %d file", base_name, len(files))
-            for file_path in files:
-                try:
-                    base_manager.add_file(base_name, file_path)
-                    logger.info("File indicizzato: %s/%s", base_name, file_path.name)
-                except Exception as exc:
-                    logger.warning(
-                        "Errore nell'indicizzazione di %s/%s: %s",
-                        base_name,
-                        file_path.name,
-                        exc,
-                    )
+        # 2. Indicizza file NUOVI/MODIFICATI nelle basi ESISTENTI.
+        for base_name in basi_esistenti:
+            self._ingest_new_files_in_existing_base(
+                base_manager, workspace, base_name
+            )
 
         return workspace
+
+    def _ingest_files_in_base(
+        self,
+        base_manager: Any,
+        workspace: Workspace,
+        base_name: str,
+    ) -> None:
+        """Indicizza tutti i file in una base appena scoperta."""
+        kb = workspace.bases[base_name]
+        base_path = kb.path
+        if not base_path.is_dir():
+            return
+
+        files = [
+            f
+            for f in base_path.iterdir()
+            if f.is_file() and not f.name.startswith(".")
+        ]
+        if not files:
+            logger.info("Base %s: nessun file da indicizzare", base_name)
+            return
+
+        logger.info("Base %s: indicizzazione di %d file", base_name, len(files))
+        for file_path in files:
+            try:
+                base_manager.add_file(base_name, file_path)
+                logger.info("File indicizzato: %s/%s", base_name, file_path.name)
+            except Exception as exc:
+                logger.warning(
+                    "Errore nell'indicizzazione di %s/%s: %s",
+                    base_name,
+                    file_path.name,
+                    exc,
+                )
+
+    def _ingest_new_files_in_existing_base(
+        self,
+        base_manager: Any,
+        workspace: Workspace,
+        base_name: str,
+    ) -> None:
+        """Indicizza file nuovi o modificati in una base già esistente.
+
+        Confronta i file su disco con quelli nel modello (``kb.files``).
+        Un file è considerato nuovo se non è nel modello; è considerato
+        modificato se l'``mtime`` su disco differisce da quello registrato.
+        """
+        kb = workspace.bases[base_name]
+        base_path = kb.path
+        if not base_path.is_dir():
+            return
+
+        files_to_ingest: list[Path] = []
+        for file_path in base_path.iterdir():
+            if not file_path.is_file() or file_path.name.startswith("."):
+                continue
+
+            existing = kb.files.get(file_path.name)
+            if existing is None:
+                # File nuovo
+                files_to_ingest.append(file_path)
+            else:
+                # File esistente: check mtime
+                try:
+                    current_mtime = file_path.stat().st_mtime
+                except OSError:
+                    continue
+                if existing.mtime != current_mtime:
+                    files_to_ingest.append(file_path)
+
+        if not files_to_ingest:
+            return
+
+        logger.info(
+            "Base %s: indicizzazione di %d file nuovi/modificati",
+            base_name,
+            len(files_to_ingest),
+        )
+        for file_path in files_to_ingest:
+            try:
+                base_manager.add_file(base_name, file_path)
+                logger.info("File indicizzato: %s/%s", base_name, file_path.name)
+            except Exception as exc:
+                logger.warning(
+                    "Errore nell'indicizzazione di %s/%s: %s",
+                    base_name,
+                    file_path.name,
+                    exc,
+                )
 
     def _save(self, workspace: Workspace) -> None:
         from knowledge_base.models import WorkspaceConfigData

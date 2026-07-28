@@ -124,8 +124,12 @@ def test_sync_discovers_nested_subdirectories(tmp_path):
     # Cartella nascosta dentro Papers (ignorata)
     (papers / ".hidden_dir").mkdir()
 
-    # .knowledge-space dentro una base (ignorato)
-    (papers / ".knowledge-space").mkdir()
+    # .knowledge-space dentro una base con sottocartelle (ignorato)
+    dot_ks = papers / ".knowledge-space"
+    dot_ks.mkdir()
+    (dot_ks / "chroma").mkdir()
+    (dot_ks / "chunks").mkdir()
+    (dot_ks / "chroma" / "some-uuid").mkdir()
 
     mgr.sync(ws)
 
@@ -323,7 +327,8 @@ def test_sync_and_ingest_handles_add_file_error(tmp_path):
 
 
 def test_sync_and_ingest_no_new_bases(tmp_path):
-    """Se non ci sono basi nuove, la factory non viene chiamata."""
+    """Se non ci sono basi nuove né file nuovi, la factory viene chiamata
+    ma add_file non viene invocato (nessun file da indicizzare)."""
     mock_bm = MagicMock()
 
     def factory(ws):
@@ -339,10 +344,139 @@ def test_sync_and_ingest_no_new_bases(tmp_path):
     # Prima sync per popolare
     mgr.sync(ws)
 
-    # Seconda sync_and_ingest: nessuna base nuova
+    # Seconda sync_and_ingest: nessuna base nuova, nessun file nuovo
     mgr.sync_and_ingest(ws)
 
     mock_bm.add_file.assert_not_called()
+
+
+def test_sync_and_ingest_ingests_new_files_in_existing_base(tmp_path):
+    """Bug 008: file creati DOPO in una base esistente vengono indicizzati."""
+    mock_bm = MagicMock()
+    mock_bm.add_file.return_value = MagicMock()
+
+    def factory(ws):
+        return mock_bm
+
+    mgr = _make_manager(tmp_path, base_manager_factory=factory)
+    ws_path = tmp_path / "ws_existing"
+    ws_path.mkdir()
+    mgr.add(ws_path)
+    ws = mgr.load(ws_path)
+
+    # Crea la base e fai sync (base vuota)
+    base_dir = ws_path / "kb1"
+    base_dir.mkdir()
+    mgr.sync(ws)
+    mock_bm.reset_mock()
+
+    # Aggiungi file DOPO la sync
+    (base_dir / "doc1.txt").write_text("contenuto1")
+    (base_dir / "doc2.txt").write_text("contenuto2")
+
+    # sync_and_ingest deve indicizzare i file nuovi nella base esistente
+    mgr.sync_and_ingest(ws)
+
+    assert mock_bm.add_file.call_count == 2
+    calls = mock_bm.add_file.call_args_list
+    call_args = [(c.args[0], c.args[1].name) for c in calls]
+    assert ("kb1", "doc1.txt") in call_args
+    assert ("kb1", "doc2.txt") in call_args
+
+
+def test_sync_and_ingest_skips_modified_files_with_same_mtime(tmp_path):
+    """File già indicizzati con stesso mtime non vengono re-indicizzati."""
+    mock_bm = MagicMock()
+    mock_bm.add_file.return_value = MagicMock()
+
+    def factory(ws):
+        return mock_bm
+
+    mgr = _make_manager(tmp_path, base_manager_factory=factory)
+    ws_path = tmp_path / "ws_mtime"
+    ws_path.mkdir()
+    mgr.add(ws_path)
+    ws = mgr.load(ws_path)
+
+    # Crea base con file
+    base_dir = ws_path / "kb1"
+    base_dir.mkdir()
+    (base_dir / "doc.txt").write_text("contenuto")
+
+    # Prima sync_and_ingest: indicaizza il file
+    mgr.sync_and_ingest(ws)
+    assert mock_bm.add_file.call_count == 1
+
+    # Simula che il file è già stato indicizzato aggiornando kb.files
+    file_path = base_dir / "doc.txt"
+    kb = ws.bases["kb1"]
+    kb.files["doc.txt"] = MagicMock()
+    kb.files["doc.txt"].mtime = file_path.stat().st_mtime
+
+    mock_bm.reset_mock()
+
+    # Seconda sync_and_ingest: stesso mtime → non re-indicizza
+    mgr.sync_and_ingest(ws)
+
+    mock_bm.add_file.assert_not_called()
+
+
+# --------------------------------------------------------------------------- #
+# Bug 009 — .knowledge-space escluso dalla scoperta ricorsiva
+# --------------------------------------------------------------------------- #
+
+
+def test_sync_excludes_knowledge_space_subdirs(tmp_path):
+    """Bug 009: sottocartelle dentro .knowledge-space non diventano basi."""
+    mgr = _make_manager(tmp_path)
+    ws_path = tmp_path / "ws_dot_ks"
+    ws_path.mkdir()
+    mgr.add(ws_path)
+    ws = mgr.load(ws_path)
+
+    # Crea struttura con .knowledge-space e sottocartelle
+    base = ws_path / "TestBase"
+    base.mkdir()
+    dot_ks = base / ".knowledge-space"
+    dot_ks.mkdir()
+    (dot_ks / "chroma").mkdir()
+    (dot_ks / "chunks").mkdir()
+    (dot_ks / "chroma" / "some-uuid-dir").mkdir()
+    (dot_ks / "chunks" / "file-id-dir").mkdir()
+
+    # Anche al livello del workspace
+    ws_dot_ks = ws_path / ".knowledge-space"
+    ws_dot_ks.mkdir()
+    (ws_dot_ks / "chroma").mkdir()
+    (ws_dot_ks / "chunks").mkdir()
+
+    mgr.sync(ws)
+
+    # Solo TestBase deve essere una base
+    assert set(ws.bases) == {"TestBase"}
+    # Nessuna base deve contenere .knowledge-space nel nome
+    for name in ws.bases:
+        assert ".knowledge-space" not in name
+
+
+def test_sync_excludes_knowledge_space_at_all_levels(tmp_path):
+    """Bug 009: .knowledge-space è escluso a ogni livello di nidificazione."""
+    mgr = _make_manager(tmp_path)
+    ws_path = tmp_path / "ws_dot_ks_nested"
+    ws_path.mkdir()
+    mgr.add(ws_path)
+    ws = mgr.load(ws_path)
+
+    # Struttura: A/B/.knowledge-space/chroma/uuid
+    nested_dot_ks = ws_path / "A" / "B" / ".knowledge-space" / "chroma" / "uuid"
+    nested_dot_ks.mkdir(parents=True)
+
+    # Altre cartelle valide
+    (ws_path / "A" / "B" / "C").mkdir(parents=True)
+
+    mgr.sync(ws)
+
+    assert set(ws.bases) == {"A", "A/B", "A/B/C"}
 
 
 # --------------------------------------------------------------------------- #
