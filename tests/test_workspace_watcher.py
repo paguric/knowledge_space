@@ -221,3 +221,256 @@ class TestWorkspaceWatcher:
         from knowledge_base.workspace_watcher import WorkspaceWatcher as WW
 
         assert WW is not None
+
+
+# --------------------------------------------------------------------------- #
+# Test WorkspacesWatcher (dinamico su workspaces.json)
+# --------------------------------------------------------------------------- #
+
+import threading
+from unittest.mock import MagicMock
+
+from knowledge_space.cli.serve import WorkspacesWatcher, _WorkspacesFileHandler
+
+
+class TestWorkspacesFileHandler:
+    """Test del handler watchdog su workspaces.json."""
+
+    def test_on_modified_sets_event(self, tmp_path):
+        """on_modified segnala l'event se il path corrisponde."""
+        event = threading.Event()
+        json_path = tmp_path / "workspaces.json"
+        handler = _WorkspacesFileHandler(json_path, event)
+
+        mock_event = MagicMock()
+        mock_event.src_path = str(json_path)
+
+        handler.on_modified(mock_event)
+        assert event.is_set()
+
+    def test_on_modified_ignores_other_file(self, tmp_path):
+        """on_modified ignora modifiche ad altri file."""
+        event = threading.Event()
+        json_path = tmp_path / "workspaces.json"
+        handler = _WorkspacesFileHandler(json_path, event)
+
+        mock_event = MagicMock()
+        mock_event.src_path = str(tmp_path / "other.json")
+
+        handler.on_modified(mock_event)
+        assert not event.is_set()
+
+    def test_on_created_sets_event(self, tmp_path):
+        """on_created segnala l'event se il path corrisponde."""
+        event = threading.Event()
+        json_path = tmp_path / "workspaces.json"
+        handler = _WorkspacesFileHandler(json_path, event)
+
+        mock_event = MagicMock()
+        mock_event.src_path = str(json_path)
+
+        handler.on_created(mock_event)
+        assert event.is_set()
+
+
+class TestWorkspacesWatcher:
+    """Test del watcher dinamico su workspaces.json."""
+
+    def test_sync_adds_new_workspace_watcher(self, tmp_path):
+        """_sync_workspaces aggiunge un watcher per un workspace nuovo."""
+        mgr = _make_manager(tmp_path)
+        ws_existing = tmp_path / "ws_existing"
+        ws_existing.mkdir()
+        mgr.add(ws_existing)
+
+        # Simula un watcher già attivo per ws_existing
+        existing_watcher = MagicMock()
+        existing_watcher._workspace = MagicMock()
+        existing_watcher._workspace.path = ws_existing
+
+        json_path = tmp_path / "workspaces.json"
+        lock = threading.Lock()
+        change_event = threading.Event()
+        watchers = [existing_watcher]
+        started: list = []
+
+        def fake_start(path):
+            w = MagicMock()
+            w._workspace = MagicMock()
+            w._workspace.path = path
+            started.append(path)
+            return w
+
+        ww = WorkspacesWatcher(
+            workspaces_json_path=json_path,
+            workspace_manager=mgr,
+            start_watcher_fn=fake_start,
+            watchers_ref=watchers,
+            lock=lock,
+            change_event=change_event,
+        )
+
+        # Aggiungi un nuovo workspace
+        ws_new = tmp_path / "ws_new"
+        ws_new.mkdir()
+        mgr.add(ws_new)
+
+        ww._sync_workspaces()
+
+        # watchers contiene existing_watcher + il nuovo
+        assert len(watchers) == 2
+        assert started == [ws_new]
+
+    def test_sync_removes_deleted_workspace_watcher(self, tmp_path):
+        """_sync_workspaces rimuove il watcher per un workspace rimosso."""
+        mgr = _make_manager(tmp_path)
+        ws_path = tmp_path / "ws_to_remove"
+        ws_path.mkdir()
+        mgr.add(ws_path)
+
+        json_path = tmp_path / "workspaces.json"
+        lock = threading.Lock()
+        change_event = threading.Event()
+
+        # Crea un watcher fittizio già attivo
+        existing_watcher = MagicMock()
+        existing_watcher._workspace = MagicMock()
+        existing_watcher._workspace.path = ws_path
+        watchers = [existing_watcher]
+
+        ww = WorkspacesWatcher(
+            workspaces_json_path=json_path,
+            workspace_manager=mgr,
+            start_watcher_fn=lambda p: MagicMock(),
+            watchers_ref=watchers,
+            lock=lock,
+            change_event=change_event,
+        )
+
+        # Rimuovi il workspace
+        mgr.remove(ws_path)
+
+        ww._sync_workspaces()
+
+        assert len(watchers) == 0
+        existing_watcher.stop.assert_called_once()
+
+    def test_sync_handles_start_error(self, tmp_path):
+        """_sync_workspaces gestisce errori nella start del watcher."""
+        mgr = _make_manager(tmp_path)
+        ws_path = tmp_path / "ws_ok"
+        ws_path.mkdir()
+        mgr.add(ws_path)
+
+        json_path = tmp_path / "workspaces.json"
+        lock = threading.Lock()
+        change_event = threading.Event()
+        watchers: list = []
+
+        def failing_start(path):
+            raise RuntimeError("start failed")
+
+        ww = WorkspacesWatcher(
+            workspaces_json_path=json_path,
+            workspace_manager=mgr,
+            start_watcher_fn=failing_start,
+            watchers_ref=watchers,
+            lock=lock,
+            change_event=change_event,
+        )
+
+        ww._sync_workspaces()
+
+        # Il watcher non deve essere aggiunto se start fallisce
+        assert len(watchers) == 0
+
+    def test_stop_sets_stop_event(self, tmp_path):
+        """stop() imposta lo stop_event."""
+        mgr = _make_manager(tmp_path)
+        json_path = tmp_path / "workspaces.json"
+        lock = threading.Lock()
+        change_event = threading.Event()
+
+        ww = WorkspacesWatcher(
+            workspaces_json_path=json_path,
+            workspace_manager=mgr,
+            start_watcher_fn=lambda p: MagicMock(),
+            watchers_ref=[],
+            lock=lock,
+            change_event=change_event,
+        )
+
+        assert not ww._stop_event.is_set()
+        ww.stop()
+        assert ww._stop_event.is_set()
+
+    def test_start_creates_observer_and_thread(self, tmp_path):
+        """start() crea l'observer e il thread di polling."""
+        mgr = _make_manager(tmp_path)
+        ws_path = tmp_path / "ws"
+        ws_path.mkdir()
+        mgr.add(ws_path)
+
+        json_path = tmp_path / "workspaces.json"
+        json_path.write_text("{}")
+        lock = threading.Lock()
+        change_event = threading.Event()
+        watchers: list = []
+
+        ww = WorkspacesWatcher(
+            workspaces_json_path=json_path,
+            workspace_manager=mgr,
+            start_watcher_fn=lambda p: MagicMock(),
+            watchers_ref=watchers,
+            lock=lock,
+            change_event=change_event,
+        )
+
+        ww.start()
+        assert ww._observer is not None
+        assert ww._poll_thread is not None
+        assert ww._poll_thread.is_alive()
+        ww.stop()
+
+    def test_sync_skips_nonexistent_dir(self, tmp_path):
+        """_sync_workspaces salta workspace la cui cartella non esiste."""
+        import json
+
+        mgr = _make_manager(tmp_path)
+        ws_path = tmp_path / "ws_exists"
+        ws_path.mkdir()
+        mgr.add(ws_path)
+
+        # Aggiungi manualmente un workspace "fantasma" nel file JSON
+        ghost_path = tmp_path / "ws_ghost"
+        index_path = tmp_path / "workspaces.json"
+        with open(index_path, "r") as f:
+            data = json.load(f)
+        data["workspaces"].append(str(ghost_path))
+        with open(index_path, "w") as f:
+            json.dump(data, f)
+
+        json_path = tmp_path / "workspaces.json"
+        lock = threading.Lock()
+        change_event = threading.Event()
+        watchers: list = []
+        started: list = []
+
+        def fake_start(path):
+            started.append(path)
+            return MagicMock()
+
+        ww = WorkspacesWatcher(
+            workspaces_json_path=json_path,
+            workspace_manager=mgr,
+            start_watcher_fn=fake_start,
+            watchers_ref=watchers,
+            lock=lock,
+            change_event=change_event,
+        )
+
+        ww._sync_workspaces()
+
+        # Solo ws_exists deve essere avviato, non ws_ghost
+        assert len(started) == 1
+        assert started[0] == ws_path
