@@ -50,8 +50,9 @@ cat > ~/.config/systemd/user/ks-serve.service << 'EOF'
 Description=Knowledge Space — MCP server + watcher
 
 [Service]
+# Usa --sse perché stdio richiede un terminale (non funziona con systemd).
 # Usa 'uv run' dalla directory del progetto così ha tutte le dipendenze.
-ExecStart=/usr/bin/bash -c 'cd "$HOME/università/as25-26-sp/progtes/knowledge_space" && uv run ks serve'
+ExecStart=/usr/bin/bash -c 'cd "$HOME/università/as25-26-sp/progtes/knowledge_space" && uv run ks serve --sse'
 Restart=always
 RestartSec=5
 
