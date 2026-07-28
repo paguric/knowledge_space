@@ -31,6 +31,52 @@ pip install -e .
 uv pip install -e . --system
 ```
 
+## Avvio automatico del server
+
+`ks serve` avvia il server MCP e attiva i watcher filesystem su tutti i workspace
+registrati: qualsiasi modifica al filesystem (file aggiunti, spostati, rimossi)
+viene rilevata in tempo reale e sincronizzata automaticamente.
+
+Su Linux il modo più semplice è un **systemd user service**:
+
+```bash
+# 1. Abilita il linger per avviare servizi senza login
+loginctl enable-linger $USER
+
+# 2. Crea il file di servizio
+mkdir -p ~/.config/systemd/user
+cat > ~/.config/systemd/user/ks-serve.service << 'EOF'
+[Unit]
+Description=Knowledge Space — MCP server + watcher
+
+[Service]
+ExecStart=%h/.local/bin/ks serve
+Restart=always
+RestartSec=5
+Environment=XDG_STATE_HOME=%t/KnowledgeSpace
+
+[Install]
+WantedBy=default.target
+EOF
+
+# 3. Abilita e avvia
+systemctl --user daemon-reload
+systemctl --user enable --now ks-serve
+```
+
+Comandi utili:
+
+```bash
+systemctl --user status ks-serve   # stato del servizio
+journalctl --user -u ks-serve -f   # log in tempo reale
+systemctl --user restart ks-serve  # riavvia
+systemctl --user stop ks-serve     # ferma
+```
+
+> **Nota:** `%h` in ExecStart si espande nella home dell'utente, quindi il path
+> `%h/.local/bin/ks` funziona qualunque sia la home. Assicurati che la directory
+> `~/.local/bin` sia in `PATH` (lo è di default su quasi tutte le distro moderne).
+
 ## Utilizzo rapido
 
 > Se hai usato `uv sync` senza attivare il venv, anteponi `uv run` a ogni comando:
