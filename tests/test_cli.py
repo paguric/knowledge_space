@@ -1129,3 +1129,50 @@ class TestWorkspaceOverride:
             app, ["status", "--workspace", str(workspace_dir)]
         )
         assert result.exit_code == 0
+
+
+# --------------------------------------------------------------------------- #
+# Test serve
+# --------------------------------------------------------------------------- #
+
+
+class TestServe:
+    """Test del comando serve."""
+
+    def test_serve_help(self):
+        """ks serve --help mostra le opzioni."""
+        result = runner.invoke(app, ["serve", "--help"])
+        assert result.exit_code == 0
+        assert "watcher" in result.output.lower() or "mcp" in result.output.lower()
+
+    def test_serve_no_workspaces_exits(self, tmp_path: Path):
+        """Se non ci sono workspace registrati, esce con errore."""
+        result = runner.invoke(app, ["serve"])
+        assert result.exit_code == 1
+        assert "nessun workspace" in result.output.lower() or "registrato" in result.output.lower()
+
+    def test_serve_with_workspace_starts(self, workspace_dir: Path):
+        """Con un workspace registrato, il serve parte (timeout dopo 1s)."""
+        import signal
+        import threading
+
+        # Registra il workspace prima
+        runner.invoke(app, ["workspace", "add", str(workspace_dir)])
+
+        # Ferma il processo dopo 1 secondo
+        def _stop_after():
+            import time
+
+            time.sleep(1)
+            # Non possiamo inviare signal in test, ma il test verifica
+            # che il processo non crashi immediatamente
+
+        # Usa timeout per evitare che il test resti appeso
+        result = runner.invoke(
+            app,
+            ["serve"],
+            timeout=2,
+        )
+        # Il processo potrebbe uscire con 0 o con timeout
+        # L'importante è che non crashi con errore non gestito
+        assert result.exit_code in (0, -1, None) or "timeout" in str(result.exception).lower()

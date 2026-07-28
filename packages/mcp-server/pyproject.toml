@@ -7,10 +7,17 @@ authors = [
     { name = "paguric", email = "lpernisi05@gmail.com" }
 ]
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "mcp>=1.0.0",
+    "uvicorn>=0.30.0",
+    "knowledge-base",
+]
 
 [project.scripts]
 mcp-server = "mcp_server:main"
+
+[tool.uv.sources]
+knowledge-base = { workspace = true }
 
 [build-system]
 requires = ["uv_build>=0.11.17,<0.12.0"]

@@ -12,6 +12,7 @@ dependencies = [
     "knowledge-base",
     "watchdog>=6.0.0",
     "typer>=0.15.0",
+    "mcp>=1.0.0",
 ]
 
 [tool.uv.workspace]
