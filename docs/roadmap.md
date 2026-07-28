@@ -35,8 +35,8 @@ Tabella compatta di tutto il progetto. Leggi questa sezione per capire **dove si
 | Bug 005 | Fix watcher: `on_any_event` → `on_created/moved/deleted` + debounce | — | ✅ Fatto | Step 14 | `docs/specs/bug-005-watcher-on-any-event.md` |
 | Bug 006 | Fix MCP: `on_list_tools` non esiste in MCP 2.0 | — | ✅ Fatto | Step 14 | `docs/specs/bug-006-mcp-v2-api.md` |
 | Bug 007 | Fix sync: ricorsione sottocartelle + ingest automatico file | — | ✅ Fatto | Step 14 | `docs/specs/bug-007-sync-ricorsione-e-ingest.md` |
-| Bug 008 | Fix sync_and_ingest: indicizza file creati DOPO la base | — | 🟡 In corso | Step 14 | `docs/specs/bug-008-ingest-file-in-existing-base.md` |
-| Bug 009 | Fix .knowledge-space non escluso da scoperta ricorsiva basi | — | 🟡 In corso | Step 14 | `docs/specs/bug-009-dot-knowledge-space-non-escluso.md` |
+| Bug 008 | Fix sync_and_ingest: indicizza file creati DOPO la base | — | ✅ Fatto | Step 14 | `docs/specs/bug-008-ingest-file-in-existing-base.md` |
+| Bug 009 | Fix .knowledge-space non escluso da scoperta ricorsiva basi | — | ✅ Fatto | Step 14 | `docs/specs/bug-009-dot-knowledge-space-non-escluso.md` |
 | 15 | Backend REST | 4 | ❌ Non iniziato | Step 13 | — |
 | 16 | Frontend React | 4 | ❌ Non iniziato | Step 15 | — |
 | 17 | Polish e documentazione | 4 | ❌ Non iniziato | Step 16 | — |
