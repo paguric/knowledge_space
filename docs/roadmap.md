@@ -30,7 +30,7 @@ Tabella compatta di tutto il progetto. Leggi questa sezione per capire **dove si
 | 12 | Logging su file | 2 | ✅ Fatto | Step 8-ter | — |
 | 12-bis | Logging operazioni applicazione | 2 | 🟡 In corso | Step 12 | `docs/specs/feat-002-logging-operazioni.md` |
 | 13 | CLI con Typer | 3 | ✅ Fatto | Step 8-ter, 12 | — |
-| Bug 003 | Fix `tree`/`status` multi-workspace | — | 🟡 In corso | Step 1, 13 | `docs/specs/bug-003-tree-status-workspace.md` |
+| Bug 003 | Refactor `info`+`tree` → `status` unificato | — | 🟡 In corso | Step 1, 13 | `docs/specs/bug-003-tree-status-workspace.md` |
 | 14 | Server MCP | 3 | ❌ Non iniziato | Step 8-ter | — |
 | 15 | Backend REST | 4 | ❌ Non iniziato | Step 13 | — |
 | 16 | Frontend React | 4 | ❌ Non iniziato | Step 15 | — |
