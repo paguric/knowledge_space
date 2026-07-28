@@ -19,6 +19,10 @@ oppure attivando il venv con `source .venv/bin/activate`.
 Per un'installazione **system-wide** permanente (senza bisogno di `uv run` o attivazione):
 
 ```bash
+# Con uv tool install — installa come tool nella directory bin di uv
+# (tipicamente ~/.local/bin/), disponibile da qualsiasi terminale
+uv tool install -e .
+
 # Con pip (installa globalmente, richiede che la variabile d'ambiente PATH
 # includa la directory degli script di pip)
 pip install -e .
