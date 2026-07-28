@@ -378,18 +378,27 @@ class WorkspaceWatcher:
             """
 
             def on_created(self_inner, event):  # type: ignore[override]
-                logger.info("Evento FS on_created: %s", getattr(event, "src_path", "?"))
+                src = getattr(event, "src_path", "")
+                if ".knowledge-space" in src:
+                    return
+                logger.info("Evento FS on_created: %s", src)
                 watcher_ref._schedule_sync()
 
             def on_deleted(self_inner, event):  # type: ignore[override]
-                logger.info("Evento FS on_deleted: %s", getattr(event, "src_path", "?"))
+                src = getattr(event, "src_path", "")
+                if ".knowledge-space" in src:
+                    return
+                logger.info("Evento FS on_deleted: %s", src)
                 watcher_ref._schedule_sync()
 
             def on_moved(self_inner, event):  # type: ignore[override]
+                src = getattr(event, "src_path", "")
+                dest = getattr(event, "dest_path", "")
+                if ".knowledge-space" in src or ".knowledge-space" in dest:
+                    return
                 logger.info(
                     "Evento FS on_moved: %s -> %s",
-                    getattr(event, "src_path", "?"),
-                    getattr(event, "dest_path", "?"),
+                    src, dest,
                 )
                 watcher_ref._schedule_sync()
 

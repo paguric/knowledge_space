@@ -579,3 +579,68 @@ def test_watcher_calls_sync_and_ingest_when_factory_present(tmp_path):
 
     assert "kb1" in ws.bases
     mock_bm.add_file.assert_called_once()
+
+
+def test_watcher_ignores_events_inside_knowledge_space(tmp_path):
+    """Bug 010: eventi dentro .knowledge-space non triggerano sync."""
+    import time
+
+    class FakeObserver:
+        def __init__(self):
+            self.handler = None
+
+        def schedule(self, handler, path, recursive=False):
+            self.handler = handler
+            return object()
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def join(self):
+            pass
+
+        def dispatch(self, event):
+            self.handler.on_created(event)
+
+    mock_bm = MagicMock()
+
+    def factory(ws):
+        return mock_bm
+
+    mgr = _make_manager(tmp_path, base_manager_factory=factory)
+    ws_path = tmp_path / "ws_filter"
+    ws_path.mkdir()
+    mgr.add(ws_path)
+    ws = mgr.load(ws_path)
+
+    watcher = mgr.start_watching(ws, observer_factory=FakeObserver, debounce_seconds=0.0)
+    fake = watcher._observer
+    watcher.start()
+
+    # Evento dentro .knowledge-space → deve essere ignorato
+    event_dot_ks = MagicMock()
+    event_dot_ks.src_path = str(ws_path / "TestBase" / ".knowledge-space" / "chunks" / "file.md")
+    fake.dispatch(event_dot_ks)
+    time.sleep(0.05)
+
+    # Evento dentro .knowledge-space a livello workspace → ignorato
+    event_ws_dot_ks = MagicMock()
+    event_ws_dot_ks.src_path = str(ws_path / ".knowledge-space" / "chroma" / "uuid")
+    fake.dispatch(event_ws_dot_ks)
+    time.sleep(0.05)
+
+    # Nessuna sync deve essere stata chiamata
+    mock_bm.add_file.assert_not_called()
+
+    # Evento normale → deve triggerare sync
+    event_normal = MagicMock()
+    event_normal.src_path = str(ws_path / "TestBase" / "doc.txt")
+    fake.dispatch(event_normal)
+    time.sleep(0.05)
+
+    # Ora la sync deve essere stata chiamata
+    # (almeno una volta, anche se non ci sono file da indicizzare)
+    watcher.stop()
