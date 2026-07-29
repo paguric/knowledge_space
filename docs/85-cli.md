@@ -1,6 +1,6 @@
 # CLI standalone
 
-> **Stato:** parziale (config set/unset/edit implementati) | **Step:** 13 | **Fase:** 3 | **Aggiornato:** 28 luglio 2026
+> **Stato:** implementato | **Step:** 13 | **Fase:** 3 | **Aggiornato:** 28 luglio 2026
 
 ## Panoramica
 
@@ -94,16 +94,6 @@ Interfaccia a riga di comando (Typer) per gestire workspace, domini, basi, file,
 | `search <query>` | Ricerca vettoriale su tutte le basi attive, ordinato per score |
 | `search <query> --json` | Output JSON |
 
-> **Considerazioni sulla ricerca:**
->
-> - Il comando `search` richiede che almeno una base abbia un embedding model configurato (in `base.toml` o `defaults.toml`). Senza modello, la ricerca non produce risultati.
-> - La ricerca opera su **tutte le basi attive** del workspace. Non sono previsti flag `--base` o `--domain`: la ricerca unificata su più basi è il comportamento di default.
-> - Il numero di risultati (`top_k`) è determinato dalla configurazione della base (`retrieval.top_k`) e non è esposto come flag CLI. L'override è possibile solo via `config set`.
-> - La ricerca restituisce chunk con metadati (file sorgente, base, score, content_hash). Usando `--json` si ottiene l'output strutturato per pipeline/script.
-> - La ricerca è **solo vettoriale** (dense retrieval via Chroma) quando usata dal CLI. Le strategie sparse (BM25 via `rank_bm25`) e ibrida (rrf/weighted_sum) sono già implementate nel codice (`strategies/retrieval.py`) e si attivano configurando `[retrieval].method = "sparse"` o `"hybrid"` nel TOML.
-> - Le basi disattivate (`base deactivate`) sono escluse dalla ricerca.
-> - Il comando non supporta streaming: tutti i risultati sono restituiti in blocco.
-
 **Reindex:**
 
 | Comando | Descrizione |
@@ -183,7 +173,8 @@ Interfaccia a riga di comando (Typer) per gestire workspace, domini, basi, file,
 - [x] Creare `knowledge_space/cli.py`
 - [x] Implementare comandi per workspace, domini, basi, file, chunk
 - [x] Implementare config show/init/set/unset/edit
-- [ ] Implementare search, reindex, graph, auth, models
+- [x] Implementare search
+- [ ] Implementare reindex, graph, auth, models
 - [ ] Implementare profili
 - [ ] Autocompletamento shell
 - [ ] Test di integrazione (standalone mode)
