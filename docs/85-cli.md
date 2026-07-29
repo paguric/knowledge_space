@@ -1,6 +1,6 @@
 # CLI standalone
 
-> **Stato:** parziale (config set/unset/edit implementati) | **Step:** 13 | **Fase:** 3 | **Aggiornato:** 22 luglio 2026
+> **Stato:** parziale (config set/unset/edit implementati) | **Step:** 13 | **Fase:** 3 | **Aggiornato:** 28 luglio 2026
 
 ## Panoramica
 
@@ -91,10 +91,18 @@ Interfaccia a riga di comando (Typer) per gestire workspace, domini, basi, file,
 
 | Comando | Descrizione |
 |---------|-------------|
-| `search <query>` | Ricerca vettoriale |
-| `search <query> --base/--domain <name>` | Filtra per base/dominio |
-| `search <query> --top-k N` | Override risultati |
+| `search <query>` | Ricerca vettoriale su tutte le basi attive, ordinato per score |
 | `search <query> --json` | Output JSON |
+
+> **Considerazioni sulla ricerca:**
+>
+> - Il comando `search` richiede che almeno una base abbia un embedding model configurato (in `base.toml` o `defaults.toml`). Senza modello, la ricerca non produce risultati.
+> - La ricerca opera su **tutte le basi attive** del workspace. Non sono previsti flag `--base` o `--domain`: la ricerca unificata su più basi è il comportamento di default.
+> - Il numero di risultati (`top_k`) è determinato dalla configurazione della base (`retrieval.top_k`) e non è esposto come flag CLI. L'override è possibile solo via `config set`.
+> - La ricerca restituisce chunk con metadati (file sorgente, base, score, content_hash). Usando `--json` si ottiene l'output strutturato per pipeline/script.
+> - In fase iniziale, la ricerca è **solo vettoriale** (dense retrieval via Chroma). Retrieval sparse (BM25) e ibrido saranno attivati configurazionalmente quando i rispettivi backend saranno pronti.
+> - Le basi disattivate (`base deactivate`) sono escluse dalla ricerca.
+> - Il comando non supporta streaming: tutti i risultati sono restituiti in blocco.
 
 **Reindex:**
 
