@@ -1,6 +1,6 @@
 # Pipeline di retrieval
 
-> **Stato:** non iniziato | **Step:** 8 | **Fase:** 1B | **Aggiornato:** 22 luglio 2026
+> **Stato:** implementato (con test da fixare per sparse/hybrid) | **Step:** 8 | **Fase:** 1B | **Aggiornato:** 28 luglio 2026
 
 ## Panoramica
 
