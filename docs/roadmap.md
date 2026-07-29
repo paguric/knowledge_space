@@ -31,15 +31,16 @@ Tabella compatta di tutto il progetto. Leggi questa sezione per capire **dove si
 | 12-bis | Logging operazioni applicazione | 2 | 🟡 In corso | Step 12 | `docs/specs/feat-002-logging-operazioni.md` |
 | 13 | CLI con Typer | 3 | ✅ Fatto | Step 8-ter, 12 | — |
 | Bug 003 | Refactor `info`+`tree` → `status` unificato | — | 🟡 In corso | Step 1, 13 | `docs/specs/bug-003-tree-status-workspace.md` |
-| 14 | Server MCP | 3 | ✅ Fatto | Step 8-ter, 13 | `docs/specs/feat-003-ks-serve-watch-mcp.md` |
-| Bug 005 | Fix watcher: `on_any_event` → `on_created/moved/deleted` + debounce | — | ✅ Fatto | Step 14 | `docs/specs/bug-005-watcher-on-any-event.md` |
-| Bug 006 | Fix MCP: `on_list_tools` non esiste in MCP 2.0 | — | ✅ Fatto | Step 14 | `docs/specs/bug-006-mcp-v2-api.md` |
-| Bug 007 | Fix sync: ricorsione sottocartelle + ingest automatico file | — | ✅ Fatto | Step 14 | `docs/specs/bug-007-sync-ricorsione-e-ingest.md` |
+| 14 | Server MCP | 3 | ✅ Fatto | Step 8-ter, 13 | — |
+| Bug 005 | Fix watcher: `on_any_event` → `on_created/moved/deleted` + debounce | — | ✅ Fatto | Step 14 | — |
+| Bug 006 | Fix MCP: `on_list_tools` non esiste in MCP 2.0 | — | ✅ Fatto | Step 14 | — |
+| Bug 007 | Fix sync: ricorsione sottocartelle + ingest automatico file | — | ✅ Fatto | Step 14 | — |
 | Bug 008 | Fix sync_and_ingest: indicizza file creati DOPO la base | — | ✅ Fatto | Step 14 | `docs/specs/bug-008-ingest-file-in-existing-base.md` |
-| Feature 004 | Watcher dinamico su workspaces.json | 2 | ✅ Fatto | Step 14 | `docs/specs/feat-004-workspace-watcher-dinamico.md` |
+| Feature 004 | Watcher dinamico su workspaces.json | 2 | ✅ Fatto | Step 14 | — |
 | Bug 009 | Fix .knowledge-space non escluso da scoperta ricorsiva basi | — | ✅ Fatto | Step 14 | `docs/specs/bug-009-dot-knowledge-space-non-escluso.md` |
 | Bug 010 | Fix watcher: ignora eventi FS dentro .knowledge-space (loop infinito ingest-chunk) | — | ✅ Fatto | Step 14 | `docs/specs/bug-010-watcher-filtra-knowledge-space.md` |
-| Bug 011 | Fix `sync_and_ingest` non persiste file dopo ingest → re-ingestioni multiple | — | ✅ Fatto | Step 14 | `docs/specs/bug-011-persistenza-file-dopo-ingest.md` |
+| Bug 011 | Fix `sync_and_ingest` non persiste file dopo ingest → re-ingestioni multiple | — | ✅ Fatto | Step 14 | — |
+| Bug 012 | La ricerca non esclude chunk/file/basi/domini non attivi | — | 🔴 Da fare | Step 8 | `docs/specs/bug-012-search-non-filtra-active.md` |
 | 15 | Backend REST | 4 | ❌ Non iniziato | Step 13 | — |
 | 16 | Frontend React | 4 | ❌ Non iniziato | Step 15 | — |
 | 17 | Polish e documentazione | 4 | ❌ Non iniziato | Step 16 | — |
