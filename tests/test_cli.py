@@ -775,11 +775,12 @@ class TestConfig:
 
     # --- config set ---
 
-    def test_config_set_defaults(self, workspace_dir: Path):
+    def test_config_set_defaults(self, workspace_dir: Path, monkeypatch):
         """config set defaults modifica defaults.toml."""
+        monkeypatch.chdir(workspace_dir)
         result = runner.invoke(
             app,
-            ["config", "set", "defaults", "chunking.chunk_size", "500",
+            ["config", "set", "chunking.chunk_size", "500",
              "--workspace", str(workspace_dir)],
         )
         assert result.exit_code == 0
@@ -795,14 +796,15 @@ class TestConfig:
             data = tomllib.load(f)
         assert data["chunking"]["chunk_size"] == 500
 
-    def test_config_set_creates_defaults_if_missing(self, workspace_dir: Path):
+    def test_config_set_creates_defaults_if_missing(self, workspace_dir: Path, monkeypatch):
         """config set crea defaults.toml se assente."""
+        monkeypatch.chdir(workspace_dir)
         defaults_path = workspace_dir / ".knowledge-space" / "defaults.toml"
         assert not defaults_path.exists()
 
         result = runner.invoke(
             app,
-            ["config", "set", "defaults", "embedding.model", "my/model",
+            ["config", "set", "embedding.model", "my/model",
              "--workspace", str(workspace_dir)],
         )
         assert result.exit_code == 0
@@ -821,7 +823,7 @@ class TestConfig:
         )
         result = runner.invoke(
             app,
-            ["config", "set", "my_base", "embedding.model", "BAAI/bge-m3",
+            ["config", "set", "-b", "my_base", "embedding.model", "BAAI/bge-m3",
              "--workspace", str(workspace_dir)],
         )
         assert result.exit_code == 0
@@ -835,53 +837,57 @@ class TestConfig:
         assert data["embedding"]["model"] == "BAAI/bge-m3"
 
     def test_config_set_invalid_scope(self, workspace_dir: Path):
-        """Scope non riconosciuto → errore."""
+        """Base inesistente con -b → errore."""
         result = runner.invoke(
             app,
-            ["config", "set", "nonexistent", "chunking.chunk_size", "500",
+            ["config", "set", "-b", "nonexistent", "chunking.chunk_size", "500",
              "--workspace", str(workspace_dir)],
         )
         assert result.exit_code == 1
 
-    def test_config_set_invalid_key(self, workspace_dir: Path):
+    def test_config_set_invalid_key(self, workspace_dir: Path, monkeypatch):
         """Chiave non valida → errore."""
+        monkeypatch.chdir(workspace_dir)
         result = runner.invoke(
             app,
-            ["config", "set", "defaults", "badkey",
+            ["config", "set", "badkey",
              "500", "--workspace", str(workspace_dir)],
         )
         assert result.exit_code == 1
 
-    def test_config_set_unknown_section(self, workspace_dir: Path):
+    def test_config_set_unknown_section(self, workspace_dir: Path, monkeypatch):
         """Sezione sconosciuta → errore."""
+        monkeypatch.chdir(workspace_dir)
         result = runner.invoke(
             app,
-            ["config", "set", "defaults", "nosuch.field", "x",
+            ["config", "set", "nosuch.field", "x",
              "--workspace", str(workspace_dir)],
         )
         assert result.exit_code == 1
 
-    def test_config_set_unknown_field(self, workspace_dir: Path):
+    def test_config_set_unknown_field(self, workspace_dir: Path, monkeypatch):
         """Campo inesistente nella sezione → errore."""
+        monkeypatch.chdir(workspace_dir)
         result = runner.invoke(
             app,
-            ["config", "set", "defaults", "chunking.nonexistent", "500",
+            ["config", "set", "chunking.nonexistent", "500",
              "--workspace", str(workspace_dir)],
         )
         assert result.exit_code == 1
 
-    def test_config_set_preserves_other_keys(self, workspace_dir: Path):
+    def test_config_set_preserves_other_keys(self, workspace_dir: Path, monkeypatch):
         """config set non distrugge le chiavi esistenti."""
+        monkeypatch.chdir(workspace_dir)
         # Prima set
         runner.invoke(
             app,
-            ["config", "set", "defaults", "chunking.chunk_size", "500",
+            ["config", "set", "chunking.chunk_size", "500",
              "--workspace", str(workspace_dir)],
         )
         # Seconda set su chiave diversa
         runner.invoke(
             app,
-            ["config", "set", "defaults", "embedding.model", "my/model",
+            ["config", "set", "embedding.model", "my/model",
              "--workspace", str(workspace_dir)],
         )
         import tomllib
@@ -892,11 +898,12 @@ class TestConfig:
         assert data["chunking"]["chunk_size"] == 500
         assert data["embedding"]["model"] == "my/model"
 
-    def test_config_set_bool_value(self, workspace_dir: Path):
+    def test_config_set_bool_value(self, workspace_dir: Path, monkeypatch):
         """Valori booleani vengono parsati correttamente."""
+        monkeypatch.chdir(workspace_dir)
         result = runner.invoke(
             app,
-            ["config", "set", "defaults", "graph.enabled", "true",
+            ["config", "set", "graph.enabled", "true",
              "--workspace", str(workspace_dir)],
         )
         assert result.exit_code == 0
@@ -910,12 +917,13 @@ class TestConfig:
 
     # --- config unset ---
 
-    def test_config_unset_removes_key(self, workspace_dir: Path):
+    def test_config_unset_removes_key(self, workspace_dir: Path, monkeypatch):
         """config unset rimuove la chiave dal TOML."""
+        monkeypatch.chdir(workspace_dir)
         # Set prima
         runner.invoke(
             app,
-            ["config", "set", "defaults", "chunking.chunk_size", "500",
+            ["config", "set", "chunking.chunk_size", "500",
              "--workspace", str(workspace_dir)],
         )
         import tomllib
@@ -928,7 +936,7 @@ class TestConfig:
         # Unset
         result = runner.invoke(
             app,
-            ["config", "unset", "defaults", "chunking.chunk_size",
+            ["config", "unset", "chunking.chunk_size",
              "--workspace", str(workspace_dir)],
         )
         assert result.exit_code == 0
@@ -938,25 +946,27 @@ class TestConfig:
             data = tomllib.load(f)
         assert "chunk_size" not in data.get("chunking", {})
 
-    def test_config_unset_missing_file(self, workspace_dir: Path):
+    def test_config_unset_missing_file(self, workspace_dir: Path, monkeypatch):
         """config unset su file inesistente → no-op con messaggio."""
+        monkeypatch.chdir(workspace_dir)
         result = runner.invoke(
             app,
-            ["config", "unset", "defaults", "chunking.chunk_size",
+            ["config", "unset", "chunking.chunk_size",
              "--workspace", str(workspace_dir)],
         )
         assert result.exit_code == 0
         assert "non esiste" in result.output.lower()
 
-    def test_config_unset_missing_key(self, workspace_dir: Path):
+    def test_config_unset_missing_key(self, workspace_dir: Path, monkeypatch):
         """config unset su chiave assente → messaggio informativo."""
+        monkeypatch.chdir(workspace_dir)
         # Crea il file con init
         runner.invoke(
             app, ["config", "init", "--workspace", str(workspace_dir)]
         )
         result = runner.invoke(
             app,
-            ["config", "unset", "defaults", "chunking.nonexistent",
+            ["config", "unset", "chunking.nonexistent",
              "--workspace", str(workspace_dir)],
         )
         assert result.exit_code == 0
@@ -968,6 +978,7 @@ class TestConfig:
         self, workspace_dir: Path, monkeypatch
     ):
         """config edit crea il TOML e apre l'editor."""
+        monkeypatch.chdir(workspace_dir)
         # Mock EDITOR a 'true' (no-op)
         monkeypatch.setenv("EDITOR", "true")
         defaults_path = workspace_dir / ".knowledge-space" / "defaults.toml"
@@ -975,7 +986,7 @@ class TestConfig:
 
         result = runner.invoke(
             app,
-            ["config", "edit", "defaults", "--workspace", str(workspace_dir)],
+            ["config", "edit", "--workspace", str(workspace_dir)],
         )
         assert result.exit_code == 0
         assert defaults_path.exists()
@@ -988,7 +999,7 @@ class TestConfig:
         )
         result = runner.invoke(
             app,
-            ["config", "edit", "my_base", "--workspace", str(workspace_dir)],
+            ["config", "edit", "-b", "my_base", "--workspace", str(workspace_dir)],
         )
         assert result.exit_code == 0
         base_toml = base_dir / ".knowledge-space" / "base.toml"
