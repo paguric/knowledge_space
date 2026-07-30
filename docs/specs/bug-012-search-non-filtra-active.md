@@ -43,6 +43,13 @@ results = [r for r in results if _chunk_is_active(r, workspace)]
 Se non ci sono domini → tutte le basi sono considerate "in un dominio attivo".  
 Se ci sono domini → la base deve appartenere ad almeno un dominio con `active=True`.
 
+### `_chunk_is_active(result, workspace)`
+
+1. Risale dal `chunk_id` al file tramite i metadati del risultato (il `chunk_id` contiene o referenzia il `file_id`).
+2. Trova il `FileEntry` nella base corrispondente: se `file.active=False` → scarta.
+3. Trova il `ChunkRef` nel file: se `chunk.active=False` → scarta.
+4. Se il percorso di risalita non trova il file o il chunk (dati inconsistenti), scarta per sicurezza.
+
 ### File da toccare
 
 - `packages/knowledge-base/src/knowledge_base/search_service.py` — iniettare workspace, aggiungere i due filtri
