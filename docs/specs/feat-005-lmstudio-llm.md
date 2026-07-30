@@ -11,6 +11,8 @@ Attualmente i provider LLM locali (ollama, llamacpp, vllm) sono registrati solo 
 
 Permettere all'utente di usare un LLM locale installato via [LM Studio](https://lmstudio.ai/). L'utente specifica il modello nel TOML di configurazione; il programma si connette all'API OpenAI-compatibile esposta da LM Studio (`http://localhost:1234/v1`).
 
+**Tutti gli altri provider (OpenAI, Anthropic, Google, Cohere, Ollama, llama.cpp, vLLM) vengono rimossi.** D'ora in poi l'unico provider supportato è LM Studio. Il registry, i metadati e le env var per i provider remoti e locali vengono eliminati dal codice.
+
 L'approccio è **general-purpose**: l'utente scrive il nome del modello nel TOML, il programma prova a connettersi. Se LM Studio non è in esecuzione o il modello non è caricato, errore chiaro.
 
 ## Specifiche tecniche
@@ -130,9 +132,8 @@ def llm_factory(model_name: str) -> LLMStrategy:
 
 | File | Modifica |
 |------|----------|
-| `packages/knowledge-base/src/knowledge_base/strategies/llm.py` | Nuova classe `LMStudioLLM`, modifica `llm_factory()` |
-| `packages/knowledge-base/tests/test_llm.py` | Nuovi test con mock del client OpenAI |
-| `docs/75-llm.md` | Aggiornare con LM Studio |
+| `packages/knowledge-base/src/knowledge_base/strategies/llm.py` | Nuova classe `LMStudioLLM`, modifica `llm_factory()`, rimuovi provider remoti/locali |
+| `packages/knowledge-base/tests/test_llm.py` | Nuovi test `LMStudioLLM`, aggiorna test registry/factory |
 
 ### Test
 
@@ -157,6 +158,15 @@ class TestLMStudioLLM:
     def test_custom_base_url_from_env(self):
         ...
 ```
+
+### Cosa fare OLTRE all'implementazione di LM Studio
+
+- **Rimuovere** `_REMOTE_MODELS`, `_LOCAL_MODELS`, `_register_remote()`, `_register_local()` da `strategies/llm.py`
+- **Rimuovere** `_API_KEY_ENV`, `_PROVIDER_DISPLAY`, `_BASE_URL_ENV` per i provider non più supportati
+- **Rimuovere** le abbreviazioni `fast`, `cheap`, `quality`
+- **Rimuovere** `MissingAPIKeyError` e `ProviderNotImplementedError`
+- **Mantenere** solo i mock (`mock/echo`, `mock/fixed`) e la nuova classe `LMStudioLLM`
+- **Aggiornare** `docs/75-llm.md` (già fatto dal master)
 
 ### Cosa NON fare
 

@@ -1,10 +1,12 @@
 # Astrazione LLM (Large Language Model)
 
-> **Stato:** in progress | **Step:** 6-bis | **Fase:** 1A | **Aggiornato:** 22 luglio 2026
+> **Stato:** in progress | **Step:** 6-bis | **Fase:** 1A | **Aggiornato:** 28 luglio 2026
 
 ## Panoramica
 
-Interfaccia comune per tutte le chiamate a LLM nel sistema: pre-retrieval (query rewriting), retrieval (HyDE), post-retrieval (reranker, compressor), GraphRAG (entity extraction, text2cypher) e LLM generatore (futuro). Ogni componente sceglie il proprio modello nella configurazione TOML — nessuna sezione `[llm]` globale.
+Interfaccia comune per tutte le chiamate a LLM nel sistema: pre-retrieval (query rewriting), retrieval (HyDE), post-retrieval (reranker, compressor) e GraphRAG (entity extraction). Ogni componente sceglie il proprio modello nella configurazione TOML — nessuna sezione `[llm]` globale.
+
+**Unico provider supportato: [LM Studio](https://lmstudio.ai/)** — server locale con API OpenAI-compatibile su `http://localhost:1234/v1`. L'utente installa LM Studio, carica un modello, e lo referenzia nei TOML come `lm-studio/<model-id>`.
 
 ## Scelte
 
@@ -12,11 +14,10 @@ Interfaccia comune per tutte le chiamate a LLM nel sistema: pre-retrieval (query
 |---------|--------|
 | Interfaccia | `LLMStrategy` Protocol con `generate()` e `stream()` |
 | Config per-componente | Nessuna sezione `[llm]` globale; ogni componente sceglie il modello |
-| Provider remoti | OpenAI, Anthropic, Google, Cohere |
-| Provider locali | Ollama, llama.cpp, vLLM |
+| Provider | Solo LM Studio (API OpenAI-compatibile locale) |
 | Mock per test | `mock/echo`, `mock/fixed` |
-| Abbreviazioni | `fast`, `cheap` → gpt-4o-mini; `quality` → gpt-4o; `local` → ollama/llama3.1 |
-| Chiavi API | Env var o `UserSettings`, mai nei TOML |
+| Abbreviazioni | `local` → `lm-studio/auto` (rileva automaticamente il primo modello caricato) |
+| Chiavi API | Nessuna (LM Studio è locale, no auth) |
 | Fallback | identity + warning per pre/post-retrieval; errore per hyde/extraction |
 
 ## Dettagli
@@ -29,9 +30,9 @@ from typing import Protocol
 
 class LLMMetadata:
     model_name: str
-    provider: str                 # "openai" | "anthropic" | "ollama" | "llamacpp" | "mock"
+    provider: str                 # "lm-studio" | "mock"
     context_window: int
-    requires_api: bool
+    requires_api: bool            # sempre False per LM Studio
     supports_streaming: bool
     supports_json: bool
 
@@ -50,51 +51,27 @@ class LLMStrategy(Protocol):
 
 Formato messaggi: `list[dict]` con ruoli `system`, `user`, `assistant`.
 
-### Registry — Modelli API remoti
+### Provider: LM Studio
 
-| Model string | Provider | `context_window` | `supports_json` | Chiave API |
-|---|---|---|---|---|
-| `openai/gpt-4o` | OpenAI | 128000 | sì | `OPENAI_API_KEY` |
-| `openai/gpt-4o-mini` | OpenAI | 128000 | sì | `OPENAI_API_KEY` |
-| `openai/gpt-4.1` | OpenAI | ~1000000 | sì | `OPENAI_API_KEY` |
-| `openai/o3-mini` | OpenAI | 200000 | sì | `OPENAI_API_KEY` |
-| `anthropic/claude-3.5-haiku` | Anthropic | 200000 | sì | `ANTHROPIC_API_KEY` |
-| `anthropic/claude-3.5-sonnet` | Anthropic | 200000 | sì | `ANTHROPIC_API_KEY` |
-| `anthropic/claude-4-opus` | Anthropic | 200000 | sì | `ANTHROPIC_API_KEY` |
-| `google/gemini-2.0-flash` | Google | ~1000000 | sì | `GEMINI_API_KEY` |
-| `cohere/command-r-plus` | Cohere | ~128000 | sì | `COHERE_API_KEY` |
+LM Studio espone un'API HTTP OpenAI-compatibile. Non serve API key — la connessione è locale.
 
-### Registry — Modelli locali / self-hosted
+| Modello | Descrizione |
+|---------|-------------|
+| `lm-studio/<model-id>` | Qualsiasi modello caricato in LM Studio (es. `lm-studio/qwen2.5-7b-instruct`) |
 
-| Model string | Provider | `context_window` | Note |
-|---|---|---|---|
-| `ollama/<model>` | Ollama | dipende dal modello | `OLLAMA_BASE_URL` default `http://localhost:11434/v1` |
-| `llamacpp/<model>` | llama.cpp | dipende dal modello | `LLAMACPP_BASE_URL` default `http://localhost:8080/v1` |
-| `vllm/<model>` | vLLM | dipende dal modello | `VLLM_BASE_URL` default `http://localhost:8000/v1` |
-| `mock/<name>` | Mock | 4096 | Per test, nessuna chiave richiesta |
+L'utente **non** sceglie da un elenco predefinito: scrive il nome del modello nel TOML e il programma tenta la connessione. Se LM Studio non è in esecuzione o il modello non è caricato, viene restituito un errore chiaro.
+
+### Variabili d'ambiente
+
+| Variabile | Default | Descrizione |
+|-----------|---------|-------------|
+| `LMSTUDIO_BASE_URL` | `http://localhost:1234/v1` | Base URL dell'API |
 
 ### Abbreviazioni
 
 | Abbreviazione | Risolve a |
 |---|---|
-| `fast` | `openai/gpt-4o-mini` |
-| `cheap` | `openai/gpt-4o-mini` |
-| `quality` | `openai/gpt-4o` |
-| `local` | `ollama/llama3.1` |
-
-### Chiavi API e base URL
-
-| Provider | Variabile d'ambiente | Campo `UserSettings` |
-|---|---|---|
-| OpenAI | `OPENAI_API_KEY` | `api_keys.OPENAI_API_KEY` |
-| Anthropic | `ANTHROPIC_API_KEY` | `api_keys.ANTHROPIC_API_KEY` |
-| Google (Gemini) | `GEMINI_API_KEY` | `api_keys.GEMINI_API_KEY` |
-| Cohere | `COHERE_API_KEY` | `api_keys.COHERE_API_KEY` |
-| Ollama | `OLLAMA_BASE_URL` | `api_bases.OLLAMA` |
-| llama.cpp | `LLAMACPP_BASE_URL` | `api_bases.LLAMACPP` |
-| vLLM | `VLLM_BASE_URL` | `api_bases.VLLM` |
-
-Env var ha precedenza su `UserSettings`. Provider remoti senza chiave → errore all'istanziazione. Provider locali non raggiungibili → errore esplicito.
+| `local` | `lm-studio/auto` (primo modello caricato) |
 
 ### Configurazione per-componente nei TOML
 
@@ -102,8 +79,7 @@ Env var ha precedenza su `UserSettings`. Provider remoti senza chiave → errore
 ```toml
 [pre_retrieval]
 stages = [
-  { method = "multi_query", model = "openai/gpt-4o-mini", params = { n_queries = 3 } },
-  { method = "step_back",   model = "openai/gpt-4o-mini" },
+  { method = "multi_query", model = "lm-studio/qwen2.5-7b-instruct", params = { n_queries = 3 } },
 ]
 ```
 
@@ -111,23 +87,20 @@ stages = [
 ```toml
 [retrieval]
 query_mode = "hyde"
-hyde_model = "openai/gpt-4o-mini"
+hyde_model = "lm-studio/qwen2.5-7b-instruct"
 ```
 
 **Post-retrieval:**
 ```toml
 [post_retrieval]
 reranker = "llm"
-reranker_model = "openai/gpt-4o"
-compressor = "llm_chain_extract"
-compressor_model = "openai/gpt-4o-mini"
+reranker_model = "lm-studio/qwen2.5-7b-instruct"
 ```
 
-**GraphRAG (Fase 1C):**
+**GraphRAG:**
 ```toml
 [graph]
-extraction_model = "openai/gpt-4o"
-schema_model = "openai/gpt-4o"
+extraction_model = "lm-studio/qwen2.5-7b-instruct"
 ```
 
 ### Integrazione con `AppContext`
@@ -138,7 +111,18 @@ L'`AppContext` espone una factory:
 llm_factory: Callable[[str], LLMStrategy]  # model_name → strategy
 ```
 
-La factory: risolve il `model_name`, cerca chiave/base URL nell'env var, istanzia la strategy (con caching), solleva errore se modello non registrato.
+La factory: riconosce il prefisso `lm-studio/`, estrae il model ID, istanzia `LMStudioLLM` (con caching). Per i mock, istanzia `MockEchoLLM` o `MockFixedLLM`.
+
+### Gestione errori
+
+| Scenario | Comportamento |
+|---|---|
+| LM Studio non in esecuzione | `ConnectionError`: "LM Studio non raggiungibile a http://localhost:1234/v1. Avviare LM Studio e caricare un modello." |
+| Modello non trovato | `ValueError`: "Modello 'qwen2.5-7b-instruct' non caricato in LM Studio. Modelli disponibili: [...]" |
+| Stage pre-retrieval senza `model` | Fallback a `identity` con warning |
+| `query_mode = "hyde"` ma `hyde_model` assente | Errore esplicito |
+| Reranker/compressor `llm` ma modello assente | Fallback a `identity` con warning |
+| `[graph].extraction_model` assente | Errore esplicito |
 
 ### Fallback
 
@@ -148,15 +132,12 @@ La factory: risolve il `model_name`, cerca chiave/base URL nell'env var, istanzi
 | `query_mode = "hyde"` ma `hyde_model` assente | Errore esplicito |
 | Reranker/compressor `llm` ma modello assente | Fallback a `identity` con warning |
 | `[graph].extraction_model` assente + `on_chunk_change = "eager"` | Errore esplicito |
-| `[graph].retriever = "text2cypher"` ma modello assente | Errore esplicito |
-| Modello specificato ma chiave API mancante | Errore all'istanziazione |
 
 ### Test
 
 - **Mock LLM**: `mock/echo` restituisce l'ultimo messaggio utente; `mock/fixed` restituisce "Risposta mock".
-- **Registry test**: verifica metadati coerenti per tutti i modelli.
-- **Factory test**: `llm_factory(model)` restituisce strategy corretta; errore su modello sconosciuto; errore su chiave API mancante.
-- **Integration test** (opzionale): test con LLM reale su query golden. Marcatore `@pytest.mark.llm`.
+- **Factory test**: `llm_factory("lm-studio/test-model")` restituisce `LMStudioLLM`; errore su modello sconosciuto.
+- **Integration test** (opzionale): test con LM Studio reale. Marcatore `@pytest.mark.llm`.
 
 ## Dipendenze
 
