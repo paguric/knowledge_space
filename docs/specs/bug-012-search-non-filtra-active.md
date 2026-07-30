@@ -45,10 +45,10 @@ Se ci sono domini → la base deve appartenere ad almeno un dominio con `active=
 
 ### `_chunk_is_active(result, workspace)`
 
-1. Risale dal `chunk_id` al file tramite i metadati del risultato (il `chunk_id` contiene o referenzia il `file_id`).
-2. Trova il `FileEntry` nella base corrispondente: se `file.active=False` → scarta.
-3. Trova il `ChunkRef` nel file: se `chunk.active=False` → scarta.
-4. Se il percorso di risalita non trova il file o il chunk (dati inconsistenti), scarta per sicurezza.
+1. Parsa il `chunk_id` (formato: `"{base_name}::{file_id}::{i}"`) per estrarre `base_name` e `file_id`.
+2. Cerca il `FileEntry` in `workspace.bases[base_name].files` tramite `file_id`: se `file.active=False` → scarta.
+3. Cerca il `ChunkRef` nel file: se `chunk.active=False` → scarta.
+4. Se il parsing fallisce o il file/chunk non viene trovato, scarta per sicurezza.
 
 ### File da toccare
 
