@@ -13,6 +13,7 @@ import typer
 
 logger = logging.getLogger(__name__)
 
+from knowledge_base.knowledge_base_manager import chroma_collection_name
 from knowledge_space.cli.common import (
     get_context,
     get_workspace,
@@ -64,7 +65,11 @@ def search_command(
     chroma_client = None
     if chroma_path.exists():
         from chromadb import PersistentClient
+
         chroma_client = PersistentClient(path=str(chroma_path))
+        logger.info("Chroma path: %s", chroma_path)
+    else:
+        logger.warning("Directory Chroma non trovata: %s", chroma_path)
 
     all_results: list[dict] = []
 
@@ -88,15 +93,18 @@ def search_command(
             continue
 
         # Verifica che la collection esista
+        collection_name = chroma_collection_name(bname)
         try:
-            collection = chroma_client.get_collection(name=f"ks_{bname}")
+            collection = chroma_client.get_collection(name=collection_name)
         except Exception:
+            logger.info("Collection '%s' non trovata per base '%s', salto", collection_name, bname)
             continue
+
+        logger.info("Ricerca in base '%s' (collection=%s)...", bname, collection_name)
 
         # Costruisci SearchService con collection factory per questa base
         from knowledge_base.search_service import SearchService
 
-        collection_name = f"ks_{bname}"
         service = SearchService(
             llm_factory=ctx.llm_factory,
             embedder_factory=ctx.embedder_factory,

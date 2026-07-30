@@ -275,6 +275,7 @@ def _make_server(
             top_k = args.get("top_k", 5)
 
             from knowledge_base.base_config import BaseConfigLoader
+            from knowledge_base.knowledge_base_manager import chroma_collection_name
             from knowledge_base.search_service import SearchService
 
             config_loader = BaseConfigLoader(
@@ -307,7 +308,7 @@ def _make_server(
                     if not chroma_path.exists():
                         continue
                     client = PersistentClient(path=str(chroma_path))
-                    col = client.get_collection(name=f"ks_{bname}")
+                    col = client.get_collection(name=chroma_collection_name(bname))
 
                     query_vec = embedder.embed([query])[0]
                     res = col.query(
