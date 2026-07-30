@@ -40,7 +40,7 @@ service = SearchService(
     embedder_factory=ctx.embedder_factory,
     collection_factory=make_collection,
 )
-results = service.search(query, config=search_config, top_k=top_k)
+results = service.search(query, config=search_config)
 ```
 
 ### `BaseConfig.to_search_config()`
@@ -71,10 +71,6 @@ def to_search_config(self) -> SearchConfig:
 
 I filtri pre/post retrieval già implementati vanno mantenuti ma spostati PRIMA della chiamata a `service.search()` (filtro basi) e DOPO (filtro chunk). Il SearchService non sa nulla del Workspace — filtrare fuori è corretto.
 
-### CLI flag aggiuntivi
-
-Nessuno. L'unico override è `--top-k` (già esistente). I metodi si configurano nel TOML.
-
 ### File da toccare
 
 | File | Modifica |
@@ -86,6 +82,6 @@ Nessuno. L'unico override è `--top-k` (già esistente). I metodi si configurano
 ### Verifica
 
 ```bash
-ks search "machine learning" --top-k 5
+ks search "machine learning"
 # → risultati da tutte le basi attive, ordinati per score
 ```
