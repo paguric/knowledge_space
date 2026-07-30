@@ -11,7 +11,7 @@ Attualmente i provider LLM locali (ollama, llamacpp, vllm) sono registrati solo 
 
 Permettere all'utente di usare un LLM locale installato via [LM Studio](https://lmstudio.ai/). L'utente specifica il modello nel TOML di configurazione; il programma si connette all'API OpenAI-compatibile esposta da LM Studio (`http://localhost:1234/v1`).
 
-**Tutti gli altri provider (OpenAI, Anthropic, Google, Cohere, Ollama, llama.cpp, vLLM) vengono rimossi.** D'ora in poi l'unico provider supportato è LM Studio. Il registry, i metadati e le env var per i provider remoti e locali vengono eliminati dal codice.
+**Tutti gli altri provider LOCALI (Ollama, llama.cpp, vLLM) vengono rimossi.** I provider remoti (OpenAI, Anthropic, Google, Cohere) rimangono nei metadati ma senza implementazione concreta (già così oggi — `ProviderNotImplementedError`). Il registry, i metadati e le env var per i provider locali vengono eliminati dal codice.
 
 L'approccio è **general-purpose**: l'utente scrive il nome del modello nel TOML, il programma prova a connettersi. Se LM Studio non è in esecuzione o il modello non è caricato, errore chiaro.
 
@@ -161,12 +161,12 @@ class TestLMStudioLLM:
 
 ### Cosa fare OLTRE all'implementazione di LM Studio
 
-- **Rimuovere** `_REMOTE_MODELS`, `_LOCAL_MODELS`, `_register_remote()`, `_register_local()` da `strategies/llm.py`
-- **Rimuovere** `_API_KEY_ENV`, `_PROVIDER_DISPLAY`, `_BASE_URL_ENV` per i provider non più supportati
-- **Rimuovere** le abbreviazioni `fast`, `cheap`, `quality`
-- **Rimuovere** `MissingAPIKeyError` e `ProviderNotImplementedError`
-- **Mantenere** solo i mock (`mock/echo`, `mock/fixed`) e la nuova classe `LMStudioLLM`
-- **Aggiornare** `docs/75-llm.md` (già fatto dal master)
+- **Rimuovere** `_LOCAL_MODELS` e `_register_local()` da `strategies/llm.py`
+- **Rimuovere** `_BASE_URL_ENV` e `_DEFAULT_BASE_URLS` per ollama, llamacpp, vllm
+- **Rimuovere** `_PROVIDER_DISPLAY` per ollama, llamacpp, vllm
+- **Mantenere** `_REMOTE_MODELS`, `_register_remote()`, `_API_KEY_ENV` per OpenAI, Anthropic, Google, Cohere
+- **Mantenere** i mock (`mock/echo`, `mock/fixed`), le abbreviazioni (`fast`, `cheap`, `quality`, `local`), `MissingAPIKeyError`, `ProviderNotImplementedError`
+- **Aggiungere** la nuova classe `LMStudioLLM` e il riconoscimento del prefisso `lm-studio/` nella factory
 
 ### Cosa NON fare
 

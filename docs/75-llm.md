@@ -6,7 +6,7 @@
 
 Interfaccia comune per tutte le chiamate a LLM nel sistema: pre-retrieval (query rewriting), retrieval (HyDE), post-retrieval (reranker, compressor) e GraphRAG (entity extraction). Ogni componente sceglie il proprio modello nella configurazione TOML — nessuna sezione `[llm]` globale.
 
-**Unico provider supportato: [LM Studio](https://lmstudio.ai/)** — server locale con API OpenAI-compatibile su `http://localhost:1234/v1`. L'utente installa LM Studio, carica un modello, e lo referenzia nei TOML come `lm-studio/<model-id>`.
+**Provider supportati: LM Studio (locale) + provider remoti (OpenAI, Anthropic, Google, Cohere).** L'unico provider locale è LM Studio.
 
 ## Scelte
 
@@ -14,10 +14,10 @@ Interfaccia comune per tutte le chiamate a LLM nel sistema: pre-retrieval (query
 |---------|--------|
 | Interfaccia | `LLMStrategy` Protocol con `generate()` e `stream()` |
 | Config per-componente | Nessuna sezione `[llm]` globale; ogni componente sceglie il modello |
-| Provider | Solo LM Studio (API OpenAI-compatibile locale) |
+| Provider | Solo LM Studio (locale) + OpenAI, Anthropic, Google, Cohere (remoti) |
 | Mock per test | `mock/echo`, `mock/fixed` |
 | Abbreviazioni | `local` → `lm-studio/auto` (rileva automaticamente il primo modello caricato) |
-| Chiavi API | Nessuna (LM Studio è locale, no auth) |
+| Chiavi API | Env var per provider remoti; nessuna per LM Studio |
 | Fallback | identity + warning per pre/post-retrieval; errore per hyde/extraction |
 
 ## Dettagli
@@ -30,9 +30,9 @@ from typing import Protocol
 
 class LLMMetadata:
     model_name: str
-    provider: str                 # "lm-studio" | "mock"
+    provider: str                 # "lm-studio" | "openai" | "anthropic" | "google" | "cohere" | "mock"
     context_window: int
-    requires_api: bool            # sempre False per LM Studio
+    requires_api: bool            # True per provider remoti, False per LM Studio e mock
     supports_streaming: bool
     supports_json: bool
 
@@ -63,14 +63,46 @@ L'utente **non** sceglie da un elenco predefinito: scrive il nome del modello ne
 
 ### Variabili d'ambiente
 
+**LM Studio:**
+
 | Variabile | Default | Descrizione |
 |-----------|---------|-------------|
 | `LMSTUDIO_BASE_URL` | `http://localhost:1234/v1` | Base URL dell'API |
+
+**Provider remoti:**
+
+| Variabile | Provider | Descrizione |
+|-----------|----------|-------------|
+| `OPENAI_API_KEY` | OpenAI | API key |
+| `ANTHROPIC_API_KEY` | Anthropic | API key |
+| `GEMINI_API_KEY` | Google | API key |
+| `COHERE_API_KEY` | Cohere | API key |
+
+Env var ha precedenza su `UserSettings`. Provider remoti senza chiave → errore all'istanziazione.
+
+### Registry — Provider remoti
+
+| Model string | Provider | `context_window` | `supports_json` |
+|---|---|---|---|
+| `openai/gpt-4o` | OpenAI | 128000 | sì |
+| `openai/gpt-4o-mini` | OpenAI | 128000 | sì |
+| `openai/gpt-4.1` | OpenAI | ~1000000 | sì |
+| `openai/o3-mini` | OpenAI | 200000 | sì |
+| `anthropic/claude-3.5-haiku` | Anthropic | 200000 | sì |
+| `anthropic/claude-3.5-sonnet` | Anthropic | 200000 | sì |
+| `anthropic/claude-4-opus` | Anthropic | 200000 | sì |
+| `google/gemini-2.0-flash` | Google | ~1000000 | sì |
+| `cohere/command-r-plus` | Cohere | ~128000 | sì |
+
+> **Nota:** I provider remoti sono registrati nei metadati ma la loro implementazione concreta (classi `OpenAILLM`, `AnthropicLLM`, ecc.) arriverà in una feature successiva. Attualmente la factory solleva `ProviderNotImplementedError` se si tenta di usarli senza API key, o se la key è presente ma l'implementazione manca.
 
 ### Abbreviazioni
 
 | Abbreviazione | Risolve a |
 |---|---|
+| `fast` | `openai/gpt-4o-mini` |
+| `cheap` | `openai/gpt-4o-mini` |
+| `quality` | `openai/gpt-4o` |
 | `local` | `lm-studio/auto` (primo modello caricato) |
 
 ### Configurazione per-componente nei TOML
@@ -111,7 +143,7 @@ L'`AppContext` espone una factory:
 llm_factory: Callable[[str], LLMStrategy]  # model_name → strategy
 ```
 
-La factory: riconosce il prefisso `lm-studio/`, estrae il model ID, istanzia `LMStudioLLM` (con caching). Per i mock, istanzia `MockEchoLLM` o `MockFixedLLM`.
+La factory: riconosce il prefisso `lm-studio/`, estrae il model ID, istanzia `LMStudioLLM` (con caching). Per i provider remoti, convalida la API key e solleva `ProviderNotImplementedError` (le implementazioni reali arrivano dopo). Per i mock, istanzia `MockEchoLLM` o `MockFixedLLM`.
 
 ### Gestione errori
 
