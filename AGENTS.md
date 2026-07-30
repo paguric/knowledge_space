@@ -85,9 +85,7 @@ ks --help
 - Ask the master for clarification rather than guessing.
 - Summarize findings before writing code: "Here is what I found, here is what I plan to change."
 
----
-
-### systemd service ks-serve
+## systemd service ks-serve
 
 Percorso: `~/.config/systemd/user/ks-serve.service`
 
@@ -104,13 +102,3 @@ RestartSec=5
 1. `cd ~/università/as25-26-sp/progtes/knowledge_space && uv sync` — ricompila i `.pth` e sincronizza i package
 2. `systemctl --user daemon-reload` — ricarica la configurazione systemd
 3. `systemctl --user restart ks-serve` — riavvia con il codice nuovo
-
-> **Senza `uv sync` il servizio continua a usare il bytecode/linking vecchio** (i package sono `.pth`-linked alla source tree, ma è buona norma ricompilare prima di riavviare).
-
-### Convenzioni stabilite durante questa sessione
-
-- Il master **non scrive codice** — delega sempre a sub-agenti.
-- Sub-agenti leggono `AGENTS.md`, `docs/00a-repo-context.md` e lo spec assegnato prima di iniziare.
-- Spec files vanno in `docs/specs/*.md`, creati dal master, mai modificati dai sub-agenti.
-- I sub-agenti comunicano al master: branch, file cambiati, test risultati, domande aperte.
-- Comandi `ketch` richiedono `/skill:ketch` caricato prima.
