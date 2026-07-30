@@ -232,6 +232,21 @@ def _autodetect_scope(ws: Any) -> Optional[str]:
         return None
 
 
+def _resolve_base_scope(base: str, ws: Any) -> str:
+    """Risolve una base specificata con -b nel nome esatto in ``ws.bases``.
+
+    Supporta sia nomi semplici (``"papers1"``) che path relativi
+    (``"Paper Accademici/papers1"``), cercando prima la chiave esatta
+    e poi facendo fallback a ``normalize_base_name``.
+    """
+    if base in ws.bases:
+        return base
+    normalized = normalize_base_name(base)
+    if normalized in ws.bases:
+        return normalized
+    return normalized  # sarà poi validato dal chiamante con messaggio di errore
+
+
 def _resolve_scope(
     scope: str,
     ws: Any,
@@ -247,14 +262,19 @@ def _resolve_scope(
     if scope == "defaults":
         path = ws.path / dot / "defaults.toml"
         return path, "defaults.toml"
-    # Scope = nome base
+    # Prova prima come chiave esatta (supporta basi nidificate "Paper/papers1")
+    if scope in ws.bases:
+        kb = ws.bases[scope]
+        path = kb.path / dot / "base.toml"
+        return path, f"base.toml ({scope})"
+    # Fallback: normalizza (toglie trailing slash, ecc.)
     base_name = normalize_base_name(scope)
-    if base_name not in ws.bases:
-        typer.echo(f"Base non trovata: {base_name}", err=True)
-        raise typer.Exit(1)
-    kb = ws.bases[base_name]
-    path = kb.path / dot / "base.toml"
-    return path, f"base.toml ({base_name})"
+    if base_name in ws.bases:
+        kb = ws.bases[base_name]
+        path = kb.path / dot / "base.toml"
+        return path, f"base.toml ({base_name})"
+    typer.echo(f"Base non trovata: {base_name}", err=True)
+    raise typer.Exit(1)
 
 
 def _ensure_toml_exists(scope: str, ws: Any, ctx: Any) -> Path:
@@ -557,7 +577,7 @@ def set(  # noqa: A001 — ombreggia la builtin, ma è il nome CLI voluto
 
     # Determina scope: -b esplicito → base, altrimenti auto-rileva
     if base:
-        scope = normalize_base_name(base)
+        scope = _resolve_base_scope(base, ws)
         if scope not in ws.bases:
             typer.echo(f"Base non trovata: {scope}", err=True)
             raise typer.Exit(1)
@@ -658,7 +678,7 @@ def unset(
 
     # Determina scope
     if base:
-        scope = normalize_base_name(base)
+        scope = _resolve_base_scope(base, ws)
         if scope not in ws.bases:
             typer.echo(f"Base non trovata: {scope}", err=True)
             raise typer.Exit(1)
@@ -761,7 +781,7 @@ def edit_cmd(
 
     # Determina scope
     if base:
-        scope = normalize_base_name(base)
+        scope = _resolve_base_scope(base, ws)
         if scope not in ws.bases:
             typer.echo(f"Base non trovata: {scope}", err=True)
             raise typer.Exit(1)
