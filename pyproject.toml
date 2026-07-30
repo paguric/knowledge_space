@@ -13,6 +13,7 @@ dependencies = [
     "watchdog>=6.0.0",
     "typer>=0.15.0",
     "mcp>=1.0.0",
+    "rank-bm25>=0.2.2",
 ]
 
 [tool.uv.workspace]
