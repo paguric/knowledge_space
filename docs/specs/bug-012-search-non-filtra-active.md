@@ -7,6 +7,11 @@
 
 `SearchService.search()` e le strategy di retrieval non filtrano per `active`. Chroma restituisce tutto.
 
+File coinvolti:
+- `packages/knowledge-base/src/knowledge_base/search_service.py` — orchestratore, nessun filtro active
+- `packages/knowledge-base/src/knowledge_base/strategies/retrieval.py` — `DenseRetrieval.search()`, `SparseRetrieval.search()`, `HybridRetrieval` — query diretta a Chroma
+- `packages/knowledge-base/src/knowledge_base/models.py` — `KnowledgeBase.active`, `FileEntry.active`, `ChunkRef.active`, `Domain.active`
+
 ## Fix (KISS)
 
 Due soli controlli:
