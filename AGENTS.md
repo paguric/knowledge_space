@@ -9,7 +9,7 @@
 - **Goal:** Document ingestion, indexing, and retrieval pipeline with pluggable strategies for ingestion, chunking, embedding, retrieval, and LLM.
 - **Repo type:** UV monorepo with 3 packages:
   - `packages/knowledge-base/` — pure library (models, persistence, managers, strategies).
-  - `packages/mcp-server/` — MCP server adapter (future).
+  - `packages/mcp-server/` — MCP server adapter.
   - `src/knowledge_space/` — app layer (CLI, bootstrap, runtime paths, logging).
 - **Primary sources:** `README.md`, `docs/00a-repo-context.md`, `docs/roadmap.md`.
 
@@ -49,7 +49,7 @@ ks --help
 
 ## Git workflow
 
-- Lavora sul branch `dev`. Non commettere mai direttamente su `main`.
+- Work on the `dev` branch. Never commit directly to `main`.
 - Commit-message prefix: `fix:`, `feat:`, `docs:`, `test:`, `chore:` (repo style from `git log`).
 - Include tests for every code change.
 - Do not push without explicit authorization.
@@ -78,25 +78,25 @@ ks --help
 - Each sub-agent receives a `docs/specs/*.md` plan and must read `docs/00a-repo-context.md` before starting.
 - Sub-agents report back branch name, files changed, test results, and open questions.
 
-### Struttura dei piani (KISS)
+### Spec structure (KISS)
 
-I piani del master seguono la metodologia **KISS** (keep it simple, stupid). Niente prosa lunga, niente analisi di alternative, niente discussioni architetturali. Il sotto-agente deve poter leggere il piano in 30 secondi e capire esattamente cosa fare.
+Master specs follow the **KISS** methodology (keep it simple, stupid). No long prose, no analysis of alternatives, no architectural discussions. The sub-agent must be able to read the spec in 30 seconds and know exactly what to do.
 
-Struttura fissa:
+Fixed structure:
 
-1. **Titolo** — `Bug XXX — descrizione` o `Feature XXX — descrizione`
-2. **Metadata** — autore, tipo, stato, priorità (una riga)
-3. **Causa** (per i bug) — root cause in 1-2 frasi + link ai file coinvolti
-4. **Obiettivo** (per le feature) — cosa deve fare l'utente finale
-5. **Fix / Implementazione** — approccio in 2-3 punti numerati, con snippet di codice se aiutano
-6. **File da toccare** — tabella: path → modifica
-7. **Verifica** — comandi bash per testare che il fix funzioni
+1. **Title** — `Bug XXX — description` or `Feature XXX — description`
+2. **Metadata** — author, type, status, priority (one line)
+3. **Cause** (for bugs) — root cause in 1-2 sentences + links to involved files
+4. **Goal** (for features) — what the end user should be able to do
+5. **Fix / Implementation** — approach in 2-3 numbered points, with code snippets if helpful
+6. **Files to touch** — table: path → change
+7. **Verification** — bash commands to test the fix works
 
-Regole:
-- Niente sezioni "Contesto" o "Panoramica" — il sotto-agente legge `docs/00a-repo-context.md` per quello.
-- Niente "Opzione A vs Opzione B" — il master ha già scelto.
-- Gli snippet di codice sono indicativi (pseudo-code), non devono compilare.
-- Massimo 60 righe. Se serve di più, il piano è troppo complesso: spezzarlo.
+Rules:
+- No "Context" or "Overview" sections — the sub-agent reads `docs/00a-repo-context.md` for that.
+- No "Option A vs Option B" — the master already chose.
+- Code snippets are indicative (pseudo-code), they don't need to compile.
+- Maximum 60 lines. If you need more, the spec is too complex: split it.
 
 ## Communication
 
@@ -107,7 +107,7 @@ Regole:
 
 ## systemd service ks-serve
 
-Percorso: `~/.config/systemd/user/ks-serve.service`
+Path: `~/.config/systemd/user/ks-serve.service`
 
 ```ini
 [Service]
@@ -116,9 +116,11 @@ Restart=always
 RestartSec=5
 ```
 
-**Nota:** NON mettere `Environment=XDG_STATE_HOME=...` nel service — il servizio deve usare il default `~/.local/state/KnowledgeSpace/`.
+**Note:** do NOT set `Environment=XDG_STATE_HOME=...` in the service — it must use the default `~/.local/state/KnowledgeSpace/`.
 
-**Dopo ogni modifica al codice (obbligatorio in questo ordine):**
-1. `cd ~/università/as25-26-sp/progtes/knowledge_space && uv sync` — ricompila i `.pth` e sincronizza i package
-2. `systemctl --user daemon-reload` — ricarica la configurazione systemd
-3. `systemctl --user restart ks-serve` — riavvia con il codice nuovo
+**After every code change (mandatory, in this order):**
+1. `cd ~/università/as25-26-sp/progtes/knowledge_space && uv sync` — rebuild `.pth` and sync packages
+2. `systemctl --user daemon-reload` — reload systemd configuration
+3. `systemctl --user restart ks-serve` — restart with the new code
+
+> **Without `uv sync` the service keeps using the old bytecode/linking** (packages are `.pth`-linked to the source tree, but it's best practice to rebuild before restarting).
