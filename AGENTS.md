@@ -78,6 +78,26 @@ ks --help
 - Each sub-agent receives a `docs/specs/*.md` plan and must read `docs/00a-repo-context.md` before starting.
 - Sub-agents report back branch name, files changed, test results, and open questions.
 
+### Struttura dei piani (KISS)
+
+I piani del master seguono la metodologia **KISS** (keep it simple, stupid). Niente prosa lunga, niente analisi di alternative, niente discussioni architetturali. Il sotto-agente deve poter leggere il piano in 30 secondi e capire esattamente cosa fare.
+
+Struttura fissa:
+
+1. **Titolo** — `Bug XXX — descrizione` o `Feature XXX — descrizione`
+2. **Metadata** — autore, tipo, stato, priorità (una riga)
+3. **Causa** (per i bug) — root cause in 1-2 frasi + link ai file coinvolti
+4. **Obiettivo** (per le feature) — cosa deve fare l'utente finale
+5. **Fix / Implementazione** — approccio in 2-3 punti numerati, con snippet di codice se aiutano
+6. **File da toccare** — tabella: path → modifica
+7. **Verifica** — comandi bash per testare che il fix funzioni
+
+Regole:
+- Niente sezioni "Contesto" o "Panoramica" — il sotto-agente legge `docs/00a-repo-context.md` per quello.
+- Niente "Opzione A vs Opzione B" — il master ha già scelto.
+- Gli snippet di codice sono indicativi (pseudo-code), non devono compilare.
+- Massimo 60 righe. Se serve di più, il piano è troppo complesso: spezzarlo.
+
 ## Communication
 
 - When joining a fresh session, read this file first, then read `docs/00a-repo-context.md`.
