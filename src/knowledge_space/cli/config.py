@@ -142,6 +142,39 @@ def _key_autocomplete(
     return [(k, "") for k in keys if k.startswith(incomplete)]
 
 
+# Valori hardcodati per autocomplete (chiave → lista valori)
+_VALUE_CHOICES: Dict[str, List[str]] = {
+    "ingestion.library": ["docling", "pymupdf4llm", "markitdown"],
+    "chunking.method": ["recursive", "semantic", "sliding"],
+    "retrieval.method": ["dense", "sparse", "hybrid"],
+    "retrieval.query_mode": ["original", "hyde"],
+    "pre_retrieval.stages.method": ["identity", "multi_query", "step_back", "least_to_most"],
+    "post_retrieval.method": [
+        "identity", "relevance", "mmr", "cross_encoder",
+        "llm", "llm_chain_extract", "selective_context",
+    ],
+    "graph.on_chunk_change": ["lazy", "eager"],
+    "graph.retriever": ["hybrid_cypher"],
+    "graph.schema_mode": ["llm"],
+    "graph.resolver": ["exact", "embedding"],
+}
+
+
+def _value_autocomplete(
+    ctx: typer.Context,
+    args: list[str],
+    incomplete: str,
+) -> list[tuple[str, str]]:
+    """Autocomplete per l'argomento value in config set.
+
+    Suggerisce valori hardcodati se la chiave è nota, altrimenti true/false.
+    """
+    # Cerca la chiave tra gli argomenti già inseriti (args[0] è scope, args[1] è key)
+    key = args[1] if len(args) >= 2 else ""
+    choices = _VALUE_CHOICES.get(key, ["true", "false"])
+    return [(v, "") for v in choices if v.startswith(incomplete)]
+
+
 # Precomputa la tabella chiavi per l'help (evita valutazione lazy nella docstring)
 _KEYS_HELP_TABLE: str = _build_keys_help()
 
@@ -166,6 +199,26 @@ def _detect_trigger(key: str) -> Optional[str]:
 # --------------------------------------------------------------------------- #
 # Helper scope
 # --------------------------------------------------------------------------- #
+
+
+def _autodetect_scope(ws: Any) -> Optional[str]:
+    """Rileva automaticamente lo scope in base al cwd.
+
+    - Se il cwd è dentro una base registrata → restituisce il nome base.
+    - Se il cwd è dentro il workspace (ma non in una base) → ``"defaults"``.
+    - Altrimenti → ``None``.
+    """
+    base = resolve_base_from_cwd(ws)
+    if base is not None:
+        return base
+    # Verifica se siamo dentro il workspace
+    cwd = Path.cwd()
+    ws_root = Path(ws.path).resolve()
+    try:
+        cwd.relative_to(ws_root)
+        return "defaults"
+    except ValueError:
+        return None
 
 
 def _resolve_scope(
@@ -469,21 +522,43 @@ def init(
 
 
 @app.command(
-    help=f"Imposta una preferenza nel file TOML (defaults.toml o base.toml).\n\nChiavi disponibili:\n\n{_KEYS_HELP_TABLE}",
+    help=f"Imposta una preferenza nel file TOML (defaults.toml o base.toml).\n\n"
+    f"SCOPE: auto-rilevato se omesso (cwd dentro una base → base.toml, "
+    f"cwd dentro un workspace → defaults.toml). Altrimenti specificare "
+    f"'defaults' o il nome di una base.\n\n"
+    f"Chiavi disponibili:\n\n{_KEYS_HELP_TABLE}",
 )
 def set(  # noqa: A001 — ombreggia la builtin, ma è il nome CLI voluto
-    scope: str = typer.Argument(help="Scope: 'defaults' o nome di una base."),
+    scope: Optional[str] = typer.Argument(
+        None,
+        help="Scope: 'defaults', nome di una base, o omesso per auto-rilevare.",
+    ),
     key: str = typer.Argument(
         help="Chiave dotted (es. chunking.chunk_size).",
         autocompletion=_key_autocomplete,
     ),
-    value: str = typer.Argument(help="Valore da assegnare."),
+    value: str = typer.Argument(
+        help="Valore da assegnare.",
+        autocompletion=_value_autocomplete,
+    ),
     workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
 ) -> None:
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
     logger.info("Config set: scope=%s, key=%s, value=%s", scope, key, value)
+
+    # Auto-rileva scope se omesso
+    if scope is None:
+        scope = _autodetect_scope(ws)
+        if scope is None:
+            typer.echo(
+                "Errore: impossibile rilevare lo scope. "
+                "Specificare 'defaults' o un nome base, oppure usare -w.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        logger.info("Scope auto-rilevato: %s", scope)
 
     # Valida che la chiave esista nel modello BaseConfig
     _validate_key(key)
@@ -544,7 +619,10 @@ def set(  # noqa: A001 — ombreggia la builtin, ma è il nome CLI voluto
 
 @app.command()
 def unset(
-    scope: str = typer.Argument(help="Scope: 'defaults' o nome di una base."),
+    scope: Optional[str] = typer.Argument(
+        None,
+        help="Scope: 'defaults', nome di una base, o omesso per auto-rilevare.",
+    ),
     key: str = typer.Argument(
         help="Chiave dotted da rimuovere (es. chunking.chunk_size).",
         autocompletion=_key_autocomplete,
@@ -556,6 +634,18 @@ def unset(
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
     logger.info("Config unset: scope=%s, key=%s", scope, key)
+
+    # Auto-rileva scope se omesso
+    if scope is None:
+        scope = _autodetect_scope(ws)
+        if scope is None:
+            typer.echo(
+                "Errore: impossibile rilevare lo scope. "
+                "Specificare 'defaults' o un nome base, oppure usare -w.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        logger.info("Scope auto-rilevato: %s", scope)
 
     # Per unset: valida solo il formato (dotted key), non l'esistenza nel modello
     parts = key.split(".")
@@ -634,7 +724,10 @@ def unset(
 
 @app.command("edit")
 def edit_cmd(
-    scope: str = typer.Argument(help="Scope: 'defaults' o nome di una base."),
+    scope: Optional[str] = typer.Argument(
+        None,
+        help="Scope: 'defaults', nome di una base, o omesso per auto-rilevare.",
+    ),
     workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
 ) -> None:
@@ -642,6 +735,18 @@ def edit_cmd(
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
     logger.info("Config edit: scope=%s", scope)
+
+    # Auto-rileva scope se omesso
+    if scope is None:
+        scope = _autodetect_scope(ws)
+        if scope is None:
+            typer.echo(
+                "Errore: impossibile rilevare lo scope. "
+                "Specificare 'defaults' o un nome base, oppure usare -w.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        logger.info("Scope auto-rilevato: %s", scope)
 
     # Assicurati che il file esista
     toml_path, label = _resolve_scope(scope, ws, ctx)
