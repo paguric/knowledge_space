@@ -283,7 +283,7 @@ def _ensure_toml_exists(scope: str, ws: Any, ctx: Any) -> Path:
     if scope == "defaults":
         path, _ = ensure_defaults_toml(ws.path, dot)
     else:
-        base_name = normalize_base_name(scope)
+        base_name = _resolve_base_scope(scope, ws)
         kb = ws.bases[base_name]
         path, _ = ensure_base_toml(kb.path, dot)
     return path
