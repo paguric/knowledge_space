@@ -203,6 +203,7 @@ class SearchService:
         query: str,
         config: Optional[SearchConfig] = None,
         top_k: int = 10,
+        kb: Any = None,
     ) -> List[RetrievalResult]:
         """Esegue la pipeline di ricerca completa.
 
@@ -210,6 +211,8 @@ class SearchService:
             query: query dell'utente.
             config: configurazione della ricerca. Se ``None``, usa i default.
             top_k: numero massimo di risultati da restituire.
+            kb: opzionale :class:`KnowledgeBase` per filtrare chunk/file
+                disattivati prima di restituire i risultati.
 
         Returns:
             Lista di :class:`RetrievalResult` ordinati per rilevanza.
@@ -245,6 +248,11 @@ class SearchService:
         )
 
         logger.info("Ricerca completata: %d risultati", len(final_results))
+
+        # Filtro post-retrieval: chunk/file disattivati
+        if kb is not None:
+            final_results = filter_active_chunks(final_results, kb)
+
         return final_results
 
     def _run_pre_retrieval_stage(

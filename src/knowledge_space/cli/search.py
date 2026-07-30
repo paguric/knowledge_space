@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 import typer
 
@@ -36,36 +36,6 @@ def _in_active_domain(base_name: str, domains: List[Any]) -> bool:
         if d.active and base_name in d.base_names:
             return True
     return False
-
-
-def _chunk_is_active(chunk_id: str, base_name: str, kb: Any) -> bool:
-    """``True`` se il chunk e il suo file sono entrambi attivi.
-
-    Parsa ``chunk_id`` (formato ``"{base_name}::{file_id}::{i}"``) per
-    risalire a :class:`FileEntry` e :class:`ChunkRef`."""
-    # Estrai file_id e indice dal chunk_id
-    parts = chunk_id.rsplit("::", 2)
-    if len(parts) != 3:
-        return False
-    _, file_id_str, index_str = parts
-    try:
-        idx = int(index_str)
-    except ValueError:
-        return False
-
-    # Cerca FileEntry per file_id (le chiavi di kb.files sono filename, non file_id)
-    file_entry = None
-    for fe in kb.files.values():
-        if fe.file_id == file_id_str:
-            file_entry = fe
-            break
-    if file_entry is None or not file_entry.active:
-        return False
-
-    # Controlla ChunkRef
-    if idx >= len(file_entry.chunks):
-        return False
-    return file_entry.chunks[idx].active
 
 
 # --------------------------------------------------------------------------- #
@@ -160,12 +130,6 @@ def search_command(
                     metadata = results["metadatas"][0][i] if results["metadatas"] else {}
                     distance = results["distances"][0][i] if results["distances"] else 0.0
                     score = 1.0 - distance
-
-                    # --- Filtro post-retrieval: chunk/file non attivi ---
-                    if not _chunk_is_active(chunk_id, bname, kb):
-                        logger.debug("Chunk '%s' disattivato, salto", chunk_id)
-                        continue
-                    # --- Fine filtro post-retrieval ---
 
                     all_results.append({
                         "chunk_id": chunk_id,

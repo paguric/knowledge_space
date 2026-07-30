@@ -69,7 +69,9 @@ def to_search_config(self) -> SearchConfig:
 
 ### Filtro active (già fatto)
 
-I filtri pre/post retrieval già implementati vanno mantenuti ma spostati PRIMA della chiamata a `service.search()` (filtro basi) e DOPO (filtro chunk). Il SearchService non sa nulla del Workspace — filtrare fuori è corretto.
+I filtri active vanno **dentro** `SearchService`, non fuori. Così CLI, REST e MCP ricevono tutti risultati già filtrati senza duplicare la logica.
+
+`SearchService.search()` accetta un parametro opzionale `kb` (:class:`KnowledgeBase`). Se presente, applica `filter_active_chunks()` prima di restituire i risultati. Il filtro basi/domini (pre-retrieval) resta nel CLI perché richiede la vista completa del Workspace.
 
 ### File da toccare
 
