@@ -1,6 +1,9 @@
 # Test data
 **/tests/data/
 
+# Demo scripts (internal, not committed)
+demo/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
