@@ -160,6 +160,41 @@ class BaseConfig(BaseModel):
         return base.model_copy(update=updates)
 
     # .................................................................... #
+    # Conversione in SearchConfig (feature-006)
+    # .................................................................... #
+
+    def to_search_config(self) -> Any:
+        """Converte le sezioni ``[pre_retrieval]``, ``[retrieval]`` e
+        ``[post_retrieval]`` nei corrispondenti oggetti di :class:`SearchConfig`.
+
+        Restituisce un'istanza di ``search_service.SearchConfig``.
+        """
+        from knowledge_base.search_service import (
+            PostRetrievalConfig as SrvPostRetrievalConfig,
+            PreRetrievalStageConfig as SrvPreRetrievalStageConfig,
+            RetrievalConfig as SrvRetrievalConfig,
+            SearchConfig,
+        )
+
+        stages = [
+            SrvPreRetrievalStageConfig(method=s.method, params=dict(s.params))
+            for s in self.pre_retrieval.stages
+        ]
+        return SearchConfig(
+            pre_retrieval=stages or [SrvPreRetrievalStageConfig()],
+            retrieval=SrvRetrievalConfig(
+                method=self.retrieval.method,
+                query_mode=self.retrieval.query_mode,
+                top_k=self.retrieval.top_k,
+                params=dict(self.retrieval.params),
+            ),
+            post_retrieval=SrvPostRetrievalConfig(
+                method=self.post_retrieval.method,
+                params=dict(self.post_retrieval.params),
+            ),
+        )
+
+    # .................................................................... #
     # Caricamento da TOML
     # .................................................................... #
 

@@ -1,8 +1,7 @@
 """Comando search.
 
-``ks search <query>`` — ricerca vettoriale
-``ks search <query> --base <name>`` — filtra per base
-``ks search <query> --top-k N`` — override risultati
+``ks search <query>`` — ricerca vettoriale su tutte le basi attive
+``ks search <query> --json`` — output JSON
 """
 
 from __future__ import annotations
@@ -18,12 +17,11 @@ from knowledge_space.cli.common import (
     get_context,
     get_workspace,
     output_json,
-    resolve_base_name,
 )
 
 
 # --------------------------------------------------------------------------- #
-# Helpers per il filtro active
+# Helpers
 # --------------------------------------------------------------------------- #
 
 
@@ -45,106 +43,85 @@ def _in_active_domain(base_name: str, domains: List[Any]) -> bool:
 
 def search_command(
     query: str = typer.Argument(help="Query di ricerca."),
-    base_name: Optional[str] = typer.Option(None, "--base", "-b", help="Filtra per base."),
-    top_k: int = typer.Option(10, "--top-k", "-k", help="Numero massimo di risultati."),
-    workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
     json_output: bool = typer.Option(False, "--json", help="Output JSON."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
+    workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
 ) -> None:
     """Esegue una ricerca vettoriale sulle basi del workspace."""
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
-    logger.info("Ricerca: query='%s', base=%s, top_k=%d", query, base_name, top_k)
+    logger.info("Ricerca: query='%s'", query)
 
-    # Verifica che esistano basi
     if not ws.bases:
         logger.warning("Nessuna base nel workspace per la ricerca")
         typer.echo("Nessuna base nel workspace. Aggiungi una base prima di cercare.", err=True)
         raise typer.Exit(1)
 
-    # Costruisci la collection factory
-    bases_to_search = {}
-    if base_name:
-        base_name = resolve_base_name(base_name, workspace=ws)
-        if base_name not in ws.bases:
-            typer.echo(f"Base non trovata: {base_name}", err=True)
-            raise typer.Exit(1)
-        bases_to_search[base_name] = ws.bases[base_name]
-    else:
-        bases_to_search = ws.bases
+    config_loader = ctx.base_config_loader_factory(ws.path)
+    chroma_path = ws.path / ctx.runtime_paths.dot_folder_name / "chroma"
 
-    # Raccogli tutti i risultati da tutte le basi
-    all_results = []
+    # Unico client Chroma condiviso tra tutte le basi
+    chroma_client = None
+    if chroma_path.exists():
+        from chromadb import PersistentClient
+        chroma_client = PersistentClient(path=str(chroma_path))
 
-    for bname, kb in bases_to_search.items():
-        # --- Filtro pre-retrieval: basi e domini non attivi ---
+    all_results: list[dict] = []
+
+    for bname, kb in ws.bases.items():
+        # --- Filtro pre-retrieval ---
         if not kb.active:
             logger.debug("Base '%s' disattivata, salto", bname)
             continue
         if not _in_active_domain(bname, ws.domains):
             logger.debug("Base '%s' non in un dominio attivo, salto", bname)
             continue
-        # --- Fine filtro pre-retrieval ---
-        if not kb.files:
+
+        if not kb.files or chroma_client is None:
             continue
 
-        # Carica config per ottenere il modello embedding
+        # Carica config TOML
         try:
-            config_loader = ctx.base_config_loader_factory(ws.path)
-            config = config_loader.load(bname)
-            model_name = config.embedding.model
-        except Exception:
-            model_name = "sentence-transformers/all-mpnet-base-v2"
-
-        # Crea embedder e collection
-        try:
-            embedder = ctx.embedder_factory(model_name)
+            base_config = config_loader.load(bname)
         except Exception as exc:
-            typer.echo(f"Warning: embedder non disponibile per {bname}: {exc}", err=True)
+            logger.warning("Config non caricabile per %s: %s", bname, exc)
             continue
 
-        # Accedi alla collection Chroma
+        # Verifica che la collection esista
         try:
-            from chromadb import PersistentClient
-
-            chroma_path = ws.path / ctx.runtime_paths.dot_folder_name / "chroma"
-            if not chroma_path.exists():
-                continue
-            client = PersistentClient(path=str(chroma_path))
-            collection = client.get_collection(name=f"ks_{bname}")
+            collection = chroma_client.get_collection(name=f"ks_{bname}")
         except Exception:
             continue
 
-        # Esegui ricerca
+        # Costruisci SearchService con collection factory per questa base
+        from knowledge_base.search_service import SearchService
+
+        collection_name = f"ks_{bname}"
+        service = SearchService(
+            llm_factory=ctx.llm_factory,
+            embedder_factory=ctx.embedder_factory,
+            collection_factory=lambda cn=collection_name: chroma_client.get_collection(name=cn),
+        )
+
         try:
-            query_vector = embedder.embed([query])[0]
-            results = collection.query(
-                query_embeddings=[query_vector],
-                n_results=min(top_k, collection.count()),
-                include=["documents", "metadatas", "distances"],
+            results = service.search(
+                query, config=base_config.to_search_config(), kb=kb
             )
-
-            if results and results["ids"] and results["ids"][0]:
-                for i, chunk_id in enumerate(results["ids"][0]):
-                    document = results["documents"][0][i] if results["documents"] else ""
-                    metadata = results["metadatas"][0][i] if results["metadatas"] else {}
-                    distance = results["distances"][0][i] if results["distances"] else 0.0
-                    score = 1.0 - distance
-
-                    all_results.append({
-                        "chunk_id": chunk_id,
-                        "base": bname,
-                        "file_name": metadata.get("file_name", ""),
-                        "score": round(score, 4),
-                        "text": document[:200] if document else "",
-                    })
         except Exception as exc:
             logger.error("Ricerca fallita per base %s: %s", bname, exc)
             typer.echo(f"Warning: ricerca fallita per {bname}: {exc}", err=True)
+            continue
 
-    # Ordina per score e limita
+        for r in results:
+            all_results.append({
+                "chunk_id": r.chunk_id,
+                "base": bname,
+                "file_name": r.metadata.get("file_name", ""),
+                "score": round(r.score, 4),
+                "text": r.text[:200] if r.text else "",
+            })
+
     all_results.sort(key=lambda r: r["score"], reverse=True)
-    all_results = all_results[:top_k]
     logger.info("Ricerca completata: %d risultati", len(all_results))
 
     if json_output:

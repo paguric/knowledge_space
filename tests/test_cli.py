@@ -691,21 +691,18 @@ class TestSearch:
             app, ["search", "test query", "--workspace", str(workspace_dir)]
         )
         assert result.exit_code == 1
-        assert "nessuna base" in result.output.lower() or "errore" in result.output.lower()
+        assert "nessuna base" in result.output.lower()
 
-    def test_search_base_not_found(self, workspace_dir: Path, base_dir: Path):
+    def test_search_with_bases(self, workspace_dir: Path, base_dir: Path):
+        """La ricerca su basi senza file indicizzati restituisce 0 risultati."""
         runner.invoke(
             app, ["base", "add", str(base_dir), "--workspace", str(workspace_dir)]
         )
         result = runner.invoke(
-            app,
-            [
-                "search", "test",
-                "--base", "nonexistent",
-                "--workspace", str(workspace_dir),
-            ],
+            app, ["search", "test", "--workspace", str(workspace_dir)]
         )
-        assert result.exit_code == 1
+        assert result.exit_code == 0
+        assert "Nessun risultato" in result.output
 
 
 # --------------------------------------------------------------------------- #
