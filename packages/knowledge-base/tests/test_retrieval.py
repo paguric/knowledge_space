@@ -1164,3 +1164,131 @@ class TestBaseConfigRetrievalSections:
         assert config.retrieval.method == "dense"
         assert config.retrieval.top_k == 10
         assert config.post_retrieval.method == "identity"
+
+
+# --------------------------------------------------------------------------- #
+# Active filter helpers (Bug-012)
+# --------------------------------------------------------------------------- #
+
+
+class TestIsBaseSearchable:
+    """Test per ``is_base_searchable``."""
+
+    def test_base_attiva_senza_domini(self):
+        from knowledge_base.models import KnowledgeBase
+        from knowledge_base.search_service import is_base_searchable
+
+        kb = KnowledgeBase(path="/tmp/test")
+        assert is_base_searchable("Test", kb, []) is True
+
+    def test_base_disattivata(self):
+        from knowledge_base.models import KnowledgeBase
+        from knowledge_base.search_service import is_base_searchable
+
+        kb = KnowledgeBase(path="/tmp/test", active=False)
+        assert is_base_searchable("Test", kb, []) is False
+
+    def test_base_in_dominio_attivo(self):
+        from knowledge_base.models import Domain, KnowledgeBase
+        from knowledge_base.search_service import is_base_searchable
+
+        kb = KnowledgeBase(path="/tmp/test")
+        domains = [Domain(name="D1", active=True, base_names=["Test"])]
+        assert is_base_searchable("Test", kb, domains) is True
+
+    def test_base_in_dominio_disattivato(self):
+        from knowledge_base.models import Domain, KnowledgeBase
+        from knowledge_base.search_service import is_base_searchable
+
+        kb = KnowledgeBase(path="/tmp/test")
+        domains = [Domain(name="D1", active=False, base_names=["Test"])]
+        assert is_base_searchable("Test", kb, domains) is False
+
+    def test_base_non_in_alcun_dominio(self):
+        from knowledge_base.models import Domain, KnowledgeBase
+        from knowledge_base.search_service import is_base_searchable
+
+        kb = KnowledgeBase(path="/tmp/test")
+        domains = [Domain(name="D1", active=True, base_names=["Altro"])]
+        assert is_base_searchable("Test", kb, domains) is False
+
+
+class TestFilterActiveChunks:
+    """Test per ``filter_active_chunks``."""
+
+    def test_chunk_attivo_non_filtrato(self):
+        from knowledge_base.models import ChunkRef, FileEntry, KnowledgeBase
+        from knowledge_base.search_service import filter_active_chunks
+        from knowledge_base.strategies import RetrievalResult
+
+        kb = KnowledgeBase(path="/tmp/test")
+        kb.files["doc.pdf"] = FileEntry(
+            mtime=1.0,
+            added="2026-01-01",
+            file_id="abc123",
+            active=True,
+            chunks=[ChunkRef(index=0, active=True)],
+        )
+        results = [RetrievalResult(
+            chunk_id="Test::abc123::0",
+            text="test",
+            score=0.9,
+        )]
+        filtered = filter_active_chunks(results, kb)
+        assert len(filtered) == 1
+
+    def test_file_disattivato_filtrato(self):
+        from knowledge_base.models import ChunkRef, FileEntry, KnowledgeBase
+        from knowledge_base.search_service import filter_active_chunks
+        from knowledge_base.strategies import RetrievalResult
+
+        kb = KnowledgeBase(path="/tmp/test")
+        kb.files["doc.pdf"] = FileEntry(
+            mtime=1.0,
+            added="2026-01-01",
+            file_id="abc123",
+            active=False,
+            chunks=[ChunkRef(index=0, active=True)],
+        )
+        results = [RetrievalResult(
+            chunk_id="Test::abc123::0",
+            text="test",
+            score=0.9,
+        )]
+        filtered = filter_active_chunks(results, kb)
+        assert len(filtered) == 0
+
+    def test_chunk_disattivato_filtrato(self):
+        from knowledge_base.models import ChunkRef, FileEntry, KnowledgeBase
+        from knowledge_base.search_service import filter_active_chunks
+        from knowledge_base.strategies import RetrievalResult
+
+        kb = KnowledgeBase(path="/tmp/test")
+        kb.files["doc.pdf"] = FileEntry(
+            mtime=1.0,
+            added="2026-01-01",
+            file_id="abc123",
+            active=True,
+            chunks=[ChunkRef(index=0, active=False)],
+        )
+        results = [RetrievalResult(
+            chunk_id="Test::abc123::0",
+            text="test",
+            score=0.9,
+        )]
+        filtered = filter_active_chunks(results, kb)
+        assert len(filtered) == 0
+
+    def test_chunk_id_malformed_ignorato(self):
+        from knowledge_base.models import KnowledgeBase
+        from knowledge_base.search_service import filter_active_chunks
+        from knowledge_base.strategies import RetrievalResult
+
+        kb = KnowledgeBase(path="/tmp/test")
+        results = [RetrievalResult(
+            chunk_id="formato_sbagliato",
+            text="test",
+            score=0.9,
+        )]
+        filtered = filter_active_chunks(results, kb)
+        assert len(filtered) == 0

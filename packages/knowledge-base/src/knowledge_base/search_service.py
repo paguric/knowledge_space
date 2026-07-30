@@ -33,6 +33,59 @@ logger = logging.getLogger(__name__)
 
 
 # --------------------------------------------------------------------------- #
+# Helpers per il filtro active (usati da CLI e SearchService)
+# --------------------------------------------------------------------------- #
+
+
+def is_base_searchable(base_name: str, kb: Any, domains: List[Any]) -> bool:
+    """``True`` se la base è attiva e appartiene ad almeno un dominio attivo.
+
+    Se non ci sono domini configurati, tutte le basi sono considerate
+    searchable (basta che la base stessa sia attiva).
+    """
+    if not kb.active:
+        return False
+    if not domains:
+        return True
+    return any(d.active and base_name in d.base_names for d in domains)
+
+
+def filter_active_chunks(
+    results: List[RetrievalResult],
+    kb: Any,
+) -> List[RetrievalResult]:
+    """Filtra i risultati escludendo chunk di file o chunk disattivati.
+
+    Parsa ``chunk_id`` (formato ``"{base_name}::{file_id}::{i}"``) per
+    risalire a :class:`FileEntry` e :class:`ChunkRef` nel modello ``kb``.
+    """
+    # Pre-costruisci lookup file_id → FileEntry (più efficiente dell'iterazione)
+    file_by_id: Dict[str, Any] = {}
+    for fe in kb.files.values():
+        if fe.file_id:
+            file_by_id[fe.file_id] = fe
+
+    filtered: List[RetrievalResult] = []
+    for r in results:
+        parts = r.chunk_id.rsplit("::", 2)
+        if len(parts) != 3:
+            continue
+        _, file_id_str, index_str = parts
+        try:
+            idx = int(index_str)
+        except ValueError:
+            continue
+
+        fe = file_by_id.get(file_id_str)
+        if fe is None or not fe.active:
+            continue
+        if idx >= len(fe.chunks) or not fe.chunks[idx].active:
+            continue
+        filtered.append(r)
+    return filtered
+
+
+# --------------------------------------------------------------------------- #
 # Eccezioni
 # --------------------------------------------------------------------------- #
 
