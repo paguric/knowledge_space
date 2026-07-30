@@ -115,7 +115,6 @@ Interfaccia a riga di comando (Typer) per gestire workspace, domini, basi, file,
 | Comando | Descrizione |
 |---------|-------------|
 | `config show [<base>]` | Config effettiva (cascata resolved) |
-| `config validate [<base>]` | Valida TOML |
 | `config init` | Genera `defaults.toml` template |
 | `config set <base\|defaults> <key> <value>` | Imposta preferenza (con autocompletamento) |
 | `config unset <base\|defaults> <key>` | Rimuove chiave |
@@ -136,17 +135,6 @@ Interfaccia a riga di comando (Typer) per gestire workspace, domini, basi, file,
 | `models list [--local\|--remote]` | Elenca modelli embedding |
 | `models info <name>` | Dettaglio modello |
 
-**Profiles:**
-
-| Comando | Descrizione |
-|---------|-------------|
-| `profiles list` | Elenca profili |
-| `profiles show <name>` | Mostra TOML |
-| `profiles apply <name> [--base <base>]` | Applica profilo (con rilevamento trigger) |
-| `profiles save <name> [--base <base>]` | Salva config come profilo |
-| `profiles diff <name> [--base <base>]` | Differenze |
-| `profiles edit/remove <name>` | Modifica/elimina |
-
 **Status:**
 
 | Comando | Descrizione |
@@ -166,21 +154,3 @@ Interfaccia a riga di comando (Typer) per gestire workspace, domini, basi, file,
 
 - **`key`**: suggerisce percorsi dotted validi (`chunking.` → `chunking.chunk_size`, ...)
 - **`value`**: suggerisce valori ammissibili (`ingestion.library` → `docling`, `pymupdf4llm`, `markitdown`)
-
-### Fasi di implementazione
-
-- [x] Aggiungere `typer` alle dipendenze
-- [x] Creare `knowledge_space/cli.py`
-- [x] Implementare comandi per workspace, domini, basi, file, chunk
-- [x] Implementare config show/init/set/unset/edit
-- [x] Implementare search
-- [ ] Implementare reindex, graph, auth, models
-- [ ] Implementare profili
-- [ ] Autocompletamento shell
-- [ ] Test di integrazione (standalone mode)
-
-## Dipendenze
-
-| Dipende da | Usato da |
-|------------|----------|
-| Step 8-ter (AppContext), Step 12 (logging) | Step 15 (REST), Step 18 (packaging) |
