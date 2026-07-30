@@ -141,15 +141,6 @@ Interfaccia a riga di comando (Typer) per gestire workspace, domini, basi, file,
 |---------|-------------|
 | `status` | Panoramica workspace attivo, basi, file, chunk, grafo |
 
-**Server (Fase 4):**
-
-| Comando | Descrizione |
-|---------|-------------|
-| `serve` | Avvia backend (watcher + REST) |
-| `serve --gui` | Backend + webview |
-| `stop` | Arresta backend via REST `/shutdown` |
-| `mcp` | MCP stdio bridge verso backend |
-
 ### Autocompletamento per `config set`
 
 - **`key`**: suggerisce percorsi dotted validi (`chunking.` → `chunking.chunk_size`, ...)
