@@ -41,6 +41,7 @@ Tabella compatta di tutto il progetto. Leggi questa sezione per capire **dove si
 | Bug 010 | Fix watcher: ignora eventi FS dentro .knowledge-space (loop infinito ingest-chunk) | — | ✅ Fatto | Step 14 | `docs/specs/bug-010-watcher-filtra-knowledge-space.md` |
 | Bug 011 | Fix `sync_and_ingest` non persiste file dopo ingest → re-ingestioni multiple | — | ✅ Fatto | Step 14 | — |
 | Bug 012 | La ricerca non esclude chunk/file/basi/domini non attivi | — | 🔴 Da fare | Step 8 | `docs/specs/bug-012-search-non-filtra-active.md` |
+| Feature 005 | Connessione a LM Studio per LLM locale | 2 | 🔴 Da fare | Step 6-bis | `docs/specs/feat-005-lmstudio-llm.md` |
 | 15 | Backend REST | 4 | ❌ Non iniziato | Step 13 | — |
 | 16 | Frontend React | 4 | ❌ Non iniziato | Step 15 | — |
 | 17 | Polish e documentazione | 4 | ❌ Non iniziato | Step 16 | — |
