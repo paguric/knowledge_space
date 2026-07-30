@@ -206,6 +206,11 @@ def _make_fake_openai_response(dim: int, n: int):
 
 
 class TestOpenAIEmbedding:
+
+    @pytest.fixture(autouse=True)
+    def _skip_if_missing(self):
+        pytest.importorskip("openai")
+
     def test_embed_returns_vectors(self, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
         cls = embedding_registry.get("openai/text-embedding-3-small")
@@ -273,6 +278,11 @@ def _make_fake_cohere_response(dim: int, n: int):
 
 
 class TestCohereEmbedding:
+
+    @pytest.fixture(autouse=True)
+    def _skip_if_missing(self):
+        pytest.importorskip("cohere")
+
     def test_embed_returns_vectors(self, monkeypatch):
         monkeypatch.setenv("COHERE_API_KEY", "test-key")
         cls = embedding_registry.get("cohere/embed-multilingual-v3.0")
@@ -311,6 +321,11 @@ def _make_fake_voyage_response(dim: int, n: int):
 
 
 class TestVoyageEmbedding:
+
+    @pytest.fixture(autouse=True)
+    def _skip_if_missing(self):
+        pytest.importorskip("voyageai")
+
     def test_embed_returns_vectors(self, monkeypatch):
         monkeypatch.setenv("VOYAGE_API_KEY", "test-key")
         cls = embedding_registry.get("voyage/voyage-3")
