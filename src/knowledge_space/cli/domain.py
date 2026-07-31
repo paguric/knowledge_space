@@ -29,6 +29,27 @@ from knowledge_space.cli.common import (
 app = typer.Typer(help="Gestione domini.")
 
 
+# --------------------------------------------------------------------------- #
+# Autocomplete
+# --------------------------------------------------------------------------- #
+
+
+def _domain_name_autocomplete(
+    ctx: typer.Context,
+    args: list[str],
+    incomplete: str,
+) -> list[tuple[str, str]]:
+    """Autocomplete per nomi dominio: suggerisce i domini esistenti."""
+    try:
+        from knowledge_space.bootstrap import build_app_context
+        app_ctx = build_app_context()
+        ws = get_workspace(app_ctx, None)
+        names = [d.name for d in ws.domains if d.name.startswith(incomplete)]
+        return [(n, "") for n in names]
+    except Exception:
+        return []
+
+
 @app.command()
 def new(
     name: str = typer.Argument(help="Nome del dominio."),
@@ -80,7 +101,10 @@ def list_domains(
 
 @app.command()
 def remove(
-    name: str = typer.Argument(help="Nome del dominio."),
+    name: str = typer.Argument(
+        help="Nome del dominio.",
+        autocompletion=_domain_name_autocomplete,
+    ),
     workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
 ) -> None:
@@ -101,7 +125,10 @@ def remove(
 
 @app.command("add-base")
 def add_base(
-    domain_name: str = typer.Argument(help="Nome del dominio."),
+    domain_name: str = typer.Argument(
+        help="Nome del dominio.",
+        autocompletion=_domain_name_autocomplete,
+    ),
     base_name: str = typer.Argument(help="Nome della base."),
     workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
@@ -109,6 +136,7 @@ def add_base(
     """Aggiunge una base a un dominio."""
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
+    domain_name = normalize_base_name(domain_name)
     base_name = resolve_base_name(base_name, workspace=ws)
     logger.info("Aggiunta base %s al dominio %s", base_name, domain_name)
 
@@ -127,7 +155,10 @@ def add_base(
 
 @app.command("remove-base")
 def remove_base(
-    domain_name: str = typer.Argument(help="Nome del dominio."),
+    domain_name: str = typer.Argument(
+        help="Nome del dominio.",
+        autocompletion=_domain_name_autocomplete,
+    ),
     base_name: str = typer.Argument(help="Nome della base."),
     workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
@@ -135,6 +166,7 @@ def remove_base(
     """Rimuove una base da un dominio."""
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
+    domain_name = normalize_base_name(domain_name)
     base_name = resolve_base_name(base_name, workspace=ws)
     logger.info("Rimozione base %s dal dominio %s", base_name, domain_name)
 
