@@ -40,11 +40,13 @@ from knowledge_space.cli.tree import tree_command  # noqa: E402
 from knowledge_space.cli.search import search_command  # noqa: E402
 from knowledge_space.cli.reindex import reindex_command  # noqa: E402
 from knowledge_space.cli.status import status_command  # noqa: E402
+from knowledge_space.cli.serve import serve_command  # noqa: E402
 
 app.command(name="tree", help="Visualizzazione struttura ad albero.")(tree_command)
 app.command(name="search", help="Ricerca vettoriale.")(search_command)
 app.command(name="reindex", help="Reindicizzazione basi.")(reindex_command)
 app.command(name="status", help="Panoramica dello stato.")(status_command)
+app.command(name="serve", help="Avvia watcher + server MCP.")(serve_command)
 
 
 @app.command()
