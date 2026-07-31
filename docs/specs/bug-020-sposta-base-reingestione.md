@@ -23,15 +23,18 @@ ks status -w ~/ws2
 
 ## Fix atteso
 
-Quando `_discover_bases_recursive` trova una nuova cartella, deve controllare se contiene già `.knowledge-space/state.json`. Se sì, importare lo stato esistente (basi, file, chunk) invece di re-indicizzare. La collection Chroma è già dentro `.knowledge-space/chroma/` e viene copiata insieme alla directory — va solo referenziata.
+Quando `_discover_bases_recursive` trova una nuova cartella con `.knowledge-space/state.json`:
 
-Se la cartella è frutto di una COPIA (non spostamento), i chunk su disco sono già presenti. Se è uno SPOSTAMENTO, idem — basta aggiornare i path.
+1. **Importare** lo stato esistente (file, chunk, embedding_model) invece di re-indicizzare.
+2. **Rinominare** la collection Chroma dal vecchio nome al nuovo (`chroma_collection_name(vecchio_nome)` → `chroma_collection_name(nuovo_nome)`) oppure tenerla col nome vecchio e aggiornare il riferimento nello stato.
+3. **Aggiornare** i path `chunk_id` e `file_id` se necessario (se il chunk_id contiene il nome della base).
 
 ### File da toccare
 
 | File | Modifica |
 |------|----------|
-| `packages/knowledge-base/src/knowledge_base/workspace_manager.py` | `_discover_bases_recursive`: rileva `.knowledge-space/` esistente e importa stato |
+| `packages/knowledge-base/src/knowledge_base/workspace_manager.py` | `_discover_bases_recursive`: rileva `.knowledge-space/` e importa stato + aggiorna collection name |
+| `packages/knowledge-base/src/knowledge_base/knowledge_base_manager.py` | Helper per rinominare/importare collection Chroma |
 
 ### Verifica
 
