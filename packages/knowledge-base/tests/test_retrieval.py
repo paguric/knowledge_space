@@ -1205,12 +1205,13 @@ class TestIsBaseSearchable:
         assert is_base_searchable("Test", kb, domains) is False
 
     def test_base_non_in_alcun_dominio(self):
+        """Base non in nessun dominio è sempre searchable."""
         from knowledge_base.models import Domain, KnowledgeBase
         from knowledge_base.search_service import is_base_searchable
 
         kb = KnowledgeBase(path="/tmp/test")
         domains = [Domain(name="D1", active=True, base_names=["Altro"])]
-        assert is_base_searchable("Test", kb, domains) is False
+        assert is_base_searchable("Test", kb, domains) is True
 
 
 class TestFilterActiveChunks:

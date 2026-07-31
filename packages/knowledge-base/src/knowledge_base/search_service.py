@@ -47,7 +47,10 @@ def is_base_searchable(base_name: str, kb: Any, domains: List[Any]) -> bool:
         return False
     if not domains:
         return True
-    return any(d.active and base_name in d.base_names for d in domains)
+    for d in domains:
+        if base_name in d.base_names:
+            return d.active
+    return True
 
 
 def filter_active_chunks(

@@ -32,9 +32,9 @@ def _in_active_domain(base_name: str, domains: List[Any]) -> bool:
     if not domains:
         return True
     for d in domains:
-        if d.active and base_name in d.base_names:
-            return True
-    return False
+        if base_name in d.base_names:
+            return d.active        # base in un dominio → dipende se attivo
+    return True                    # base non in nessun dominio → sempre ok
 
 
 # --------------------------------------------------------------------------- #
