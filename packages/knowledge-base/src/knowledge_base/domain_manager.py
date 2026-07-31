@@ -116,9 +116,11 @@ class DomainManager:
 
     def add_base(self, workspace: Workspace, domain_name: str, base_name: str) -> bool:
         """Aggiunge una base a un dominio. Restituisce ``False`` se il
-        dominio non esiste o la base Ã¨ giÃ  presente."""
+        dominio non esiste, la base non è registrata, o è già presente."""
         d = self._find(workspace, domain_name)
         if d is None:
+            return False
+        if base_name not in workspace.bases:
             return False
         if base_name in d.base_names:
             return False

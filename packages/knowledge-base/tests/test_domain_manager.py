@@ -92,6 +92,10 @@ def test_add_and_remove_base(tmp_path):
     ws = wsm.load(ws_path)
     dm.create(ws, "domain1")
 
+    # Registra la base nel workspace prima di aggiungerla al dominio
+    from knowledge_base.models import KnowledgeBase
+    ws.bases["kb1"] = KnowledgeBase(path=ws_path / "kb1")
+
     assert dm.add_base(ws, "domain1", "kb1") is True
     # idempotente
     assert dm.add_base(ws, "domain1", "kb1") is False

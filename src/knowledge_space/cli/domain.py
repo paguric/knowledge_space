@@ -119,7 +119,7 @@ def add_base(
     else:
         logger.warning("Errore aggiunta base %s al dominio %s", base_name, domain_name)
         typer.echo(
-            f"Errore: dominio '{domain_name}' non trovato o base già presente.",
+            f"Errore: dominio '{domain_name}' non trovato, base inesistente, o già presente.",
             err=True,
         )
         raise typer.Exit(1)

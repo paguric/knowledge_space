@@ -275,6 +275,9 @@ class TestDomain:
         runner.invoke(
             app, ["domain", "new", "test", "--workspace", str(workspace_dir)]
         )
+        runner.invoke(
+            app, ["base", "add", str(base_dir), "--workspace", str(workspace_dir)]
+        )
         result = runner.invoke(
             app,
             [
@@ -288,6 +291,9 @@ class TestDomain:
     def test_domain_remove_base(self, workspace_dir: Path, base_dir: Path):
         runner.invoke(
             app, ["domain", "new", "test", "--workspace", str(workspace_dir)]
+        )
+        runner.invoke(
+            app, ["base", "add", str(base_dir), "--workspace", str(workspace_dir)]
         )
         runner.invoke(
             app,
