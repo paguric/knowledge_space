@@ -25,16 +25,19 @@ ks status -w ~/ws2
 
 Quando `_discover_bases_recursive` trova una nuova cartella con `.knowledge-space/state.json`:
 
-1. **Importare** lo stato esistente (file, chunk, embedding_model) invece di re-indicizzare.
-2. **Rinominare** la collection Chroma dal vecchio nome al nuovo (`chroma_collection_name(vecchio_nome)` → `chroma_collection_name(nuovo_nome)`) oppure tenerla col nome vecchio e aggiornare il riferimento nello stato.
-3. **Aggiornare** i path `chunk_id` e `file_id` se necessario (se il chunk_id contiene il nome della base).
+1. **Importare stato** da `.knowledge-space/state.json` (file, chunk, embedding_model) senza re-indicizzare.
+2. **Rinominare collection Chroma**: da `chroma_collection_name(vecchio_nome)` a `chroma_collection_name(nuovo_nome)`.
+3. **Aggiornare tutti i `chunk_id` in Chroma**: contengono `"{base_name}::..."` — vanno riscritti col nuovo nome base.
+4. **Aggiornare `kb.path`** nello stato importato.
+5. **Aggiornare domini**: se il vecchio nome era in `domain.base_names`, sostituirlo col nuovo.
 
 ### File da toccare
 
 | File | Modifica |
 |------|----------|
-| `packages/knowledge-base/src/knowledge_base/workspace_manager.py` | `_discover_bases_recursive`: rileva `.knowledge-space/` e importa stato + aggiorna collection name |
-| `packages/knowledge-base/src/knowledge_base/knowledge_base_manager.py` | Helper per rinominare/importare collection Chroma |
+| `packages/knowledge-base/src/knowledge_base/workspace_manager.py` | `_discover_bases_recursive`: rileva `.knowledge-space/`, importa e aggiorna stato |
+| `packages/knowledge-base/src/knowledge_base/knowledge_base_manager.py` | Helper per rinominare collection e aggiornare chunk_id in Chroma |
+| `packages/knowledge-base/src/knowledge_base/domain_manager.py` | Aggiornare `base_names` nei domini |
 
 ### Verifica
 
