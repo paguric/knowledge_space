@@ -361,6 +361,9 @@ class WorkspaceWatcher:
         self._workspace = workspace
         self._timer: threading.Timer | None = None
         self._debounce_seconds = debounce_seconds
+        # Protezione da sovrapposizione (bug 016): una sync alla volta.
+        self._sync_in_progress = False
+        self._sync_pending = False
 
         if observer_factory is None:
             from watchdog.observers import Observer
@@ -418,20 +421,42 @@ class WorkspaceWatcher:
         self._timer.start()
 
     def _do_sync(self) -> None:
-        """Esegue la sincronizzazione (con ingest se possibile) e azzera il timer."""
-        if self._manager._base_manager_factory is not None:
+        """Esegue la sincronizzazione (con ingest se possibile) e azzera il timer.
+
+        Protezione da sovrapposizione (bug 016): se una sync è già in corso,
+        la chiamata viene marcata come pendente e rieseguita al termine di
+        quella corrente — mai in parallelo, al massimo una in coda.
+        """
+        if self._sync_in_progress:
             logger.info(
-                "Debounce scaduto, esecuzione sync_and_ingest() su %s",
+                "Sincronizzazione già in corso su %s, accodata al termine",
                 self._workspace.path,
             )
-            self._manager.sync_and_ingest(self._workspace)
-        else:
-            logger.info(
-                "Debounce scaduto, esecuzione sync() su %s",
-                self._workspace.path,
-            )
-            self._manager.sync(self._workspace)
-        self._timer = None
+            self._sync_pending = True
+            self._timer = None
+            return
+
+        self._sync_in_progress = True
+        try:
+            if self._manager._base_manager_factory is not None:
+                logger.info(
+                    "Debounce scaduto, esecuzione sync_and_ingest() su %s",
+                    self._workspace.path,
+                )
+                self._manager.sync_and_ingest(self._workspace)
+            else:
+                logger.info(
+                    "Debounce scaduto, esecuzione sync() su %s",
+                    self._workspace.path,
+                )
+                self._manager.sync(self._workspace)
+        finally:
+            self._sync_in_progress = False
+            self._timer = None
+            if self._sync_pending:
+                # File arrivati durante la sync: riesegue una volta sola.
+                self._sync_pending = False
+                self._schedule_sync()
 
     def start(self) -> None:
         self._observer.schedule(self._handler, str(self._workspace.path), recursive=True)

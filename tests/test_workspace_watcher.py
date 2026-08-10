@@ -201,6 +201,99 @@ class TestWorkspaceWatcher:
         assert call_count == 1
         watcher.stop()
 
+    def test_sync_non_sovrapposta(self, tmp_path):
+        """Bug 016: sync in corso → chiamate successive accodate, mai parallele."""
+        import threading
+
+        mgr = _make_manager(tmp_path)
+        ws_path = tmp_path / "ws"
+        ws_path.mkdir()
+        mgr.add(ws_path)
+        ws = mgr.load(ws_path)
+
+        original_sync = mgr.sync
+        call_count = 0
+        parallel = 0
+        max_parallel = 0
+        in_progress = threading.Event()
+        counter_lock = threading.Lock()
+
+        def slow_sync(workspace):
+            nonlocal call_count, parallel, max_parallel
+            with counter_lock:
+                call_count += 1
+                parallel += 1
+                max_parallel = max(max_parallel, parallel)
+            try:
+                in_progress.set()
+                time.sleep(0.2)
+                return original_sync(workspace)
+            finally:
+                with counter_lock:
+                    parallel -= 1
+
+        mgr.sync = slow_sync  # type: ignore[assignment]
+
+        watcher = mgr.start_watching(
+            ws, observer_factory=FakeObserver, debounce_seconds=0.0
+        )
+        fake = watcher._observer
+        watcher.start()
+
+        # Primo evento: parte la sync lenta
+        fake.dispatch_created(None)
+        assert in_progress.wait(2.0), "la prima sync non è partita"
+
+        # Secondo evento DURANTE la sync: accodato, non eseguito in parallelo
+        fake.dispatch_created(None)
+
+        time.sleep(1.0)
+
+        assert max_parallel == 1, f"sync in parallelo: {max_parallel}"
+        assert call_count == 2, f"attese 2 sync, trovate {call_count}"
+        watcher.stop()
+
+    def test_eventi_durante_sync_generano_una_sola_ripetizione(self, tmp_path):
+        """Bug 016: N eventi durante una sync → solo 1 sync aggiuntiva."""
+        import threading
+
+        mgr = _make_manager(tmp_path)
+        ws_path = tmp_path / "ws"
+        ws_path.mkdir()
+        mgr.add(ws_path)
+        ws = mgr.load(ws_path)
+
+        original_sync = mgr.sync
+        call_count = 0
+        in_progress = threading.Event()
+
+        def slow_sync(workspace):
+            nonlocal call_count
+            call_count += 1
+            in_progress.set()
+            time.sleep(0.3)
+            return original_sync(workspace)
+
+        mgr.sync = slow_sync  # type: ignore[assignment]
+
+        watcher = mgr.start_watching(
+            ws, observer_factory=FakeObserver, debounce_seconds=0.0
+        )
+        fake = watcher._observer
+        watcher.start()
+
+        fake.dispatch_created(None)
+        assert in_progress.wait(2.0), "la prima sync non è partita"
+
+        # 5 eventi durante la sync: si compattano in una sola ripetizione
+        for _ in range(5):
+            fake.dispatch_created(None)
+
+        time.sleep(1.5)
+
+        assert call_count == 2, f"attese 2 sync (1 + 1 pendente), trovate {call_count}"
+        watcher.stop()
+
     def test_stop_stops_observer(self, tmp_path):
         """stop() ferma l'observer."""
         mgr = _make_manager(tmp_path)
