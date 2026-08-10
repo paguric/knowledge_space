@@ -128,7 +128,7 @@ def tree_command(
 ) -> None:
     """Mostra la struttura ad albero del workspace."""
     app_ctx = get_context(verbose=verbose)
-    ws = get_workspace(app_ctx, workspace)
+    ws = get_workspace(app_ctx, workspace, sync=True)
     logger.info("Visualizzazione albero workspace")
     if base is not None:
         base = resolve_base_name(base, workspace=ws)

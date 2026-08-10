@@ -735,6 +735,55 @@ class TestStatus:
         assert "workspace" in data
         assert "bases" in data
 
+    def test_status_non_mostra_base_rimossa_da_disco(self, workspace_dir: Path, base_dir: Path):
+        """Bug 019: base cancellata/spostata su disco sparisce da ks status."""
+        import shutil
+
+        # Registra la base nello stato
+        result = runner.invoke(
+            app, ["base", "add", str(base_dir), "--workspace", str(workspace_dir)]
+        )
+        assert result.exit_code == 0
+
+        # La base è visibile
+        result = runner.invoke(
+            app, ["status", "--workspace", str(workspace_dir)]
+        )
+        assert "my_base" in result.output
+
+        # Rimuovi la directory dal disco (simula mv/rm col watcher spento)
+        shutil.rmtree(base_dir)
+
+        # status deve fare sync e non mostrarla più
+        result = runner.invoke(
+            app, ["status", "--workspace", str(workspace_dir)]
+        )
+        assert result.exit_code == 0
+        assert "my_base" not in result.output
+
+    def test_workspace_info_non_mostra_base_rimossa_da_disco(
+        self, workspace_dir: Path, base_dir: Path
+    ):
+        """Bug 019: workspace info applica la stessa sync di status."""
+        import shutil
+
+        runner.invoke(
+            app, ["base", "add", str(base_dir), "--workspace", str(workspace_dir)]
+        )
+
+        result = runner.invoke(
+            app, ["workspace", "info", str(workspace_dir)]
+        )
+        assert "1" in result.output  # 1 base
+
+        shutil.rmtree(base_dir)
+
+        result = runner.invoke(
+            app, ["workspace", "info", str(workspace_dir)]
+        )
+        assert result.exit_code == 0
+        assert "Basi: 0" in result.output
+
 
 # --------------------------------------------------------------------------- #
 # Test config

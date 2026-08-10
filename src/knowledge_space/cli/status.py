@@ -44,7 +44,7 @@ def status_command(
             typer.echo("Nessun workspace trovato. Usa 'ks workspace add <path>'.")
         return
 
-    ws = get_workspace(ctx, workspace)
+    ws = get_workspace(ctx, workspace, sync=True)
 
     # Statistiche
     n_bases = len(ws.bases)

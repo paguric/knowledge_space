@@ -192,18 +192,25 @@ def resolve_workspace_path(
 def get_workspace(
     ctx: AppContext,
     workspace_path: Optional[str] = None,
+    *,
+    sync: bool = False,
 ) -> Workspace:
     """Carica il workspace (da path o ``last_workspace``).
 
     Args:
         ctx: contesto dell'applicazione.
         workspace_path: path esplicito (opzionale).
+        sync: se ``True``, esegue :meth:`WorkspaceManager.sync` dopo il load
+            così le basi rimosse/spostate su disco spariscono dallo stato
+            (bug 019). Usato dai comandi di sola lettura.
 
     Returns:
         ``Workspace`` caricato.
     """
     ws_path = resolve_workspace_path(ctx, workspace_path)
     workspace = ctx.workspace_manager.load(ws_path)
+    if sync:
+        ctx.workspace_manager.sync(workspace)
     ctx.workspace_manager.set_last_workspace(ws_path)
     return workspace
 

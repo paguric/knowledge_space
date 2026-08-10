@@ -119,6 +119,8 @@ def info(
     ws_path = resolve_workspace_path(ctx, path)
     logger.info("Info workspace: %s", ws_path)
     workspace = ctx.workspace_manager.load(ws_path)
+    # Bug 019: le basi rimosse/spostate su disco spariscono dallo stato
+    ctx.workspace_manager.sync(workspace)
 
     n_bases = len(workspace.bases)
     n_domains = len(workspace.domains)
