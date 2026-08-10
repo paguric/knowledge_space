@@ -60,6 +60,44 @@ def test_remove_deregisters(tmp_path):
     assert mgr.list() == []
 
 
+def test_prune_stale_removes_workspaces_scomparsi(tmp_path):
+    """prune_stale_workspaces rimuove i workspace non più su disco."""
+    import shutil
+
+    mgr = _make_manager(tmp_path)
+
+    ws_existing = tmp_path / "ws_esistente"
+    ws_existing.mkdir()
+    ws_stale = tmp_path / "ws_stale"
+    ws_stale.mkdir()
+    mgr.add(ws_existing)
+    mgr.add(ws_stale)
+
+    # Il workspace stale sparisce da disco
+    shutil.rmtree(ws_stale)
+
+    removed = mgr.prune_stale_workspaces()
+
+    assert removed == [ws_stale]
+    assert mgr.list() == [ws_existing]
+
+
+def test_prune_stale_pulisce_last_workspace(tmp_path):
+    """Se il workspace rimosso era l'ultimo usato, last_workspace va a None."""
+    import shutil
+
+    mgr = _make_manager(tmp_path)
+    ws_stale = tmp_path / "ws_stale"
+    ws_stale.mkdir()
+    mgr.add(ws_stale)
+    mgr.set_last_workspace(ws_stale)
+
+    shutil.rmtree(ws_stale)
+    mgr.prune_stale_workspaces()
+
+    assert mgr.get_last_workspace() is None
+
+
 def test_set_and_get_last_workspace(tmp_path):
     mgr = _make_manager(tmp_path)
     ws_path = tmp_path / "ws2"

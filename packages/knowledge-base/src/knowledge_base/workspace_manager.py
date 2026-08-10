@@ -105,6 +105,28 @@ class WorkspaceManager:
         logger.debug("Workspace registrati: %d", len(workspaces))
         return workspaces
 
+    def prune_stale_workspaces(self) -> List[Path]:
+        """Rimuove dal registro i workspace la cui cartella non esiste più.
+
+        Come :meth:`sync` fa per le basi, questa pulizia rimuove i workspace
+        orfani (es. cartella cancellata o drive smontato). Lo stato salvato
+        in ``config.json`` resta su disco: un successivo ``workspace add``
+        con lo stesso path lo ripristina.
+
+        Returns:
+            Lista dei path rimossi dal registro.
+        """
+        removed: List[Path] = []
+        for ws in self._index.list_workspaces():
+            if not ws.is_dir():
+                logger.info(
+                    "Workspace non più presente su disco, rimosso dal registro: %s",
+                    ws,
+                )
+                self.remove(ws)
+                removed.append(ws)
+        return removed
+
     def set_last_workspace(self, path: Path) -> None:
         """Imposta l'ultimo workspace usato."""
         logger.debug("Ultimo workspace impostato: %s", path)

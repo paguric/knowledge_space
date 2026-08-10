@@ -145,6 +145,23 @@ class TestWorkspace:
         )
         assert result.exit_code == 1
 
+    def test_workspace_stale_rimosso_all_avvio(self, tmp_path: Path):
+        """All'avvio di un comando ks i workspace non più su disco vengono rimossi."""
+        import shutil
+
+        ws = tmp_path / "ws_stale"
+        ws.mkdir()
+        result = runner.invoke(app, ["workspace", "add", str(ws)])
+        assert result.exit_code == 0
+
+        # Il workspace sparisce da disco
+        shutil.rmtree(ws)
+
+        # Qualsiasi comando ks (qui workspace list) deve rimuoverlo dal registro
+        result = runner.invoke(app, ["workspace", "list"])
+        assert result.exit_code == 0
+        assert str(ws) not in result.output
+
     def test_workspace_info(self, workspace_dir: Path):
         runner.invoke(app, ["workspace", "add", str(workspace_dir)])
         result = runner.invoke(

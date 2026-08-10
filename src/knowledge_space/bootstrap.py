@@ -104,6 +104,12 @@ def build_app_context(
         base_manager_factory=_base_manager_factory,
     )
 
+    # 6-bis. Pulizia workspace orfani (cartelle non più presenti su disco).
+    # Analogia con sync() per le basi: all'avvio di ogni comando ks i
+    # workspace stale vengono rimossi dal registro. Lo stato su disco
+    # resta: un successivo workspace add con lo stesso path lo ripristina.
+    workspace_manager.prune_stale_workspaces()
+
     # 7. DomainManager
     domain_manager = DomainManager(
         config_path_for=_config_path_for,
