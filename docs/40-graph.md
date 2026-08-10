@@ -1,6 +1,6 @@
 # Pipeline GraphRAG da chunk/embeddings esistenti
 
-> **Stato:** non iniziato | **Step:** 8-bis | **Fase:** 1C | **Aggiornato:** 22 luglio 2026
+> **Stato:** libreria implementata (graph/), integrazione in corso (feat-016..019) | **Step:** 8-bis | **Fase:** 1C | **Aggiornato:** 28 luglio 2026
 
 ## Panoramica
 
