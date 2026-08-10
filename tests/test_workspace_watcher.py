@@ -80,6 +80,67 @@ class TestWorkspaceWatcher:
         watcher.stop()
         assert fake.stopped is True
 
+    def test_start_esegue_sync_iniziale(self, tmp_path):
+        """Bug 017: start() scopre basi create mentre il watcher era spento."""
+        mgr = _make_manager(tmp_path)
+        ws_path = tmp_path / "ws"
+        ws_path.mkdir()
+        mgr.add(ws_path)
+        ws = mgr.load(ws_path)
+
+        # Base creata PRIMA di avviare il watcher (watcher "spento")
+        (ws_path / "kb_offline").mkdir()
+
+        watcher = mgr.start_watching(
+            ws, observer_factory=FakeObserver, debounce_seconds=0.0
+        )
+        fake = watcher._observer
+        watcher.start()
+
+        # Nessun evento FS: la sync iniziale di start() deve scoprire kb_offline
+        time.sleep(0.2)
+
+        assert "kb_offline" in ws.bases
+        watcher.stop()
+
+    def test_start_non_duplica_sync_con_eventi_immediati(self, tmp_path):
+        """Bug 017: sync iniziale + eventi subito dopo → mai in parallelo."""
+        import threading
+
+        mgr = _make_manager(tmp_path)
+        ws_path = tmp_path / "ws"
+        ws_path.mkdir()
+        mgr.add(ws_path)
+        ws = mgr.load(ws_path)
+
+        original_sync = mgr.sync
+        call_count = 0
+        counter_lock = threading.Lock()
+
+        def counting_sync(workspace):
+            nonlocal call_count
+            with counter_lock:
+                call_count += 1
+            return original_sync(workspace)
+
+        mgr.sync = counting_sync  # type: ignore[assignment]
+
+        # Debounce realistico: l'evento immediato resetta il timer della
+        # sync iniziale → i due si fondono in una sola sync.
+        watcher = mgr.start_watching(
+            ws, observer_factory=FakeObserver, debounce_seconds=0.1
+        )
+        fake = watcher._observer
+        watcher.start()
+
+        # Evento immediato dopo lo start: si fonde con la sync iniziale
+        fake.dispatch_created(None)
+
+        time.sleep(0.4)
+
+        assert call_count == 1, f"attesa 1 sync, trovate {call_count}"
+        watcher.stop()
+
     def test_dispatch_calls_sync(self, tmp_path):
         """Dispatching un evento on_created chiama sync() sul workspace."""
         mgr = _make_manager(tmp_path)

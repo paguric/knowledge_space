@@ -557,6 +557,15 @@ def test_watcher_calls_sync_and_ingest_when_factory_present(tmp_path):
     mock_bm = MagicMock()
     mock_bm.add_file.return_value = MagicMock()
 
+    def fake_add_file(base_name, src):
+        # Simula il comportamento reale: registra il file nel modello,
+        # così la sync successiva non lo re-ingesta (short-circuit mtime).
+        kb = ws.bases[base_name]
+        kb.files[src.name] = MagicMock(mtime=src.stat().st_mtime)
+        return MagicMock()
+
+    mock_bm.add_file.side_effect = fake_add_file
+
     def factory(ws):
         return mock_bm
 
@@ -578,6 +587,8 @@ def test_watcher_calls_sync_and_ingest_when_factory_present(tmp_path):
     watcher.stop()
 
     assert "kb1" in ws.bases
+    # La sync iniziale di start() ingesta il file; il dispatch successivo
+    # trova il file già nel modello → add_file chiamato una sola volta.
     mock_bm.add_file.assert_called_once()
 
 

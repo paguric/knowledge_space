@@ -461,6 +461,10 @@ class WorkspaceWatcher:
     def start(self) -> None:
         self._observer.schedule(self._handler, str(self._workspace.path), recursive=True)
         self._observer.start()
+        # Sync iniziale (bug 017): scopre basi/file creati mentre il watcher
+        # era spento (es. crash, restart), senza attendere un evento FS.
+        logger.info("Watcher avviato su %s, sync iniziale pianificata", self._workspace.path)
+        self._schedule_sync()
 
     def stop(self) -> None:
         self._observer.stop()
