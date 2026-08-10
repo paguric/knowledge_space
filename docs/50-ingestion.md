@@ -18,6 +18,7 @@ Conversione dei file sorgenti nei formati supportati in testo Markdown struttura
 | Aspetto | Scelta |
 |---------|--------|
 | Insieme formati | **Chiuso**: formato non in lista → errore esplicito |
+| Fallback MD/TXT | Se la library configurata non supporta `.md`/`.txt`, si usa automaticamente `identity` (lettura diretta) |
 | GPU | `use_gpu` globale (default `false`), ogni libreria decide se usarla |
 
 ## Dettagli

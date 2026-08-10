@@ -794,3 +794,68 @@ class TestWarningDedup:
         from knowledge_base.base_config import BaseConfig
 
         manager.check_config_change("kb1", config=BaseConfig())
+
+
+class TestTxtMdFallback:
+    """Bug 014: file .txt/.md supportati anche con library che non li
+    gestiscono (es. docling) — fallback a IdentityIngestion."""
+
+    def _make_real_ingestion_manager(self, workspace: Workspace, tmp_path: Path):
+        """Manager con la VERA factory di ingestion (non stub)."""
+        from knowledge_base.knowledge_base_manager import _default_ingestion_factory
+        from knowledge_base.strategies.ingestion import UnsupportedFormatError
+
+        config_loader = _make_config_loader(library="docling")
+        return KnowledgeBaseManager(
+            workspace=workspace,
+            config_loader=config_loader,
+            config_path_for=lambda ws: Path(ws) / ".knowledge-space" / "config.json",
+            chroma_path=tmp_path / "chroma",
+            ingestion_factory=_default_ingestion_factory,
+            chunking_factory=_stub_chunking_factory,
+            embedder_factory=_stub_embedder_factory,
+        )
+
+    def test_txt_indicizzato_con_library_docling(
+        self, workspace: Workspace, tmp_path: Path
+    ):
+        """docling non supporta .txt → fallback identity, il file viene indicizzato."""
+        manager = self._make_real_ingestion_manager(workspace, tmp_path)
+        manager.add(workspace.path / "kb1")
+        src = _write_source(
+            workspace.path / "kb1", "note.txt", "testo semplice\n\nsecondo paragrafo"
+        )
+
+        entry = manager.add_file("kb1", src)
+
+        assert entry.name == "note.txt"
+        assert entry.content_hash is not None
+        assert len(entry.chunks) == 2
+        kb = workspace.bases["kb1"]
+        assert kb.ingestion_library == "docling"  # config registrata, non la strategy
+
+    def test_md_indicizzato_con_library_docling(
+        self, workspace: Workspace, tmp_path: Path
+    ):
+        """Stesso fallback per .md."""
+        manager = self._make_real_ingestion_manager(workspace, tmp_path)
+        manager.add(workspace.path / "kb1")
+        src = _write_source(workspace.path / "kb1", "appunti.md", "# Titolo\n\ncontenuto")
+
+        entry = manager.add_file("kb1", src)
+
+        assert entry.name == "appunti.md"
+        assert len(entry.chunks) >= 1
+
+    def test_estensione_ignota_solleva_unsupported_format(
+        self, workspace: Workspace, tmp_path: Path
+    ):
+        """Estensione sconosciuta (es. .xyz) → errore esplicito, nessun fallback."""
+        from knowledge_base.strategies.ingestion import UnsupportedFormatError
+
+        manager = self._make_real_ingestion_manager(workspace, tmp_path)
+        manager.add(workspace.path / "kb1")
+        src = _write_source(workspace.path / "kb1", "file.xyz", "contenuto")
+
+        with pytest.raises(UnsupportedFormatError):
+            manager.add_file("kb1", src)

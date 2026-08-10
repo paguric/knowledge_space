@@ -56,6 +56,7 @@ from knowledge_base.strategies import (
     embedding_registry,
     ingestion_registry,
 )
+from knowledge_base.strategies.ingestion import IdentityIngestion
 from knowledge_base.strategies.embedding import (
     ChunkTooLongError,
     validate_chunk_context,
@@ -232,6 +233,29 @@ class KnowledgeBaseManager:
                 bases=self._workspace.bases,
             )
         )
+
+    def _select_ingestion(self, config: BaseConfig, src: Path) -> Any:
+        """Seleziona la strategy di ingestion con fallback per testo semplice.
+
+        Se la library configurata non supporta l'estensione del file ma
+        questa è ``.md``/``.txt``, usa :class:`IdentityIngestion` (lettura
+        diretta, nessuna conversione). Altrimenti lascia che sia la library
+        configurata a sollevare :class:`UnsupportedFormatError` con il
+        messaggio corretto.
+        """
+        ingestion = self._ingestion_factory(config)
+        ext = src.suffix.lower()
+        if (
+            ext not in ingestion.supported_extensions
+            and ext in IdentityIngestion.supported_extensions
+        ):
+            logger.info(
+                "Estensione %s non supportata da '%s': fallback a identity",
+                ext,
+                config.ingestion.library,
+            )
+            return IdentityIngestion()
+        return ingestion
 
     def _load_base_by_name(self, base_name: str) -> KnowledgeBase:
         if base_name not in self._workspace.bases:
@@ -440,7 +464,7 @@ class KnowledgeBaseManager:
         existing = kb.files.get(key)
 
         # 1. Ingestion
-        ingestion = self._ingestion_factory(config)
+        ingestion = self._select_ingestion(config, src)
         markdown = ingestion.convert(src)
         new_md_hash = _sha256(markdown)
 
