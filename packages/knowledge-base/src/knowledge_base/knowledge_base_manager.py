@@ -339,6 +339,89 @@ class KnowledgeBaseManager:
     def _collection_non_empty(self, base_name: str) -> bool:
         return self._collection_count(base_name) > 0
 
+    def rename_chroma_collection(
+        self,
+        old_base_name: str,
+        new_base_name: str,
+        *,
+        drop_old: bool = True,
+    ) -> int:
+        """Rinomina la collection Chroma di una base riscrivendo i chunk_id.
+
+        Usato quando una base viene spostata/copiata dentro il workspace
+        (bug 020): gli embedding esistenti vengono riusati, solo id e
+        metadata vengono riscritti col nuovo ``base_name``. Nessun
+        ricalcolo di embedding.
+
+        Args:
+            old_base_name: nome della base sorgente.
+            new_base_name: nuovo nome della base.
+            drop_old: se ``True`` elimina la collection sorgente (caso
+                move/rename); se ``False`` la lascia intatta (caso copia).
+
+        Returns:
+            Numero di chunk migrati (0 se la collection non esiste).
+        """
+        client = self._chroma_client()
+        old_name = self._collection_name(old_base_name)
+        new_name = self._collection_name(new_base_name)
+        if old_name == new_name:
+            return 0
+
+        try:
+            col_old = client.get_collection(old_name)
+        except Exception:
+            logger.info("Collection %s non trovata, nessun rename", old_name)
+            return 0
+
+        data = col_old.get(include=["documents", "embeddings", "metadatas"])
+        ids = data.get("ids") or []
+        if not ids:
+            if drop_old:
+                try:
+                    client.delete_collection(old_name)
+                except Exception:
+                    pass
+            return 0
+
+        new_ids: List[str] = []
+        new_metas: List[Dict[str, Any]] = []
+        for rec_id, meta in zip(ids, data.get("metadatas") or []):
+            meta = dict(meta or {})
+            parts = str(rec_id).rsplit("::", 2)
+            if len(parts) == 3:
+                file_id, index = parts[1], parts[2]
+            else:
+                file_id = str(meta.get("file_id", ""))
+                index = str(meta.get("chunk_index", ""))
+            new_ids.append(f"{new_base_name}::{file_id}::{index}")
+            meta["chunk_id"] = new_ids[-1]
+            meta["base_name"] = new_base_name
+            new_metas.append(meta)
+
+        if drop_old:
+            client.delete_collection(old_name)
+        col_new = client.get_or_create_collection(
+            name=new_name,
+            metadata={"hnsw:space": "cosine"},
+        )
+        kwargs: Dict[str, Any] = {
+            "ids": new_ids,
+            "metadatas": new_metas,
+        }
+        documents = data.get("documents")
+        if documents is not None:
+            kwargs["documents"] = documents
+        embeddings = data.get("embeddings")
+        if embeddings is not None:
+            kwargs["embeddings"] = embeddings
+        col_new.upsert(**kwargs)
+        logger.info(
+            "Collection %s → %s: %d chunk migrati",
+            old_name, new_name, len(new_ids),
+        )
+        return len(new_ids)
+
     # ..................................................................... #
     # CRUD base
     # ..................................................................... #

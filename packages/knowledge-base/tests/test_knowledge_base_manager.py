@@ -364,6 +364,58 @@ class TestIdempotency:
         assert entry2.file_id == file_id_first
 
 
+class TestRenameChromaCollection:
+    """Bug 020: rename della collection Chroma con chunk_id riscritti."""
+
+    def test_rename_riscrive_chunk_id_e_drop_old(
+        self, manager: KnowledgeBaseManager, workspace: Workspace
+    ):
+        (workspace.path / "vecchia").mkdir()
+        manager.add(workspace.path / "vecchia")
+        src = _write_source(workspace.path / "vecchia", "doc.md", "p1\n\np2")
+        entry = manager.add_file("vecchia", src)
+
+        migrated = manager.rename_chroma_collection("vecchia", "nuova")
+
+        assert migrated == 2
+        client = manager._chroma_client()
+        # Vecchia collection eliminata (drop_old default True)
+        with pytest.raises(Exception):
+            client.get_collection(name="ks_vecchia")
+        col_new = client.get_collection(name="ks_nuova")
+        data = col_new.get(include=["metadatas"])
+        for meta in data["metadatas"]:
+            assert meta["base_name"] == "nuova"
+            assert meta["chunk_id"].startswith(f"nuova::{entry.file_id}::")
+
+    def test_rename_keep_old_con_copia(
+        self, manager: KnowledgeBaseManager, workspace: Workspace
+    ):
+        (workspace.path / "vecchia").mkdir()
+        manager.add(workspace.path / "vecchia")
+        src = _write_source(workspace.path / "vecchia", "doc.md", "p1\n\np2")
+        manager.add_file("vecchia", src)
+
+        migrated = manager.rename_chroma_collection(
+            "vecchia", "copia", drop_old=False
+        )
+
+        assert migrated == 2
+        client = manager._chroma_client()
+        # La vecchia collection resta (caso copia)
+        col_old = client.get_collection(name="ks_vecchia")
+        assert col_old.count() == 2
+        col_new = client.get_collection(name="ks_copia")
+        assert col_new.count() == 2
+
+    def test_rename_collection_inesistente_ritorna_zero(
+        self, manager: KnowledgeBaseManager, workspace: Workspace
+    ):
+        (workspace.path / "base").mkdir()
+        manager.add(workspace.path / "base")
+        assert manager.rename_chroma_collection("base", "altra") == 0
+
+
 # --------------------------------------------------------------------------- #
 # Diff incrementale (content change)
 # --------------------------------------------------------------------------- #

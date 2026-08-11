@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from knowledge_base.models import KnowledgeBase, Workspace
 from knowledge_base.persistence import GlobalIndex, WorkspaceConfig
@@ -199,8 +199,10 @@ class WorkspaceManager:
         Returns:
             Workspace aggiornato.
         """
-        # Salva i nomi delle basi PRIMA della sync per rilevare le nuove.
+        # Salva i nomi delle basi PRIMA della sync per rilevare le nuove,
+        # e i modelli pre-sync per adottare lo stato di basi copiate/spostate.
         basi_prima: set[str] = set(workspace.bases)
+        stato_pre: Dict[str, KnowledgeBase] = dict(workspace.bases)
 
         self.sync(workspace)
 
@@ -226,6 +228,16 @@ class WorkspaceManager:
         except Exception as exc:
             logger.error("Errore nella creazione del base manager: %s", exc)
             return workspace
+
+        # 0. Adotta lo stato esistente per basi copiate/spostate (bug 020):
+        #    se la base nuova ha chunk su disco e nel modello pre-sync esiste
+        #    una base con gli stessi file_id, riusa modello e Chroma senza
+        #    re-indicizzare.
+        for base_name in list(basi_nuove):
+            if self._try_adopt_existing_state(
+                base_manager, workspace, base_name, stato_pre
+            ):
+                basi_nuove.discard(base_name)
 
         # 1. Indicizza file nelle basi NUOVE.
         for base_name in basi_nuove:
@@ -274,6 +286,83 @@ class WorkspaceManager:
                     file_path.name,
                     exc,
                 )
+
+    def _try_adopt_existing_state(
+        self,
+        base_manager: Any,
+        workspace: Workspace,
+        base_name: str,
+        stato_pre: Dict[str, KnowledgeBase],
+    ) -> bool:
+        """Adotta lo stato di una base copiata/spostata nel workspace.
+
+        Bug 020: se la base nuova ha chunk su disco
+        (``.knowledge-space/chunks/``) e nel modello pre-sync esiste una
+        base con gli stessi ``file_id``, riusa il modello (file, chunk,
+        hash) e rinomina la collection Chroma: nessuna re-ingestione.
+
+        Returns:
+            ``True`` se lo stato è stato adottato (la base va esclusa
+            dall'ingest delle basi nuove).
+        """
+        kb = workspace.bases[base_name]
+        chunks_root = kb.path / ".knowledge-space" / "chunks"
+        if not chunks_root.is_dir():
+            return False
+        disk_ids = {d.name for d in chunks_root.iterdir() if d.is_dir()}
+        if not disk_ids:
+            return False
+
+        for old_name, old_kb in stato_pre.items():
+            if old_name == base_name:
+                continue
+            src_ids = {fe.file_id for fe in old_kb.files.values() if fe.file_id}
+            # La copia deve contenere ALMENO i chunk della sorgente (può
+            # avere file_id orfani in più, es. ingestione interrotta).
+            if not src_ids or not src_ids <= disk_ids:
+                continue
+
+            # 1. Modello: clona dalla sorgente, aggiorna path e mtime.
+            nuovo = old_kb.model_copy(deep=True)
+            nuovo.path = kb.path
+            for fe in nuovo.files.values():
+                if fe.name:
+                    try:
+                        fe.mtime = (kb.path / fe.name).stat().st_mtime
+                    except OSError:
+                        pass
+            workspace.bases[base_name] = nuovo
+
+            # 2. Chroma: rinomina collection. Drop della sorgente solo se
+            #    non esiste più (caso move/rename), non in caso di copia.
+            drop_old = old_name not in workspace.bases
+            rename_fn = getattr(base_manager, "rename_chroma_collection", None)
+            if rename_fn is not None:
+                try:
+                    rename_fn(old_name, base_name, drop_old=drop_old)
+                except Exception as exc:
+                    logger.warning(
+                        "Rename collection %s → %s fallito: %s",
+                        old_name, base_name, exc,
+                    )
+
+            # 3. Domini: sostituisci (rename) o aggiungi (copia).
+            for d in workspace.domains:
+                if old_name in d.base_names:
+                    if drop_old:
+                        d.base_names = [
+                            base_name if n == old_name else n
+                            for n in d.base_names
+                        ]
+                    elif base_name not in d.base_names:
+                        d.base_names.append(base_name)
+
+            logger.info(
+                "Base %s: stato adottato da %s (%d file, %d chunk su disco riusati)",
+                base_name, old_name, len(nuovo.files), len(disk_ids),
+            )
+            return True
+        return False
 
     def _ingest_new_files_in_existing_base(
         self,

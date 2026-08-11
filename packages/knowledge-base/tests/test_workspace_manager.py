@@ -1,11 +1,12 @@
 """Test per WorkspaceManager: CRUD, sincronizzazione ricorsiva e ingest."""
 
+import hashlib
 from pathlib import Path
 from unittest.mock import MagicMock, call
 
 import pytest
 
-from knowledge_base.models import KnowledgeBase, Workspace
+from knowledge_base.models import ChunkRef, FileEntry, KnowledgeBase, Workspace
 from knowledge_base.persistence import GlobalIndex
 from knowledge_base.workspace_manager import WorkspaceManager
 
@@ -693,3 +694,175 @@ def test_watcher_ignores_events_inside_knowledge_space(tmp_path):
     # Ora la sync deve essere stata chiamata
     # (almeno una volta, anche se non ci sono file da indicizzare)
     watcher.stop()
+
+
+# --------------------------------------------------------------------------- #
+# Bug 020: adozione stato per basi copiate/spostate
+# --------------------------------------------------------------------------- #
+
+
+def _make_fake_base_manager(ws: Workspace) -> MagicMock:
+    """Base manager finto: registra file nel modello e crea chunk su disco."""
+    bm = MagicMock()
+
+    def fake_add_file(base_name, src):
+        kb = ws.bases[base_name]
+        file_id = hashlib.md5(src.name.encode()).hexdigest()
+        chunks_dir = src.parent / ".knowledge-space" / "chunks" / file_id
+        chunks_dir.mkdir(parents=True, exist_ok=True)
+        (chunks_dir / f"{file_id}_chunk_0.md").write_text(
+            "contenuto", encoding="utf-8"
+        )
+        entry = FileEntry(
+            mtime=src.stat().st_mtime,
+            added="2026-01-01T00:00:00",
+            file_id=file_id,
+            name=src.name,
+            chunks=[ChunkRef(index=0)],
+        )
+        kb.files[src.name] = entry
+        return entry
+
+    bm.add_file.side_effect = fake_add_file
+    return bm
+
+
+def test_sync_and_ingest_adotta_stato_base_copiata(tmp_path):
+    """Bug 020: copia di una base nel workspace → stato riusato, nessuna re-ingest."""
+    import shutil
+
+    ws_path = tmp_path / "ws"
+    ws_path.mkdir()
+    (ws_path / "src").mkdir()
+    (ws_path / "src" / "doc.md").write_text("p1\n\np2", encoding="utf-8")
+
+    mgr = _make_manager(tmp_path)
+    mgr.add(ws_path)
+    ws = mgr.load(ws_path)
+    bm = _make_fake_base_manager(ws)
+    mgr._base_manager_factory = lambda _w: bm  # type: ignore[assignment]
+
+    # Prima sync: src ingerita normalmente.
+    mgr.sync_and_ingest(ws)
+    assert "src" in ws.bases
+    assert len(ws.bases["src"].files) == 1
+    bm.add_file.reset_mock()
+
+    # Copia la base dentro il workspace.
+    shutil.copytree(ws_path / "src", ws_path / "src_copy")
+
+    mgr.sync_and_ingest(ws)
+
+    # src_copy adottata senza re-ingestione: stessi file e file_id.
+    assert "src_copy" in ws.bases
+    copied = ws.bases["src_copy"]
+    assert len(copied.files) == 1
+    src_entry = ws.bases["src"].files["doc.md"]
+    assert copied.files["doc.md"].file_id == src_entry.file_id
+    assert copied.path == ws_path / "src_copy"
+    # Nessuna chiamata add_file per la copia.
+    add_calls = [c for c in bm.add_file.call_args_list if c[0][0] == "src_copy"]
+    assert add_calls == []
+    # Chroma rinominata senza drop (la sorgente esiste ancora).
+    bm.rename_chroma_collection.assert_called_once_with(
+        "src", "src_copy", drop_old=False
+    )
+
+
+def test_sync_and_ingest_adotta_stato_base_spostata(tmp_path):
+    """Bug 020: move/rename di una base → stato riusato, collection droppata."""
+    import shutil
+
+    ws_path = tmp_path / "ws"
+    ws_path.mkdir()
+    (ws_path / "vecchia").mkdir()
+    (ws_path / "vecchia" / "doc.md").write_text("p1\n\np2", encoding="utf-8")
+
+    mgr = _make_manager(tmp_path)
+    mgr.add(ws_path)
+    ws = mgr.load(ws_path)
+    bm = _make_fake_base_manager(ws)
+    mgr._base_manager_factory = lambda _w: bm  # type: ignore[assignment]
+
+    mgr.sync_and_ingest(ws)
+    assert "vecchia" in ws.bases
+    bm.add_file.reset_mock()
+
+    # Sposta (rinomina) la base dentro il workspace.
+    shutil.move(ws_path / "vecchia", ws_path / "nuova")
+
+    mgr.sync_and_ingest(ws)
+
+    assert "vecchia" not in ws.bases
+    assert "nuova" in ws.bases
+    assert len(ws.bases["nuova"].files) == 1
+    # Drop della collection sorgente (non esiste più).
+    bm.rename_chroma_collection.assert_called_once_with(
+        "vecchia", "nuova", drop_old=True
+    )
+    add_calls = [c for c in bm.add_file.call_args_list if c[0][0] == "nuova"]
+    assert add_calls == []
+
+
+def test_sync_and_ingest_non_adotta_senza_chunk_su_disco(tmp_path):
+    """Base nuova senza .knowledge-space/chunks → ingest normale."""
+    ws_path = tmp_path / "ws"
+    ws_path.mkdir()
+    (ws_path / "src").mkdir()
+    (ws_path / "src" / "doc.md").write_text("p1\n\np2", encoding="utf-8")
+
+    mgr = _make_manager(tmp_path)
+    mgr.add(ws_path)
+    ws = mgr.load(ws_path)
+    bm = _make_fake_base_manager(ws)
+    mgr._base_manager_factory = lambda _w: bm  # type: ignore[assignment]
+
+    mgr.sync_and_ingest(ws)
+    bm.add_file.reset_mock()
+
+    # Nuova base VUOTA di chunk (es. copia senza .knowledge-space).
+    (ws_path / "fresca").mkdir()
+    (ws_path / "fresca" / "doc.md").write_text("p1\n\np2", encoding="utf-8")
+
+    mgr.sync_and_ingest(ws)
+
+    assert "fresca" in ws.bases
+    assert len(ws.bases["fresca"].files) == 1
+    bm.add_file.assert_called()  # re-ingestione normale
+    bm.rename_chroma_collection.assert_not_called()
+
+
+def test_sync_and_ingest_adotta_con_chunk_orfani_nella_copia(tmp_path):
+    """La copia può contenere file_id orfani in più: l'adozione non deve fallire."""
+    import shutil
+
+    ws_path = tmp_path / "ws"
+    ws_path.mkdir()
+    (ws_path / "src").mkdir()
+    (ws_path / "src" / "doc.md").write_text("p1\n\np2", encoding="utf-8")
+
+    mgr = _make_manager(tmp_path)
+    mgr.add(ws_path)
+    ws = mgr.load(ws_path)
+    bm = _make_fake_base_manager(ws)
+    mgr._base_manager_factory = lambda _w: bm  # type: ignore[assignment]
+
+    mgr.sync_and_ingest(ws)
+    bm.add_file.reset_mock()
+
+    shutil.copytree(ws_path / "src", ws_path / "src_copy")
+    # Aggiungi un chunk orfano (file_id non nel modello): es. ingestione
+    # interrotta o race CLI/watcher che lascia residui.
+    orphan = ws_path / "src_copy" / ".knowledge-space" / "chunks" / ("c" * 32)
+    orphan.mkdir(parents=True)
+    (orphan / f"{'c' * 32}_chunk_0.md").write_text("orfano", encoding="utf-8")
+
+    mgr.sync_and_ingest(ws)
+
+    assert "src_copy" in ws.bases
+    assert len(ws.bases["src_copy"].files) == 1
+    bm.rename_chroma_collection.assert_called_once_with(
+        "src", "src_copy", drop_old=False
+    )
+    add_calls = [c for c in bm.add_file.call_args_list if c[0][0] == "src_copy"]
+    assert add_calls == []
