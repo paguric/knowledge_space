@@ -728,6 +728,50 @@ class TestSearch:
         assert "Nessun risultato" in result.output
 
 
+class TestInActiveDomain:
+    """Test per ``_in_active_domain`` (bug-021).
+
+    Una base NON in nessun dominio è sempre searchable; se è in un
+    dominio, la searchability dipende dall'attività del dominio.
+    """
+
+    def _domains(self, *specs):
+        from knowledge_base.models import Domain
+
+        return [Domain(name=name, active=active, base_names=list(bases)) for name, active, bases in specs]
+
+    def test_nessun_dominio(self):
+        from knowledge_space.cli.search import _in_active_domain
+
+        assert _in_active_domain("Base", []) is True
+
+    def test_base_in_dominio_attivo(self):
+        from knowledge_space.cli.search import _in_active_domain
+
+        domains = self._domains(("D1", True, ["Base"]))
+        assert _in_active_domain("Base", domains) is True
+
+    def test_base_in_dominio_inattivo(self):
+        from knowledge_space.cli.search import _in_active_domain
+
+        domains = self._domains(("D1", False, ["Base"]))
+        assert _in_active_domain("Base", domains) is False
+
+    def test_base_standalone_non_in_alcun_dominio(self):
+        """Bug-021: base standalone esclusa ingiustamente."""
+        from knowledge_space.cli.search import _in_active_domain
+
+        domains = self._domains(("D1", True, ["Altro"]), ("D2", False, ["Altro2"]))
+        assert _in_active_domain("Progetto di Tesi", domains) is True
+
+    def test_base_esistente_non_registrata_in_dominio(self):
+        """Bug-021: base su disco ma non in alcun dominio → searchable."""
+        from knowledge_space.cli.search import _in_active_domain
+
+        domains = self._domains(("D1", True, ["papers1", "papers2"]))
+        assert _in_active_domain("paper3", domains) is True
+
+
 # --------------------------------------------------------------------------- #
 # Test status
 # --------------------------------------------------------------------------- #
