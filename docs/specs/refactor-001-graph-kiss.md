@@ -55,6 +55,12 @@ Sempre allineato al corpus corrente → nessun meccanismo di aggiornamento incre
 
 **Propagazione:** i 5 trigger della doc restano invariati (content change eager, move/rename property-only, cambio modello property-only, cambio chunking full, cambio ingestion full) + blocco cambio config.
 
+### 6. Resolver (`resolver.py`) — **1 resolver, niente spaCy**
+
+**Eliminare:** `SpaCySemanticMatchResolver` (dipendenza `spacy` + modello ~40MB, 150 righe di union-find, beneficio dubbio con label fisse), `_NoOpResolver`, `resolver_factory` a 3 vie (via la config `resolver = semantic|exact|none`). Il `FuzzyMatchResolver` della doc non è mai esistito nel codice — non implementarlo.
+
+**Tenere:** `ExactMatchResolver` ridotto a dedup su coppia `(name_normalizzato, label_dominio)` — con label fissa `Entity` il raggruppamento per label Cypher non serve; la discriminazione sta nella proprietà `label` di dominio ("Persona" vs "Organizzazione"). Gli id locali spariti (estrazione per name) → il resolver è solo normalizzazione + rete di sicurezza; la dedup vera avviene nel prompt di estrazione (nomi normalizzati).
+
 ### File da toccare (parziale, in aggiornamento)
 
 | File | Modifica |
@@ -62,6 +68,7 @@ Sempre allineato al corpus corrente → nessun meccanismo di aggiornamento incre
 | `graph/schema.py` | Ridurre a helper di derivazione dal DB (o rimuovere) |
 | `graph/extraction.py` | Prompt a label fisse, riferimenti per name, rimozione id locali |
 | `graph/writer.py` | Rimuovere `write_nodes_multi_label` e `update_properties` |
+| `graph/resolver.py` | Solo `ExactMatchResolver`; via spaCy, noop e factory |
 | `graph/store.py` | Aggiungere query di derivazione schema (labels/relationshipTypes/properties) |
 | `docs/40-graph.md` | Riscrivere: niente pipeline neo4j-graphrag in costruzione; schema derivato |
 
@@ -69,7 +76,7 @@ Sempre allineato al corpus corrente → nessun meccanismo di aggiornamento incre
 
 - ~~Estrazione (`extraction.py`)~~ → risolto: label fisse, per name, custom
 - ~~Writer (`writer.py`)~~ → risolto: 8 metodi, trigger invariati
-- Resolver (`resolver.py`): quanti resolver tenere (oggi 4: semantic/fuzzy/exact/noop)
+- ~~Resolver (`resolver.py`)~~ → risolto: solo exact su (name, label); via spaCy
 - Retriever (`retriever.py`): quanti dei 6 metodi tenere (oggi: vector, vector_cypher, hybrid, hybrid_cypher, text2cypher, tools)
 - GraphManager (feat-016) e CLI `ks graph` (feat-017): definire dopo i punti sopra
 
