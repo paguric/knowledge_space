@@ -58,6 +58,17 @@ LM Studio espone un'API HTTP OpenAI-compatibile. Non serve API key — la connes
 | Modello | Descrizione |
 |---------|-------------|
 | `lm-studio/<model-id>` | Qualsiasi modello caricato in LM Studio (es. `lm-studio/qwen2.5-7b-instruct`) |
+| `lm-studio/auto` | Rileva automaticamente il primo modello caricato (GET /v1/models) |
+
+### Provider: endpoint OpenAI-compatibile generico
+
+Un unico prefisso per **qualsiasi** servizio che espone l'API chat completions in formato OpenAI (OpenRouter, OpenAI, vLLM, llama.cpp, ...):
+
+| Modello | Descrizione |
+|---------|-------------|
+| `openai-compatible/<path-modello>` | Il path è il model id dell'endpoint, slash inclusi (es. `openai-compatible/openrouter/auto-beta` → `https://openrouter.ai/openrouter/auto-beta`) |
+
+L'endpoint si configura con due env var (vedi sotto); il model id passato all'API è tutto ciò che segue il prefisso `openai-compatible/`.
 
 L'utente **non** sceglie da un elenco predefinito: scrive il nome del modello nel TOML e il programma tenta la connessione. Se LM Studio non è in esecuzione o il modello non è caricato, viene restituito un errore chiaro.
 
@@ -67,42 +78,44 @@ L'utente **non** sceglie da un elenco predefinito: scrive il nome del modello ne
 
 | Variabile | Default | Descrizione |
 |-----------|---------|-------------|
-| `LMSTUDIO_BASE_URL` | `http://localhost:1234/v1` | Base URL dell'API |
+| `LM_STUDIO_BASE_URL` | `http://localhost:1234/v1` | Base URL dell'API |
 
-**Provider remoti:**
+**Endpoint OpenAI-compatibile generico:**
+
+| Variabile | Descrizione |
+|-----------|-------------|
+| `OPENAI_COMPATIBLE_BASE_URL` | Base URL dell'endpoint (es. `https://openrouter.ai/api/v1`, `https://api.openai.com/v1`) |
+| `OPENAI_COMPATIBLE_API_KEY` | API key (per OpenRouter: `sk-or-...`; per OpenAI: `sk-...`) |
+
+**Provider remoti non OpenAI-compatibili (stub):**
 
 | Variabile | Provider | Descrizione |
 |-----------|----------|-------------|
-| `OPENAI_API_KEY` | OpenAI | API key |
 | `ANTHROPIC_API_KEY` | Anthropic | API key |
 | `GEMINI_API_KEY` | Google | API key |
 | `COHERE_API_KEY` | Cohere | API key |
 
-Env var ha precedenza su `UserSettings`. Provider remoti senza chiave → errore all'istanziazione.
+Env var ha precedenza su `UserSettings`. Endpoint senza chiave → errore all'istanziazione.
 
-### Registry — Provider remoti
+### Registry
 
-| Model string | Provider | `context_window` | `supports_json` |
-|---|---|---|---|
-| `openai/gpt-4o` | OpenAI | 128000 | sì |
-| `openai/gpt-4o-mini` | OpenAI | 128000 | sì |
-| `openai/gpt-4.1` | OpenAI | ~1000000 | sì |
-| `openai/o3-mini` | OpenAI | 200000 | sì |
-| `anthropic/claude-3.5-haiku` | Anthropic | 200000 | sì |
-| `anthropic/claude-3.5-sonnet` | Anthropic | 200000 | sì |
-| `anthropic/claude-4-opus` | Anthropic | 200000 | sì |
-| `google/gemini-2.0-flash` | Google | ~1000000 | sì |
-| `cohere/command-r-plus` | Cohere | ~128000 | sì |
+| Model string | Provider | Stato |
+|---|---|---|
+| `mock/echo`, `mock/fixed` | mock | istanziabile |
+| `lm-studio/auto` | lm-studio | istanziabile (factory) |
+| `anthropic/claude-3.5-haiku`, `claude-3.5-sonnet`, `claude-4-opus` | anthropic | stub (`ProviderNotImplementedError`) |
+| `google/gemini-2.0-flash` | google | stub |
+| `cohere/command-r-plus` | cohere | stub |
 
-> **Nota:** I provider remoti sono registrati nei metadati ma la loro implementazione concreta (classi `OpenAILLM`, `AnthropicLLM`, ecc.) arriverà in una feature successiva. Attualmente la factory solleva `ProviderNotImplementedError` se si tenta di usarli senza API key, o se la key è presente ma l'implementazione manca.
+Oltre al registry, `llm_factory` accetta **prefissi dinamici** (costruiti al volo, non registrati): `lm-studio/<model-id>` e `openai-compatible/<path-modello>`.
 
 ### Abbreviazioni
 
 | Abbreviazione | Risolve a |
 |---|---|
-| `fast` | `openai/gpt-4o-mini` |
-| `cheap` | `openai/gpt-4o-mini` |
-| `quality` | `openai/gpt-4o` |
+| `fast` | `openai-compatible/gpt-4o-mini` |
+| `cheap` | `openai-compatible/gpt-4o-mini` |
+| `quality` | `openai-compatible/gpt-4o` |
 | `local` | `lm-studio/auto` (primo modello caricato) |
 
 ### Configurazione per-componente nei TOML

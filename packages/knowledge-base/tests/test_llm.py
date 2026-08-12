@@ -59,15 +59,13 @@ def _clear_cache():
 class TestLLMRegistry:
     def test_all_models_registered(self):
         names = set(llm_registry.list_names())
-        # 2 mock + 5 stub non-OpenAI + 5 OpenAI-compatibili = 12
-        assert len(names) == 12
+        # 2 mock + 5 stub non-OpenAI + 1 (lm-studio/auto) = 8
+        assert len(names) == 8
 
     @pytest.mark.parametrize(
         "model",
         [
             "mock/echo", "mock/fixed",
-            "openai/gpt-4o", "openai/gpt-4o-mini", "openai/gpt-4.1",
-            "openai/o3-mini",
             "lm-studio/auto",
             "anthropic/claude-3.5-haiku", "anthropic/claude-3.5-sonnet",
             "anthropic/claude-4-opus",
@@ -91,11 +89,8 @@ class TestLLMRegistry:
         assert llm_registry.get_factory("mock/fixed") is not None
 
     def test_openai_compatible_models_have_factory(self):
-        """I modelli OpenAI-compatibili hanno una factory concreta."""
-        for name in [
-            "openai/gpt-4o", "openai/gpt-4o-mini",
-            "openai/gpt-4.1", "openai/o3-mini", "lm-studio/auto",
-        ]:
+        """I modelli OpenAI-compatibili registrati hanno una factory concreta."""
+        for name in ["lm-studio/auto"]:
             assert llm_registry.get_factory(name) is not None
 
     def test_non_openai_models_no_factory(self):
@@ -118,10 +113,6 @@ class TestLLMMetadata:
         [
             ("mock/echo",               "mock",     4096,    False, True,  True),
             ("mock/fixed",              "mock",     4096,    False, True,  True),
-            ("openai/gpt-4o",           "openai",   128000,  True,  True,  True),
-            ("openai/gpt-4o-mini",      "openai",   128000,  True,  True,  True),
-            ("openai/gpt-4.1",          "openai",   1000000, True,  True,  True),
-            ("openai/o3-mini",          "openai",   200000,  True,  True,  True),
             ("lm-studio/auto",          "lm-studio", 32768,  False, True,  True),
             ("anthropic/claude-3.5-haiku",  "anthropic", 200000, True, True, True),
             ("anthropic/claude-3.5-sonnet", "anthropic", 200000, True, True, True),
@@ -144,7 +135,7 @@ class TestLLMMetadata:
     def test_remote_providers_require_api(self):
         for name in llm_registry.list_names():
             md = llm_registry.get_metadata(name)
-            if md.provider in ("openai", "openrouter", "anthropic", "google", "cohere"):
+            if md.provider in ("openai-compatible", "anthropic", "google", "cohere"):
                 assert md.requires_api is True
 
     def test_local_providers_do_not_require_api(self):
@@ -271,14 +262,15 @@ class TestLLMFactory:
         with pytest.raises(UnknownLLMModelError, match="sconosciuto"):
             llm_factory("sconosciuto")
 
-    def test_factory_openai_without_api_key_raises_missing_key(self, monkeypatch):
-        """Spec: ``llm_factory("openai/gpt-4o-mini")`` senza
-        ``OPENAI_API_KEY`` → errore all'istanziazione."""
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        with pytest.raises(MissingAPIKeyError, match="OpenAI") as exc:
-            llm_factory("openai/gpt-4o-mini")
-        assert exc.value.provider == "OpenAI"
-        assert exc.value.env_var == "OPENAI_API_KEY"
+    def test_factory_openai_compatible_without_api_key_raises_missing_key(
+        self, monkeypatch
+    ):
+        """Spec: ``llm_factory("openai-compatible/gpt-4o-mini")`` senza
+        ``OPENAI_COMPATIBLE_API_KEY`` → errore all'istanziazione."""
+        monkeypatch.delenv("OPENAI_COMPATIBLE_API_KEY", raising=False)
+        with pytest.raises(MissingAPIKeyError, match="OpenAI-compatibile") as exc:
+            llm_factory("openai-compatible/gpt-4o-mini")
+        assert exc.value.env_var == "OPENAI_COMPATIBLE_API_KEY"
 
     @pytest.mark.parametrize(
         "model, env_var, display",
@@ -296,13 +288,15 @@ class TestLLMFactory:
             llm_factory(model)
         assert exc.value.env_var == env_var
 
-    def test_factory_openai_with_api_key_istanzia(self, monkeypatch):
-        """Con la API key presente, ``openai/gpt-4o-mini`` istanzia un
-        :class:`OpenAICompatibleLLM` (nessuna chiamata di rete all'init)."""
-        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-        strat = llm_factory("openai/gpt-4o-mini")
+    def test_factory_openai_compatible_with_api_key_istanzia(self, monkeypatch):
+        """Con la API key presente, ``openai-compatible/gpt-4o-mini``
+        istanzia un :class:`OpenAICompatibleLLM` (nessuna rete all'init)."""
+        monkeypatch.setenv("OPENAI_COMPATIBLE_API_KEY", "test-key")
+        monkeypatch.setenv("OPENAI_COMPATIBLE_BASE_URL", "https://api.openai.com/v1")
+        strat = llm_factory("openai-compatible/gpt-4o-mini")
         assert isinstance(strat, OpenAICompatibleLLM)
-        assert strat.name == "openai/gpt-4o-mini"
+        assert strat.name == "openai-compatible/gpt-4o-mini"
+        assert strat._base_url == "https://api.openai.com/v1"
 
     def test_factory_lm_studio_auto_istanzia(self):
         """``lm-studio/auto`` istanzia senza chiave né rete."""
@@ -318,30 +312,43 @@ class TestLLMFactory:
         assert strat.name == "lm-studio/Qwen2.5-7B-Instruct"
         assert strat.metadata.provider == "lm-studio"
 
-    def test_factory_openrouter_senza_chiave_raises(self, monkeypatch):
-        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-        with pytest.raises(MissingAPIKeyError, match="OpenRouter") as exc:
-            llm_factory("openrouter/deepseek-ai/DeepSeek-V3")
-        assert exc.value.env_var == "OPENROUTER_API_KEY"
-
-    def test_factory_openrouter_con_chiave_istanzia(self, monkeypatch):
-        monkeypatch.setenv("OPENROUTER_API_KEY", "or-test-key")
-        strat = llm_factory("openrouter/deepseek-ai/DeepSeek-V3")
-        assert isinstance(strat, OpenAICompatibleLLM)
-        assert strat.name == "openrouter/deepseek-ai/DeepSeek-V3"
-
     def test_factory_openai_compatible_senza_env_raises(self, monkeypatch):
+        """Prefisso generico senza chiave → MissingAPIKeyError."""
         monkeypatch.delenv("OPENAI_COMPATIBLE_API_KEY", raising=False)
         monkeypatch.delenv("OPENAI_COMPATIBLE_BASE_URL", raising=False)
-        with pytest.raises(MissingAPIKeyError, match="OpenAI-compatibile"):
-            llm_factory("openai-compatible/mio-modello")
+        with pytest.raises(MissingAPIKeyError, match="OpenAI-compatibile") as exc:
+            llm_factory("openai-compatible/gpt-4o-mini")
+        assert exc.value.env_var == "OPENAI_COMPATIBLE_API_KEY"
 
     def test_factory_openai_compatible_con_env_istanzia(self, monkeypatch):
         monkeypatch.setenv("OPENAI_COMPATIBLE_API_KEY", "ck")
-        monkeypatch.setenv("OPENAI_COMPATIBLE_BASE_URL", "http://localhost:9999/v1")
-        strat = llm_factory("openai-compatible/mio-modello")
+        monkeypatch.setenv("OPENAI_COMPATIBLE_BASE_URL", "https://openrouter.ai/api/v1")
+        strat = llm_factory("openai-compatible/deepseek/deepseek-chat")
         assert isinstance(strat, OpenAICompatibleLLM)
-        assert strat._base_url == "http://localhost:9999/v1"
+        assert strat._base_url == "https://openrouter.ai/api/v1"
+        assert strat.name == "openai-compatible/deepseek/deepseek-chat"
+        assert strat.metadata.provider == "openai-compatible"
+
+    def test_factory_lm_studio_auto_istanzia(self):
+        """``lm-studio/auto`` istanzia senza chiave né rete."""
+        strat = llm_factory("lm-studio/auto")
+        assert isinstance(strat, OpenAICompatibleLLM)
+        assert strat.name == "lm-studio/auto"
+
+    def test_factory_lm_studio_model_dinamico(self):
+        """Prefisso dinamico: ``lm-studio/<modello>`` non registrato viene
+        costruito al volo."""
+        strat = llm_factory("lm-studio/Qwen2.5-7B-Instruct")
+        assert isinstance(strat, OpenAICompatibleLLM)
+        assert strat.name == "lm-studio/Qwen2.5-7B-Instruct"
+        assert strat.metadata.provider == "lm-studio"
+
+    def test_factory_prefissi_non_previsti_raises(self):
+        """Prefissi non supportati (es. openrouter/) → UnknownLLMModelError."""
+        with pytest.raises(UnknownLLMModelError):
+            llm_factory("openrouter/deepseek/deepseek-chat")
+        with pytest.raises(UnknownLLMModelError):
+            llm_factory("openai/gpt-4o-mini")
 
     def test_factory_non_openai_provider_raises_not_implemented(self, monkeypatch):
         """Provider non OpenAI-compatibili: con chiave presente sollevano
@@ -360,17 +367,17 @@ class TestLLMFactoryAbbreviations:
     @pytest.mark.parametrize(
         "abbrev, resolved",
         [
-            ("fast", "openai/gpt-4o-mini"),
-            ("cheap", "openai/gpt-4o-mini"),
-            ("quality", "openai/gpt-4o"),
+            ("fast", "openai-compatible/gpt-4o-mini"),
+            ("cheap", "openai-compatible/gpt-4o-mini"),
+            ("quality", "openai-compatible/gpt-4o"),
             ("local", "lm-studio/auto"),
         ],
     )
     def test_abbreviation_resolves_to_provider(self, abbrev, resolved, monkeypatch):
         """Le abbreviazioni risolvono al modello reale."""
-        if resolved.startswith("openai/"):
+        if resolved.startswith("openai-compatible/"):
             # Per remote: assicuriamoci che l'API key sia assente → MissingAPIKeyError
-            monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+            monkeypatch.delenv("OPENAI_COMPATIBLE_API_KEY", raising=False)
             with pytest.raises(MissingAPIKeyError):
                 llm_factory(abbrev)
         else:
@@ -413,11 +420,11 @@ class TestLLMFactoryCaching:
     def test_failure_does_not_cache(self, monkeypatch):
         """Se la factory solleva un errore, l'istanza non viene cached:
         una seconda chiamata deve ridare l'errore (non un finto hit)."""
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_COMPATIBLE_API_KEY", raising=False)
         with pytest.raises(MissingAPIKeyError):
-            llm_factory("openai/gpt-4o-mini")
+            llm_factory("openai-compatible/gpt-4o-mini")
         with pytest.raises(MissingAPIKeyError):
-            llm_factory("openai/gpt-4o-mini")
+            llm_factory("openai-compatible/gpt-4o-mini")
 
 
 # --------------------------------------------------------------------------- #

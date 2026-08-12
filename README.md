@@ -176,8 +176,6 @@ il formato OpenAI** (una sola implementazione): cambiano solo URL e chiave.
 | Prefisso | Endpoint | API key / URL |
 |---|---|---|
 | `lm-studio/<modello>` | LM Studio locale | `http://localhost:1234/v1` (override: `LM_STUDIO_BASE_URL`), nessuna chiave |
-| `openrouter/<modello>` | OpenRouter | `OPENROUTER_API_KEY` |
-| `openai/<modello>` | OpenAI | `OPENAI_API_KEY` |
 | `openai-compatible/<modello>` | qualsiasi endpoint OpenAI-compatibile | `OPENAI_COMPATIBLE_API_KEY` + `OPENAI_COMPATIBLE_BASE_URL` |
 
 `lm-studio/auto` rileva automaticamente il primo modello caricato nel
@@ -198,23 +196,33 @@ stages = [
 ]
 ```
 
-### Provider remoto (es. OpenRouter)
+### Provider remoto (es. OpenRouter, OpenAI, vLLM)
 
-1. Ottieni una chiave su openrouter.ai e impostala:
+Ogni endpoint che espone l'API chat completions in formato OpenAI si usa
+col prefisso `openai-compatible/` + due env var:
 
 ```bash
-export OPENROUTER_API_KEY="sk-or-..."
+# Esempio OpenRouter
+export OPENAI_COMPATIBLE_BASE_URL="https://openrouter.ai/api/v1"
+export OPENAI_COMPATIBLE_API_KEY="sk-or-..."
+
+# Esempio OpenAI
+export OPENAI_COMPATIBLE_BASE_URL="https://api.openai.com/v1"
+export OPENAI_COMPATIBLE_API_KEY="sk-..."
 ```
 
-2. Configura lo stadio nel TOML (i modelli OpenRouter seguono il prefisso
-   `openrouter/`, es. `openrouter/deepseek/deepseek-chat`):
+Poi configura lo stadio nel TOML (il modello è quello dell'endpoint, es.
+`openrouter/deepseek/deepseek-chat` per OpenRouter):
 
 ```toml
 [pre_retrieval]
 stages = [
-  { method = "step_back", params = { model = "openrouter/deepseek/deepseek-chat" } },
+  { method = "step_back", params = { model = "openai-compatible/openrouter/auto-beta" } },
 ]
 ```
+
+Il model id inviato all'endpoint è tutto ciò che segue `openai-compatible/`
+(es. `openrouter/auto-beta` per `https://openrouter.ai/openrouter/auto-beta`).
 
 ### Verifica
 

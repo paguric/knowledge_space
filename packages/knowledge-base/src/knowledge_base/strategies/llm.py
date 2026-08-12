@@ -6,12 +6,15 @@ componente che usa un LLM sceglie il modello nel proprio parametro TOML
 (nessuna sezione ``[llm]`` globale); la :func:`llm_factory` istanzia la
 strategy corrispondente con caching.
 
-**Un unico componente per gli endpoint OpenAI-compatibili**
-(:class:`OpenAICompatibleLLM`): LM Studio (``lm-studio/...``), OpenRouter
-(``openrouter/...``), OpenAI (``openai/...``) e qualunque altro endpoint
-che espone l'API chat completions in formato OpenAI
-(``openai-compatible/...`` con ``OPENAI_COMPATIBLE_BASE_URL``). Cambiano
-solo ``base_url`` e ``api_key``.
+**Due soli prefissi per gli endpoint OpenAI-compatibili**
+(:class:`OpenAICompatibleLLM`):
+
+- ``lm-studio/<modello>`` — LM Studio locale (``auto`` = rileva il primo
+  modello caricato);
+- ``openai-compatible/<modello>`` — qualunque endpoint che espone l'API
+  chat completions in formato OpenAI (OpenRouter, OpenAI, vLLM, ...),
+  configurato via ``OPENAI_COMPATIBLE_BASE_URL`` e
+  ``OPENAI_COMPATIBLE_API_KEY``.
 
 Provider non OpenAI-compatibili (``anthropic/``, ``google/``,
 ``cohere/``) restano registrati nei metadati ma la factory solleva
@@ -83,8 +86,8 @@ class ProviderNotImplementedError(NotImplementedError):
         super().__init__(
             f"Provider '{provider}' non ancora implementato: espone un'API "
             f"non compatibile con il formato OpenAI. Disponibili: provider "
-            f"OpenAI-compatibili (lm-studio/, openrouter/, openai/, "
-            f"openai-compatible/) e mock/*."
+            f"OpenAI-compatibili (lm-studio/, openai-compatible/) "
+            f"e mock/*."
         )
 
 
@@ -357,9 +360,9 @@ def _last_user_message(messages: List[Dict[str, str]]) -> str:
 
 
 _ABBREVIATIONS: Dict[str, str] = {
-    "fast": "openai/gpt-4o-mini",
-    "cheap": "openai/gpt-4o-mini",
-    "quality": "openai/gpt-4o",
+    "fast": "openai-compatible/gpt-4o-mini",
+    "cheap": "openai-compatible/gpt-4o-mini",
+    "quality": "openai-compatible/gpt-4o",
     "local": "lm-studio/auto",
 }
 
@@ -370,8 +373,6 @@ _ABBREVIATIONS: Dict[str, str] = {
 
 
 _API_KEY_ENV: Dict[str, str] = {
-    "openai": "OPENAI_API_KEY",
-    "openrouter": "OPENROUTER_API_KEY",
     "openai-compatible": "OPENAI_COMPATIBLE_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
     "google": "GEMINI_API_KEY",
@@ -381,8 +382,6 @@ _API_KEY_ENV: Dict[str, str] = {
 # Nome display per i messaggi d'errore (coerente con embedding.py:
 # MissingAPIKeyError("OpenAI", ...) anziché il provider lowercase).
 _PROVIDER_DISPLAY: Dict[str, str] = {
-    "openai": "OpenAI",
-    "openrouter": "OpenRouter",
     "openai-compatible": "endpoint OpenAI-compatibile",
     "lm-studio": "LM Studio",
     "anthropic": "Anthropic",
@@ -392,14 +391,11 @@ _PROVIDER_DISPLAY: Dict[str, str] = {
 
 _BASE_URL_ENV: Dict[str, str] = {
     "lm-studio": "LM_STUDIO_BASE_URL",
-    "openrouter": "OPENROUTER_BASE_URL",
     "openai-compatible": "OPENAI_COMPATIBLE_BASE_URL",
 }
 
 _DEFAULT_BASE_URLS: Dict[str, str] = {
     "lm-studio": "http://localhost:1234/v1",
-    "openrouter": "https://openrouter.ai/api/v1",
-    "openai": "https://api.openai.com/v1",
     "openai-compatible": "http://localhost:1234/v1",
 }
 
@@ -425,11 +421,9 @@ _REMOTE_MODELS: List[Dict[str, Any]] = [
 
 # Modelli registrati con factory: endpoint OpenAI-compatibili.
 # ``lm-studio/auto`` rileva il primo modello caricato (GET /v1/models).
+# Gli altri endpoint (OpenRouter, OpenAI, ...) si usano col prefisso
+# dinamico ``openai-compatible/<modello>`` + env var.
 _OPENAI_COMPATIBLE_MODELS: List[Dict[str, Any]] = [
-    {"model_name": "openai/gpt-4o",                "provider": "openai",    "context_window": 128000,  "supports_streaming": True,  "supports_json": True},
-    {"model_name": "openai/gpt-4o-mini",           "provider": "openai",    "context_window": 128000,  "supports_streaming": True,  "supports_json": True},
-    {"model_name": "openai/gpt-4.1",               "provider": "openai",    "context_window": 1000000, "supports_streaming": True,  "supports_json": True},
-    {"model_name": "openai/o3-mini",               "provider": "openai",    "context_window": 200000,  "supports_streaming": True,  "supports_json": True},
     {"model_name": "lm-studio/auto",               "provider": "lm-studio", "context_window": 32768,  "supports_streaming": True,  "supports_json": True},
 ]
 
@@ -524,7 +518,6 @@ def clear_llm_cache() -> None:
 
 _DYNAMIC_PREFIXES: Tuple[str, ...] = (
     "lm-studio/",
-    "openrouter/",
     "openai-compatible/",
 )
 
@@ -532,7 +525,8 @@ _DYNAMIC_PREFIXES: Tuple[str, ...] = (
 def _build_dynamic_llm(model_name: str) -> LLMStrategy:
     """Costruisce un :class:`OpenAICompatibleLLM` per un modello con
     prefisso dinamico non registrato nel registry (es.
-    ``lm-studio/Qwen2.5-7B-Instruct``, ``openrouter/deepseek/...``)."""
+    ``lm-studio/Qwen2.5-7B-Instruct``,
+    ``openai-compatible/gpt-4o-mini`` per OpenRouter/OpenAI/vLLM)."""
     provider, _, model_id = model_name.partition("/")
     if provider == "lm-studio":
         api_key = "lm-studio"  # segnaposto, LM Studio non la verifica
@@ -577,18 +571,18 @@ def llm_factory(model_name: str) -> LLMStrategy:
     Casi supportati:
 
     - ``mock/*`` → istanze mock;
-    - modelli registrati con factory (``openai/*``, ``lm-studio/auto``) →
+    - modelli registrati con factory (``lm-studio/auto``) →
       :class:`OpenAICompatibleLLM` (con validazione API key se richiesta);
     - prefissi dinamici (``lm-studio/<modello>``,
-      ``openrouter/<modello>``, ``openai-compatible/<modello>``) →
-      :class:`OpenAICompatibleLLM` costruito al volo;
+      ``openai-compatible/<modello>``) → :class:`OpenAICompatibleLLM`
+      costruito al volo;
     - stub non OpenAI-compatibili (``anthropic/``, ``google/``,
       ``cohere/``) → :class:`MissingAPIKeyError` se manca la chiave,
       altrimenti :class:`ProviderNotImplementedError`.
 
     Args:
         model_name: identificatore del modello (es. ``"mock/fixed"``,
-            ``"lm-studio/auto"``, ``"openrouter/deepseek/..."``).
+            ``"lm-studio/auto"``, ``"openai-compatible/gpt-4o-mini"``).
 
     Raises:
         UnknownLLMModelError: se ``model_name`` (e la sua abbreviazione

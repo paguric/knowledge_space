@@ -59,7 +59,7 @@ extraction_model = None       # LLM per l'estrazione entità, via llm_factory (e
 
 **Via dalla config:** `retriever`, `schema_mode`, `resolver`, `schema_model`, `vector_index`, `fulltext_index`, `retrieval_query`, `return_properties`, `chunk_embedding_property`, `params` (costanti nel codice o non più esistenti). **Non nel TOML:** connessione Neo4j (`graph.json` o env `NEO4J_URI`/`NEO4J_AUTH`), nomi indici (costanti, creati una volta per workspace).
 
-**LLM pattern (doc 75-llm.md):** nessuna sezione `[llm]` globale — ogni componente sceglie il proprio modello nel TOML e lo costruisce via `llm_factory(model)` (bootstrap). `extraction_model` segue questo pattern: `lm-studio/auto` (locale) o `openai/...` (remoto, chiavi in env var).
+**LLM pattern (doc 75-llm.md):** nessuna sezione `[llm]` globale — ogni componente sceglie il proprio modello nel TOML e lo costruisce via `llm_factory(model)` (bootstrap). `extraction_model` segue questo pattern: `lm-studio/auto` (locale) o `openai-compatible/<path-modello>` (remoto, es. `openai-compatible/openrouter/auto-beta`; chiavi in env var).
 
 ## Orchestrazione (nuovo codice)
 
