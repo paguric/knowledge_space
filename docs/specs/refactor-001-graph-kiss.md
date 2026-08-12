@@ -32,17 +32,33 @@ Sempre allineato al corpus corrente → nessun meccanismo di aggiornamento incre
 
 **Estrazione guidata dal prompt, non dallo schema:** l'LLM estrae con label fisse — `(:Entity {name, label})`, relazioni `RELATED_TO` — più i nodi strutturali `Document`/`Chunk` (FROM_DOCUMENT, NEXT_CHUNK). La semantica di dominio sta nella proprietà `label` dell'entità (es. `label: "Persona"`).
 
+### 4. Estrazione (`extraction.py`) — **semplificata, niente pipeline neo4j-graphrag**
+
+**Linea guida**: la libreria `neo4j-graphrag` si usa SOLO per la ricerca (retriever, step 7) e il driver `neo4j` per la connessione. La **costruzione** del grafo è codice nostro: `KSChunkLoader` → `EntityRelationExtractor` → `Neo4jWriter` → resolver (~100 righe di orchestrazione, già scritte). Motivo: la pipeline della libreria presume di partire da file grezzi (data loading, split, embed) — noi abbiamo già chunk+embedding; e la propagazione incrementale (ri-estrazione solo dei chunk cambiati) non calza con le sue run batch.
+
+**Semplificazioni del modulo:**
+
+| Prima | Dopo |
+|---|---|
+| Label libere (Person, Organization, Concept...) | Label fisse: nodi `Entity {name, label}` — la semantica sta nella proprietà `label` (es. `"Persona"`) |
+| Tipi relazione liberi (WORKS_AT...) | Relazioni sempre `RELATED_TO` con proprietà `type` |
+| Id locali transitori (n1, n2) + mappatura id→nome | Riferimenti **per name**: `{nodes: [{name, label}], edges: [{source, target, type}]}` |
+| `system_prompt` configurabile | Un solo prompt, fisso nel codice |
+| `extract_batch` con merge interno | Estrazione per-chunk; aggregazione nel GraphManager |
+| JSON invalido → risultato vuoto silenzioso | invariato (warning + skip) |
+
 ### File da toccare (parziale, in aggiornamento)
 
 | File | Modifica |
 |------|----------|
 | `graph/schema.py` | Ridurre a helper di derivazione dal DB (o rimuovere) |
-| `graph/extraction.py` | Prompt con label fisse Entity/RELATED_TO (da confermare) |
+| `graph/extraction.py` | Prompt a label fisse, riferimenti per name, rimozione id locali |
 | `graph/store.py` | Aggiungere query di derivazione schema (labels/relationshipTypes/properties) |
+| `docs/40-graph.md` | Riscrivere: niente pipeline neo4j-graphrag in costruzione; schema derivato |
 
 ### Punti aperti (prossimi step)
 
-- Estrazione (`extraction.py`): prompt, batch, parsing
+- ~~Estrazione (`extraction.py`)~~ → risolto: label fisse, per name, custom
 - Writer (`writer.py`): quali metodi servono davvero
 - Resolver (`resolver.py`): quanti resolver tenere (oggi 4: semantic/fuzzy/exact/noop)
 - Retriever (`retriever.py`): quanti dei 6 metodi tenere (oggi: vector, vector_cypher, hybrid, hybrid_cypher, text2cypher, tools)
