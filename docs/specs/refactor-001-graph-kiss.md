@@ -1,105 +1,114 @@
-# Refactor 001 — Componente grafo: semplificazione KISS
+# Refactor 001 — Componente grafo: semplificazione KISS (piano unico)
 
 **Autore piano:** agente master · **Tipo:** refactor · **Stato:** in stesura (bozza) · **Priorità:** alta
 
 ## Obiettivo
 
-Ridurre il componente grafo (`packages/knowledge-base/src/knowledge_base/graph/`, ~2100 righe) all'osso: meno configurazione, meno modalità, meno file. La pipeline resta: chunk → estrazione LLM → scrittura Neo4j → dedup → retrieval.
+Ridurre il componente grafo (`packages/knowledge-base/src/knowledge_base/graph/`, ~2100 righe) all'osso e completare l'integrazione: meno configurazione, meno modalità, meno file. Assorbe e sostituisce le spec feat-016 (GraphManager), feat-017 (CLI), feat-018 (watcher), feat-019 (MCP), feat-020 (ricerca attiva).
 
-## Decisioni concordate (in ordine di pipeline)
+**Invarianti (non negoziabili):**
+1. **1 grafo per workspace** (mai per-base): chunk di tutte le basi nello stesso Neo4j; `base_name` è proprietà dei nodi Chunk.
+2. **La ricerca sul grafo rispetta domini/basi/file/chunk ATTIVI come la ricerca vettoriale**: pre-retrieval `active_base_names` via `is_base_searchable`; post-retrieval `filter_active_chunks` (stessi chunk_id); entità = raggiungibilità dai chunk attivi (nessun filtro su base_name delle entità).
+
+## Componenti (decisioni)
 
 ### 1. Loader (`chunk_loader.py`) — **invariato**
 
-`KSChunkLoader` legge chunk da disco + embedding da Chroma. Nessuna modifica.
+Legge chunk da disco + embedding da Chroma. `upsert_chunks` (propagazione incrementale) resta.
 
-### 2. Propagazione incrementale — **mantenuta**
+### 2. Schema (`schema.py`) — **eliminato come input, diventa output**
 
-`upsert_chunks` (chunk cambiati → ri-estrazione mirata) resta. Nessuna modifica.
+Nessuno schema persistente (niente `schema.json`, niente modalità FREE/manuale/EXTRACTED/da-file). Grafo schema-less; a richiesta lo si deriva dal DB (ispezione/doc): `CALL db.labels()`, `db.relationshipTypes()`, `db.schema.nodeTypeProperties()` → sempre allineato al corpus (le entità nuove compaiono da sole). Estrazione guidata dal prompt, non dallo schema.
 
-### 3. Schema (`schema.py`) — **eliminato come input, diventa output**
+### 3. Estrazione (`extraction.py`) — **semplificata, niente pipeline neo4j-graphrag**
 
-**Problema risolto:** uno schema generato alla prima esecuzione non scopre le entità che entrano successivamente nel corpus.
-
-**Soluzione:** nessuno schema persistente (niente `schema.json`, niente modalità FREE/manuale/EXTRACTED/da-file). Il grafo è schema-less; quando serve uno schema (text2cypher, ispezione, doc), lo si deriva dal DB al momento:
-
-```cypher
-CALL db.labels()
-CALL db.relationshipTypes()
-CALL db.schema.nodeTypeProperties()
-```
-
-Sempre allineato al corpus corrente → nessun meccanismo di aggiornamento incrementale da progettare.
-
-**Estrazione guidata dal prompt, non dallo schema:** l'LLM estrae con label fisse — `(:Entity {name, label})`, relazioni `RELATED_TO` — più i nodi strutturali `Document`/`Chunk` (FROM_DOCUMENT, NEXT_CHUNK). La semantica di dominio sta nella proprietà `label` dell'entità (es. `label: "Persona"`).
-
-### 4. Estrazione (`extraction.py`) — **semplificata, niente pipeline neo4j-graphrag**
-
-**Linea guida**: la libreria `neo4j-graphrag` si usa SOLO per la ricerca (retriever, step 7) e il driver `neo4j` per la connessione. La **costruzione** del grafo è codice nostro: `KSChunkLoader` → `EntityRelationExtractor` → `Neo4jWriter` → resolver (~100 righe di orchestrazione, già scritte). Motivo: la pipeline della libreria presume di partire da file grezzi (data loading, split, embed) — noi abbiamo già chunk+embedding; e la propagazione incrementale (ri-estrazione solo dei chunk cambiati) non calza con le sue run batch.
-
-**Semplificazioni del modulo:**
+`neo4j-graphrag` si usa SOLO per i retriever (driver `neo4j` per la connessione). La costruzione è codice nostro: `KSChunkLoader` → `EntityRelationExtractor` → `Neo4jWriter` → resolver (~100 righe di orchestrazione, già scritte). Motivo: la pipeline presume file grezzi (data loading, split, embed) — noi abbiamo già chunk+embedding; e la propagazione incrementale non calza con le sue run batch.
 
 | Prima | Dopo |
 |---|---|
-| Label libere (Person, Organization, Concept...) | Label fisse: nodi `Entity {name, label}` — la semantica sta nella proprietà `label` (es. `"Persona"`) |
-| Tipi relazione liberi (WORKS_AT...) | Relazioni sempre `RELATED_TO` con proprietà `type` |
-| Id locali transitori (n1, n2) + mappatura id→nome | Riferimenti **per name**: `{nodes: [{name, label}], edges: [{source, target, type}]}` |
+| Label libere (Person, Organization...) | Label fisse: nodi `Entity {name, label}` — semantica nella proprietà `label` (es. `"Persona"`) |
+| Tipi relazione liberi | Relazioni sempre `RELATED_TO` con proprietà `type` |
+| Id locali transitori (n1, n2) | Riferimenti **per name**: `{nodes: [{name, label}], edges: [{source, target, type}]}` |
 | `system_prompt` configurabile | Un solo prompt, fisso nel codice |
-| `extract_batch` con merge interno | Estrazione per-chunk; aggregazione nel GraphManager |
-| JSON invalido → risultato vuoto silenzioso | invariato (warning + skip) |
+| `extract_batch` con merge interno | Per-chunk; aggregazione nel GraphManager |
+| JSON invalido → vuoto silenzioso | invariato (warning + skip) |
 
-### 5. Writer (`writer.py`) — **da 10 a 8 metodi**
+### 4. Writer (`writer.py`) — **da 10 a 8 metodi**
 
-**Eliminare:** `write_nodes_multi_label` (inutile con label fissa `Entity`), `update_properties` (generico senza chiamanti concreti).
+**Eliminare:** `write_nodes_multi_label` (inutile con label fissa), `update_properties` (generico senza chiamanti). **Tenere:** `write_nodes`, `write_edges`, `delete_chunks`, `delete_file_nodes`, `update_chunk_file_name`, `update_chunk_embeddings`, `create_vector_index`, `create_fulltext_index`. Il writer scrive anche `(c:Chunk)-[:MENTIONS]->(e:Entity)` per ogni entità estratta dal chunk (relazione strutturale, distinta da `RELATED_TO`).
 
-**Tenere:** `write_nodes`, `write_edges`, `delete_chunks`, `delete_file_nodes`, `update_chunk_file_name`, `update_chunk_embeddings` + `create_vector_index`/`create_fulltext_index` (in base al retriever, step 7).
+**Propagazione: i 5 trigger della doc restano** (content change eager/lazy, move/rename property-only, cambio modello property-only, cambio chunking full, cambio ingestion full) + blocco cambio config (già implementato in `base_config.py`, invariato).
 
-**Propagazione:** i 5 trigger della doc restano invariati (content change eager, move/rename property-only, cambio modello property-only, cambio chunking full, cambio ingestion full) + blocco cambio config.
+### 5. Resolver (`resolver.py`) — **1 resolver, niente spaCy**
 
-### 6. Resolver (`resolver.py`) — **1 resolver, niente spaCy**
+**Eliminare:** `SpaCySemanticMatchResolver` (spacy + modello ~40MB, 150 righe, beneficio dubbio), `_NoOpResolver`, `resolver_factory` a 3 vie (via config `resolver=`). Il `FuzzyMatchResolver` della doc non è mai esistito — non implementarlo. **Tenere:** `ExactMatchResolver` su coppia `(name_normalizzato, label_dominio)`; gli id locali sono spariti → dedup vera nel prompt (nomi normalizzati), resolver come rete di sicurezza.
 
-**Eliminare:** `SpaCySemanticMatchResolver` (dipendenza `spacy` + modello ~40MB, 150 righe di union-find, beneficio dubbio con label fisse), `_NoOpResolver`, `resolver_factory` a 3 vie (via la config `resolver = semantic|exact|none`). Il `FuzzyMatchResolver` della doc non è mai esistito nel codice — non implementarlo.
+### 6. Retriever (`retriever.py`) — **1 solo retriever**
 
-**Tenere:** `ExactMatchResolver` ridotto a dedup su coppia `(name_normalizzato, label_dominio)` — con label fissa `Entity` il raggruppamento per label Cypher non serve; la discriminazione sta nella proprietà `label` di dominio ("Persona" vs "Organizzazione"). Gli id locali spariti (estrazione per name) → il resolver è solo normalizzazione + rete di sicurezza; la dedup vera avviene nel prompt di estrazione (nomi normalizzati).
+**Tenere:** `HybridCypherRetriever` (vector + fulltext + traversal `[:MENTIONS]`, con `retrieval_query` di default invariato) + filtro `active_base_names` (param `search(query, *, top_k=5, active_base_names=None)`, `None` = nessun filtro, compatibilità test). **Eliminare:** `VectorRetriever`, `VectorCypherRetriever`, `HybridRetriever`, `Text2CypherRetriever`, `ToolsRetriever` (mai implementato), `RetrieverFactory`, config `[graph].retriever` (istanziazione diretta nel GraphManager). Restano i 2 indici (li usa l'hybrid).
 
-### 7. Retriever (`retriever.py`) — **1 solo retriever**
+## Orchestrazione (nuovo codice)
 
-**Tenere:** `HybridCypherRetriever` (vector + fulltext + traversal entità) — l'unico che sfrutta il grafo: senza traversal i risultati sarebbero identici a Chroma. Il default `retrieval_query` (traversal `[:MENTIONS]` chunk→entità) resta.
+### 7. GraphManager — `packages/knowledge-base/src/knowledge_base/graph_manager.py` (da feat-016, riallineato)
 
-**Eliminare:** `VectorRetriever`, `VectorCypherRetriever`, `HybridRetriever`, `Text2CypherRetriever`, `ToolsRetriever` (mai implementato), `RetrieverFactory`, config `[graph].retriever` (nessuna scelta → istanziazione diretta nel GraphManager). Restano `create_vector_index` + `create_fulltext_index` (l'hybrid li usa entrambi).
+- `__init__(workspace, config_loader, graph_store_factory, llm_factory)` — store da `GraphConfigData` (`bolt_uri`, `database`) in `<workspace>/.knowledge-space/graph/graph.json` o env `NEO4J_URI`/`NEO4J_AUTH`; salvato al primo build.
+- `build_graph()` — full build per base attiva: `KSChunkLoader` → estrazione (LLM) → `write_nodes`/`write_edges`/`MENTIONS` (MERGE idempotente) → resolver. Nessuno schema coinvolto.
+- `sync_base(base_name)` — ri-estrazione solo chunk nuovi/modificati (via `content_hash`), idempotente.
+- `remove_base(base_name)` — `delete_file_nodes` per ogni file.
+- Se `graph.enabled == false` o nessun LLM → no-op con warning (l'estrazione entità richiede LLM).
+- `bootstrap.py`: cablare `graph_store_factory` in AppContext.
 
-### Invarianti (vincoli non negoziabili)
+### 8. CLI `ks graph` — `src/knowledge_space/cli/graph.py` (da feat-017, riallineato)
 
-1. **1 grafo per workspace** (mai per-base): i chunk di tutte le basi del workspace vivono nello stesso grafo Neo4j; `base_name` è una proprietà dei nodi Chunk.
-2. **La ricerca sul grafo rispetta domini/basi/file/chunk ATTIVI esattamente come la ricerca vettoriale** (spec feat-020, da allineare al retriever unico):
-   - pre-retrieval: `active_base_names` via `is_base_searchable` → filtro `WHERE node.base_name IN $active_base_names` nel retriever;
-   - post-retrieval: `filter_active_chunks` sugli stessi `chunk_id`;
-   - entità: raggiungibilità dai chunk attivi (traversal), nessun filtro su `base_name` delle entità.
+- `graph init [-w]` — `build_graph()`.
+- `graph sync [-w] [--base <name>]` — `sync_base()` per base o tutte.
+- `graph status [-w]` — connessione Neo4j, basi, chunk, entità/relazioni (COUNT).
+- `graph schema [-w]` — derivazione dal DB (labels/relationshipTypes/properties) — sostituisce `re-extract-schema` (schema non più persistente).
+- `graph search [-w] QUERY` — ricerca con filtro attivi (GraphSearchService).
+- Gating: `graph.enabled == false` → `"Grafo disabilitato: ks config set graph.enabled true"`. Errore connessione → `verify_connectivity` con messaggio chiaro.
+- Registrare il gruppo in `cli/__init__.py`; allineare `docs/85-cli.md`.
 
-### File da toccare (parziale, in aggiornamento)
+### 9. Propagazione watcher (da feat-018)
+
+Hook in `workspace_manager.sync_and_ingest()`: se `graph.enabled` per la base → content change → `sync_base` (eager: ri-estrazione mirata / lazy: solo Chroma); base rimossa → `remove_base`; move/rename → `update_chunk_file_name` property-only. Gating: check veloce, errori non fatali (Neo4j giù → WARNING, riallineamento al prossimo sync).
+
+### 10. Ricerca su grafo — `packages/knowledge-base/src/knowledge_base/graph_search_service.py` (da feat-020)
+
+`GraphSearchService.search(workspace, query, top_k)`: `active_base_names` via `is_base_searchable` → retriever (hybrid_cypher) → `filter_active_chunks`. Usato da CLI `graph search` e MCP `graph_search`.
+
+### 11. Tool MCP (da feat-019)
+
+In `packages/mcp-server/src/mcp_server/server.py`: `graph_status(workspace)`, `graph_search(workspace, query, base=None, top_k=5)` (GraphSearchService), `graph_sync(workspace, base=None)`. Gating `graph.enabled`; dipendenze `neo4j` lazy.
+
+## File da toccare (riepilogo)
 
 | File | Modifica |
 |------|----------|
 | `graph/schema.py` | Ridurre a helper di derivazione dal DB (o rimuovere) |
 | `graph/extraction.py` | Prompt a label fisse, riferimenti per name, rimozione id locali |
-| `graph/writer.py` | Rimuovere `write_nodes_multi_label` e `update_properties` |
-| `graph/resolver.py` | Solo `ExactMatchResolver`; via spaCy, noop e factory |
-| `graph/retriever.py` | Solo `HybridCypherRetriever` + filtro `active_base_names`; via factory e altri 5 |
-| `graph/store.py` | Aggiungere query di derivazione schema (labels/relationshipTypes/properties) |
-| `docs/40-graph.md` | Riscrivere: niente pipeline neo4j-graphrag in costruzione; schema derivato |
+| `graph/writer.py` | Rimuovere `write_nodes_multi_label`, `update_properties`; aggiungere `MENTIONS` |
+| `graph/resolver.py` | Solo `ExactMatchResolver`; via spaCy, noop, factory |
+| `graph/retriever.py` | Solo `HybridCypherRetriever` + `active_base_names`; via factory e altri 5 |
+| `graph/store.py` | Query derivazione schema (labels/relationshipTypes/properties) |
+| `graph_manager.py` | **Nuovo**: GraphManager |
+| `graph_search_service.py` | **Nuovo**: ricerca con filtro attivi |
+| `src/knowledge_space/cli/graph.py` | **Nuovo**: 5 comandi |
+| `src/knowledge_space/cli/__init__.py` | Registrare gruppo graph |
+| `src/knowledge_space/bootstrap.py` | Cablare `graph_store_factory` |
+| `packages/knowledge-base/src/knowledge_base/workspace_manager.py` | Hook post-ingest (trigger 1/2/delete) |
+| `packages/mcp-server/src/mcp_server/server.py` | 3 tool graph |
+| `docs/40-graph.md`, `docs/85-cli.md` | Riscrivere: niente pipeline in costruzione, schema derivato, comandi reali |
 
-### Punti aperti (prossimi step)
-
-- ~~Estrazione (`extraction.py`)~~ → risolto: label fisse, per name, custom
-- ~~Writer (`writer.py`)~~ → risolto: 8 metodi, trigger invariati
-- ~~Resolver (`resolver.py`)~~ → risolto: solo exact su (name, label); via spaCy
-- ~~Retriever (`retriever.py`)~~ → risolto: solo hybrid_cypher + filtro attivi; invarianti: 1 grafo per workspace, ricerca rispetta stato attivo
-- GraphManager (feat-016) e CLI `ks graph` (feat-017): definire dopo i punti sopra
-
-### Verifica (da completare)
+## Verifica
 
 ```bash
-# pipeline end-to-end senza schema.json
-ks graph build <workspace>          # nessun file schema generato
-ks graph schema <workspace>         # deriva dal DB: label/relazioni correnti
-# aggiungere documento con entità nuove → lo schema derivato le mostra
+ks config set graph.enabled true
+ks graph init -w ~/ws2                    # → "Grafo costruito: N entità, M relazioni"
+ks graph status -w ~/ws2                  # → Neo4j connesso, basi, chunk, entità
+ks graph schema -w ~/ws2                  # → labels/relazioni derivati dal DB
+ks graph search -w ~/ws2 "ciao"           # rispetta domini/basi/file attivi
+cp nuovo.pdf ~/ws2/Base/; sleep 8         # watcher → sync_base (eager)
+ks graph status -w ~/ws2                  # → conteggi aumentati
+ks domain deactivate "Paper Accademici"; ks graph search -w ~/ws2 "x"
+# → 0 risultati dal dominio inattivo; riattiva → tornano
 ```
