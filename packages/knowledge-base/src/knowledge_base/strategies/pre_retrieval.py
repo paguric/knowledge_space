@@ -104,7 +104,11 @@ class MultiQueryPreRetrieval(BasePreRetrieval):
         )
         messages = [{"role": "user", "content": prompt}]
         response = self.llm.generate(messages, max_tokens=512, temperature=0.7)
-        return _parse_lines(response, max_lines=self.n)
+        variants = _parse_lines(response, max_lines=self.n)
+        logger.info(
+            "multi_query: %d riformulazioni da LLM: %s", len(variants), variants
+        )
+        return variants
 
 
 # --------------------------------------------------------------------------- #
