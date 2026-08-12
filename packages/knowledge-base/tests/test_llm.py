@@ -11,11 +11,12 @@ e ``docs/75-llm.md``:
   all'istanziazione.
 
 Estensioni: registry, metadati discoverable, abbreviazioni, caching,
-provider locali stub, fallback API key mancante per altri provider remoti,
+:class:`OpenAICompatibleLLM` (endpoint formato OpenAI: LM Studio,
+OpenRouter, OpenAI, generico), fallback API key mancante,
 ``clear_llm_cache``.
 
-Nessuna dipendenza HTTP: in Fase 1A (F0) i provider remoti/locali sono
-solo stub (registry + metadati), non istanziabili.
+Nessuna dipendenza HTTP: il client ``openai`` è mockato via
+``monkeypatch.setattr(openai, "OpenAI", ...)``.
 """
 
 from __future__ import annotations
@@ -26,9 +27,11 @@ import pytest
 
 from knowledge_base.strategies import llm_registry
 from knowledge_base.strategies.llm import (
+    LLMConnectionError,
     MissingAPIKeyError,
     MockEchoLLM,
     MockFixedLLM,
+    OpenAICompatibleLLM,
     ProviderNotImplementedError,
     UnknownLLMModelError,
     clear_llm_cache,
@@ -56,8 +59,8 @@ def _clear_cache():
 class TestLLMRegistry:
     def test_all_models_registered(self):
         names = set(llm_registry.list_names())
-        # 2 mock + 9 remoti + 4 locali = 15
-        assert len(names) == 15
+        # 2 mock + 5 stub non-OpenAI + 5 OpenAI-compatibili = 12
+        assert len(names) == 12
 
     @pytest.mark.parametrize(
         "model",
@@ -65,12 +68,11 @@ class TestLLMRegistry:
             "mock/echo", "mock/fixed",
             "openai/gpt-4o", "openai/gpt-4o-mini", "openai/gpt-4.1",
             "openai/o3-mini",
+            "lm-studio/auto",
             "anthropic/claude-3.5-haiku", "anthropic/claude-3.5-sonnet",
             "anthropic/claude-4-opus",
             "google/gemini-2.0-flash",
             "cohere/command-r-plus",
-            "ollama/llama3.1", "ollama/mistral-nemo",
-            "llamacpp/llama-7b", "vllm/mistral-nemo",
         ],
     )
     def test_model_registered(self, model):
@@ -88,17 +90,20 @@ class TestLLMRegistry:
         assert llm_registry.get_factory("mock/echo") is not None
         assert llm_registry.get_factory("mock/fixed") is not None
 
-    def test_remote_models_no_factory_in_fase_1a(self):
-        """In Fase 1A i provider remoti sono stub (factory=None)."""
+    def test_openai_compatible_models_have_factory(self):
+        """I modelli OpenAI-compatibili hanno una factory concreta."""
         for name in [
-            "openai/gpt-4o", "anthropic/claude-3.5-haiku",
+            "openai/gpt-4o", "openai/gpt-4o-mini",
+            "openai/gpt-4.1", "openai/o3-mini", "lm-studio/auto",
+        ]:
+            assert llm_registry.get_factory(name) is not None
+
+    def test_non_openai_models_no_factory(self):
+        """Provider non OpenAI-compatibili restano stub (factory=None)."""
+        for name in [
+            "anthropic/claude-3.5-haiku",
             "google/gemini-2.0-flash", "cohere/command-r-plus",
         ]:
-            assert llm_registry.get_factory(name) is None
-
-    def test_local_models_no_factory_in_fase_1a(self):
-        """In Fase 1A i provider locali sono stub (factory=None)."""
-        for name in ["ollama/llama3.1", "llamacpp/llama-7b", "vllm/mistral-nemo"]:
             assert llm_registry.get_factory(name) is None
 
 
@@ -117,15 +122,12 @@ class TestLLMMetadata:
             ("openai/gpt-4o-mini",      "openai",   128000,  True,  True,  True),
             ("openai/gpt-4.1",          "openai",   1000000, True,  True,  True),
             ("openai/o3-mini",          "openai",   200000,  True,  True,  True),
+            ("lm-studio/auto",          "lm-studio", 32768,  False, True,  True),
             ("anthropic/claude-3.5-haiku",  "anthropic", 200000, True, True, True),
             ("anthropic/claude-3.5-sonnet", "anthropic", 200000, True, True, True),
             ("anthropic/claude-4-opus",     "anthropic", 200000, True, True, True),
             ("google/gemini-2.0-flash",     "google",   1000000, True, True, True),
             ("cohere/command-r-plus",       "cohere",   128000,  True, True, True),
-            ("ollama/llama3.1",         "ollama",   8192,    False, True,  False),
-            ("ollama/mistral-nemo",     "ollama",   32768,   False, True,  True),
-            ("llamacpp/llama-7b",       "llamacpp", 4096,    False, True,  False),
-            ("vllm/mistral-nemo",       "vllm",     32768,   False, True,  True),
         ],
     )
     def test_metadata_complete(
@@ -142,13 +144,13 @@ class TestLLMMetadata:
     def test_remote_providers_require_api(self):
         for name in llm_registry.list_names():
             md = llm_registry.get_metadata(name)
-            if md.provider in ("openai", "anthropic", "google", "cohere"):
+            if md.provider in ("openai", "openrouter", "anthropic", "google", "cohere"):
                 assert md.requires_api is True
 
     def test_local_providers_do_not_require_api(self):
         for name in llm_registry.list_names():
             md = llm_registry.get_metadata(name)
-            if md.provider in ("ollama", "llamacpp", "vllm", "mock"):
+            if md.provider in ("lm-studio", "mock"):
                 assert md.requires_api is False
 
 
@@ -294,22 +296,59 @@ class TestLLMFactory:
             llm_factory(model)
         assert exc.value.env_var == env_var
 
-    def test_factory_openai_with_api_key_raises_not_implemented(self, monkeypatch):
-        """In Fase 1A anche con la API key presente il provider è stub:
-        la factory solleva ``ProviderNotImplementedError``."""
+    def test_factory_openai_with_api_key_istanzia(self, monkeypatch):
+        """Con la API key presente, ``openai/gpt-4o-mini`` istanzia un
+        :class:`OpenAICompatibleLLM` (nessuna chiamata di rete all'init)."""
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-        with pytest.raises(ProviderNotImplementedError, match="openai"):
-            llm_factory("openai/gpt-4o-mini")
+        strat = llm_factory("openai/gpt-4o-mini")
+        assert isinstance(strat, OpenAICompatibleLLM)
+        assert strat.name == "openai/gpt-4o-mini"
 
-    def test_factory_local_provider_raises_not_implemented_without_key_check(self):
-        """Provider locali non richiedono API key: la factory solleva
-        direttamente ``ProviderNotImplementedError``."""
-        with pytest.raises(ProviderNotImplementedError, match="ollama"):
-            llm_factory("ollama/llama3.1")
-        with pytest.raises(ProviderNotImplementedError, match="llamacpp"):
-            llm_factory("llamacpp/llama-7b")
-        with pytest.raises(ProviderNotImplementedError, match="vllm"):
-            llm_factory("vllm/mistral-nemo")
+    def test_factory_lm_studio_auto_istanzia(self):
+        """``lm-studio/auto`` istanzia senza chiave né rete."""
+        strat = llm_factory("lm-studio/auto")
+        assert isinstance(strat, OpenAICompatibleLLM)
+        assert strat.name == "lm-studio/auto"
+
+    def test_factory_lm_studio_model_dinamico(self):
+        """Prefisso dinamico: ``lm-studio/<modello>`` non registrato viene
+        costruito al volo."""
+        strat = llm_factory("lm-studio/Qwen2.5-7B-Instruct")
+        assert isinstance(strat, OpenAICompatibleLLM)
+        assert strat.name == "lm-studio/Qwen2.5-7B-Instruct"
+        assert strat.metadata.provider == "lm-studio"
+
+    def test_factory_openrouter_senza_chiave_raises(self, monkeypatch):
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        with pytest.raises(MissingAPIKeyError, match="OpenRouter") as exc:
+            llm_factory("openrouter/deepseek-ai/DeepSeek-V3")
+        assert exc.value.env_var == "OPENROUTER_API_KEY"
+
+    def test_factory_openrouter_con_chiave_istanzia(self, monkeypatch):
+        monkeypatch.setenv("OPENROUTER_API_KEY", "or-test-key")
+        strat = llm_factory("openrouter/deepseek-ai/DeepSeek-V3")
+        assert isinstance(strat, OpenAICompatibleLLM)
+        assert strat.name == "openrouter/deepseek-ai/DeepSeek-V3"
+
+    def test_factory_openai_compatible_senza_env_raises(self, monkeypatch):
+        monkeypatch.delenv("OPENAI_COMPATIBLE_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_COMPATIBLE_BASE_URL", raising=False)
+        with pytest.raises(MissingAPIKeyError, match="OpenAI-compatibile"):
+            llm_factory("openai-compatible/mio-modello")
+
+    def test_factory_openai_compatible_con_env_istanzia(self, monkeypatch):
+        monkeypatch.setenv("OPENAI_COMPATIBLE_API_KEY", "ck")
+        monkeypatch.setenv("OPENAI_COMPATIBLE_BASE_URL", "http://localhost:9999/v1")
+        strat = llm_factory("openai-compatible/mio-modello")
+        assert isinstance(strat, OpenAICompatibleLLM)
+        assert strat._base_url == "http://localhost:9999/v1"
+
+    def test_factory_non_openai_provider_raises_not_implemented(self, monkeypatch):
+        """Provider non OpenAI-compatibili: con chiave presente sollevano
+        ``ProviderNotImplementedError``."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        with pytest.raises(ProviderNotImplementedError, match="anthropic"):
+            llm_factory("anthropic/claude-3.5-haiku")
 
 
 # --------------------------------------------------------------------------- #
@@ -324,21 +363,21 @@ class TestLLMFactoryAbbreviations:
             ("fast", "openai/gpt-4o-mini"),
             ("cheap", "openai/gpt-4o-mini"),
             ("quality", "openai/gpt-4o"),
-            ("local", "ollama/llama3.1"),
+            ("local", "lm-studio/auto"),
         ],
     )
     def test_abbreviation_resolves_to_provider(self, abbrev, resolved, monkeypatch):
-        """Le abbreviazioni risolvono al modello reale; in Fase 1A
-        sollevano l'errore atteso del provider (non UnknownLLMModelError)."""
-        # Per remote: assicuriamoci che l'API key sia assente → MissingAPIKeyError
+        """Le abbreviazioni risolvono al modello reale."""
         if resolved.startswith("openai/"):
+            # Per remote: assicuriamoci che l'API key sia assente → MissingAPIKeyError
             monkeypatch.delenv("OPENAI_API_KEY", raising=False)
             with pytest.raises(MissingAPIKeyError):
                 llm_factory(abbrev)
         else:
-            # local
-            with pytest.raises(ProviderNotImplementedError):
-                llm_factory(abbrev)
+            # local → lm-studio/auto: istanzia senza rete
+            strat = llm_factory(abbrev)
+            assert isinstance(strat, OpenAICompatibleLLM)
+            assert strat.name == "lm-studio/auto"
 
 
 # --------------------------------------------------------------------------- #
@@ -379,6 +418,176 @@ class TestLLMFactoryCaching:
             llm_factory("openai/gpt-4o-mini")
         with pytest.raises(MissingAPIKeyError):
             llm_factory("openai/gpt-4o-mini")
+
+
+# --------------------------------------------------------------------------- #
+# OpenAICompatibleLLM — endpoint formato OpenAI (LM Studio, OpenRouter, ...)
+# --------------------------------------------------------------------------- #
+
+
+class _FakeOpenAIClient:
+    """Client finto che registra gli argomenti e restituisce risposte
+    deterministiche: nessuna rete nei test."""
+
+    def __init__(
+        self, response: str = "Risposta di test", model_names=None, error=None
+    ):
+        self.response = response
+        self.model_names = ["modello-locale"] if model_names is None else model_names
+        self.error = error
+        self.last_kwargs = None
+        self.base_url = None
+        self.api_key = None
+        self.chat = _FakeChat(self)
+        self.models = _FakeModels(self)
+
+
+class _FakeMessage:
+    def __init__(self, content):
+        self.content = content
+
+
+class _FakeChoice:
+    def __init__(self, content):
+        self.message = _FakeMessage(content)
+
+
+class _FakeResponse:
+    def __init__(self, content):
+        self.choices = [_FakeChoice(content)]
+
+
+class _FakeDelta:
+    def __init__(self, content):
+        self.content = content
+
+
+class _FakeStreamChoice:
+    def __init__(self, content):
+        self.delta = _FakeDelta(content)
+
+
+class _FakeStreamChunk:
+    def __init__(self, content):
+        self.choices = [_FakeStreamChoice(content)] if content is not None else []
+
+
+class _FakeModel:
+    def __init__(self, mid):
+        self.id = mid
+
+
+class _FakeModelsList:
+    def __init__(self, names):
+        self.data = [_FakeModel(n) for n in names]
+
+
+class _FakeCompletions:
+    def __init__(self, client):
+        self._client = client
+
+    def create(self, **kwargs):
+        self._client.last_kwargs = kwargs
+        if self._client.error:
+            raise RuntimeError(self._client.error)
+        if kwargs.get("stream"):
+            parts = self._client.response.split(" ")
+            return iter([_FakeStreamChunk(p + " ") for p in parts if p])
+        return _FakeResponse(self._client.response)
+
+
+class _FakeChat:
+    def __init__(self, client):
+        self.completions = _FakeCompletions(client)
+
+
+class _FakeModels:
+    def __init__(self, client):
+        self._client = client
+
+    def list(self):
+        return _FakeModelsList(self._client.model_names)
+
+
+def _patch_openai(monkeypatch, client):
+    """Sostituisce ``openai.OpenAI`` con una factory che restituisce il
+    client finto (registrando base_url/api_key)."""
+    import openai
+
+    def _factory(base_url=None, api_key=None):
+        client.base_url = base_url
+        client.api_key = api_key
+        return client
+
+    monkeypatch.setattr(openai, "OpenAI", _factory)
+    return client
+
+
+class TestOpenAICompatibleLLM:
+    def _make(self, **kwargs):
+        from knowledge_base.strategies import LLMMetadata
+
+        md = LLMMetadata(
+            model_name="lm-studio/auto",
+            provider="lm-studio",
+            context_window=32768,
+            requires_api=False,
+            supports_streaming=True,
+            supports_json=True,
+        )
+        return OpenAICompatibleLLM(
+            metadata=md,
+            base_url="http://localhost:1234/v1",
+            api_key="lm-studio",
+            **kwargs,
+        )
+
+    def test_generate_chiama_endpoint_e_ritorna_testo(self, monkeypatch):
+        client = _patch_openai(monkeypatch, _FakeOpenAIClient("Ciao!"))
+        llm = self._make(model_name="qwen2.5")
+        out = llm.generate(
+            [{"role": "user", "content": "saluta"}], max_tokens=50, temperature=0.3
+        )
+        assert out == "Ciao!"
+        assert client.last_kwargs["model"] == "qwen2.5"
+        assert client.last_kwargs["max_tokens"] == 50
+        assert client.last_kwargs["temperature"] == 0.3
+        assert client.base_url == "http://localhost:1234/v1"
+        assert client.api_key == "lm-studio"
+
+    def test_generate_auto_detect_usa_primo_modello(self, monkeypatch):
+        client = _patch_openai(
+            monkeypatch, _FakeOpenAIClient("ok", model_names=["qwen2.5-7b"])
+        )
+        llm = self._make()  # model_name None → auto
+        out = llm.generate([{"role": "user", "content": "x"}])
+        assert out == "ok"
+        assert client.last_kwargs["model"] == "qwen2.5-7b"
+
+    def test_auto_detect_nessun_modello_raises(self, monkeypatch):
+        _patch_openai(monkeypatch, _FakeOpenAIClient(model_names=[]))
+        llm = self._make()
+        with pytest.raises(LLMConnectionError, match="nessun modello"):
+            llm.generate([{"role": "user", "content": "x"}])
+
+    def test_errore_chiamata_diventa_llm_connection_error(self, monkeypatch):
+        _patch_openai(monkeypatch, _FakeOpenAIClient(error="boom"))
+        llm = self._make(model_name="m")
+        with pytest.raises(LLMConnectionError, match="Chiamata LLM fallita"):
+            llm.generate([{"role": "user", "content": "x"}])
+
+    def test_stream_yields_tokens(self, monkeypatch):
+        _patch_openai(monkeypatch, _FakeOpenAIClient("ciao mondo"))
+        llm = self._make(model_name="m")
+        tokens = list(llm.stream([{"role": "user", "content": "x"}]))
+        assert tokens == ["ciao ", "mondo "]
+        assert llm._client.last_kwargs["stream"] is True
+
+    def test_metadata_di_istanza_factory_lm_studio(self):
+        strat = llm_factory("lm-studio/auto")
+        assert strat.metadata.provider == "lm-studio"
+        assert strat.metadata.requires_api is False
+        assert strat._base_url == "http://localhost:1234/v1"
 
 
 # --------------------------------------------------------------------------- #

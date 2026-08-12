@@ -17,6 +17,7 @@ dependencies = [
     "chromadb>=1.5.9",
     "sentence-transformers>=5.6.0",
     "tomli-w>=1.2.0",
+    "openai>=1.0.0",
 ]
 
 [project.optional-dependencies]

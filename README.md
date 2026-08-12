@@ -164,6 +164,72 @@ ks models list                   # Elenca modelli embedding
 ks models info <name>            # Dettaglio modello
 ```
 
+## LLM (modelli linguistici)
+
+Non esiste una sezione `[llm]` globale: **ogni componente** che usa un LLM
+sceglie il proprio modello nel TOML (cascata per-base), nel parametro
+`model` del suo stadio. Tutti i provider sono **endpoint compatibili con
+il formato OpenAI** (una sola implementazione): cambiano solo URL e chiave.
+
+### Provider supportati
+
+| Prefisso | Endpoint | API key / URL |
+|---|---|---|
+| `lm-studio/<modello>` | LM Studio locale | `http://localhost:1234/v1` (override: `LM_STUDIO_BASE_URL`), nessuna chiave |
+| `openrouter/<modello>` | OpenRouter | `OPENROUTER_API_KEY` |
+| `openai/<modello>` | OpenAI | `OPENAI_API_KEY` |
+| `openai-compatible/<modello>` | qualsiasi endpoint OpenAI-compatibile | `OPENAI_COMPATIBLE_API_KEY` + `OPENAI_COMPATIBLE_BASE_URL` |
+
+`lm-studio/auto` rileva automaticamente il primo modello caricato nel
+server LM Studio. Abbreviazione utile: `local` → `lm-studio/auto`.
+
+### LM Studio (locale)
+
+1. Avvia LM Studio e carica un modello (es. Qwen2.5-7B-Instruct).
+2. Nel server LM Studio: `Settings → Developer` e avvia il server locale
+   (porta 1234 di default).
+3. Configura lo stadio che vuoi nel `defaults.toml` del workspace
+   (o `base.toml` della base):
+
+```toml
+[pre_retrieval]
+stages = [
+  { method = "multi_query", params = { model = "lm-studio/auto", n = 3 } },
+]
+```
+
+### Provider remoto (es. OpenRouter)
+
+1. Ottieni una chiave su openrouter.ai e impostala:
+
+```bash
+export OPENROUTER_API_KEY="sk-or-..."
+```
+
+2. Configura lo stadio nel TOML (i modelli OpenRouter seguono il prefisso
+   `openrouter/`, es. `openrouter/deepseek/deepseek-chat`):
+
+```toml
+[pre_retrieval]
+stages = [
+  { method = "step_back", params = { model = "openrouter/deepseek/deepseek-chat" } },
+]
+```
+
+### Verifica
+
+```bash
+ks search -v "la tua query" -w <workspace>   # log: chiamate LLM e stage
+# oppure nei log di servizio/CLI:
+tail -f ~/.local/state/KnowledgeSpace/ks.log
+```
+
+Se la chiave manca, l'errore è esplicito (`MissingAPIKeyError`); se
+l'endpoint non risponde, l'errore indica URL e modello (`LLMConnectionError`).
+Stadi che usano LLM: pre-retrieval `multi_query`, `step_back`,
+`least_to_most`; retrieval con `query_mode = "hyde"`; post-retrieval
+`relevance`/`cross_encoder` (dove configurato).
+
 ### Status
 
 ```bash

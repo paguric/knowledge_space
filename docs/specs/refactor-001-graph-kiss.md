@@ -47,6 +47,20 @@ Nessuno schema persistente (niente `schema.json`, niente modalità FREE/manuale/
 
 **Tenere:** `HybridCypherRetriever` (vector + fulltext + traversal `[:MENTIONS]`, con `retrieval_query` di default invariato) + filtro `active_base_names` (param `search(query, *, top_k=5, active_base_names=None)`, `None` = nessun filtro, compatibilità test). **Eliminare:** `VectorRetriever`, `VectorCypherRetriever`, `HybridRetriever`, `Text2CypherRetriever`, `ToolsRetriever` (mai implementato), `RetrieverFactory`, config `[graph].retriever` (istanziazione diretta nel GraphManager). Restano i 2 indici (li usa l'hybrid).
 
+### Configurazione residua `[graph]` (TOML, cascata per-base)
+
+```toml
+[graph]
+enabled = false               # interruttore (defaults.toml workspace; base.toml può escludere una base)
+on_chunk_change = "lazy"      # "eager" | "lazy" — propagazione trigger 1
+top_k = 5                     # default risultati graph search
+extraction_model = None       # LLM per l'estrazione entità, via llm_factory (es. "lm-studio/auto"); None → no-op con warning
+```
+
+**Via dalla config:** `retriever`, `schema_mode`, `resolver`, `schema_model`, `vector_index`, `fulltext_index`, `retrieval_query`, `return_properties`, `chunk_embedding_property`, `params` (costanti nel codice o non più esistenti). **Non nel TOML:** connessione Neo4j (`graph.json` o env `NEO4J_URI`/`NEO4J_AUTH`), nomi indici (costanti, creati una volta per workspace).
+
+**LLM pattern (doc 75-llm.md):** nessuna sezione `[llm]` globale — ogni componente sceglie il proprio modello nel TOML e lo costruisce via `llm_factory(model)` (bootstrap). `extraction_model` segue questo pattern: `lm-studio/auto` (locale) o `openai/...` (remoto, chiavi in env var).
+
 ## Orchestrazione (nuovo codice)
 
 ### 7. GraphManager — `packages/knowledge-base/src/knowledge_base/graph_manager.py` (da feat-016, riallineato)

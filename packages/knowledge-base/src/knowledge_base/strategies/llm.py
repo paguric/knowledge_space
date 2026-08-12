@@ -1,20 +1,21 @@
 """Strategie LLM: interfaccia comune per tutti i modelli linguistici.
 
 Definisce :class:`LLMStrategy` (Protocol in ``__init__.py``) e un registry
-di modelli supportati (mock + provider remoti/locali). Ogni componente che
-usa un LLM sceglie il modello nel proprio parametro TOML (nessuna sezione
-``[llm]`` globale); la :func:`llm_factory` istanzia la strategy
-corrispondente con caching.
+di modelli supportati (mock + provider OpenAI-compatibili). Ogni
+componente che usa un LLM sceglie il modello nel proprio parametro TOML
+(nessuna sezione ``[llm]`` globale); la :func:`llm_factory` istanzia la
+strategy corrispondente con caching.
 
-In **Fase 1A (F0)**: solo i mock sono istanziabili. I provider remoti
-(``openai/``, ``anthropic/``, ``google/``, ``cohere/``) e locali
-(``ollama/``, ``llamacpp/``, ``vllm/``) sono registrati nei metadati (per
-discoverability) ma la factory solleva errore:
+**Un unico componente per gli endpoint OpenAI-compatibili**
+(:class:`OpenAICompatibleLLM`): LM Studio (``lm-studio/...``), OpenRouter
+(``openrouter/...``), OpenAI (``openai/...``) e qualunque altro endpoint
+che espone l'API chat completions in formato OpenAI
+(``openai-compatible/...`` con ``OPENAI_COMPATIBLE_BASE_URL``). Cambiano
+solo ``base_url`` e ``api_key``.
 
-- se il provider richiede API key e la env var è assente →
-  :class:`MissingAPIKeyError` (errore all'istanziazione, come da spec);
-- altrimenti → :class:`ProviderNotImplementedError` (le implementazioni
-  reali arrivano in Fase 1B/1C, vedi ``docs/75-llm.md`` § F0).
+Provider non OpenAI-compatibili (``anthropic/``, ``google/``,
+``cohere/``) restano registrati nei metadati ma la factory solleva
+:class:`ProviderNotImplementedError`.
 
 Le chiavi API non vanno mai nei TOML: solo env var (stessa regola di
 ``[embedding]``).
@@ -25,7 +26,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Iterator
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from knowledge_base.strategies import (
     LLMMetadata,
@@ -70,20 +71,25 @@ class UnknownLLMModelError(KeyError):
 
 
 class ProviderNotImplementedError(NotImplementedError):
-    """Sollevata dalla factory per provider non ancora implementati.
+    """Sollevata dalla factory per provider non OpenAI-compatibili.
 
-    In Fase 1A (F0) i provider remoti/locali sono solo stub nei metadati:
-    la factory solleva questo errore per segnalare che l'implementazione
-    concreta arriverà in Fase 1B/1C.
+    Provider che non espongono l'API chat completions in formato OpenAI
+    (anthropic, google, cohere) restano stub nei metadati: la factory
+    solleva questo errore.
     """
 
     def __init__(self, provider: str) -> None:
         self.provider = provider
         super().__init__(
-            f"Provider '{provider}' non ancora implementato in Fase 1A "
-            f"(solo mock/* sono istanziabili). Le implementazioni reali "
-            f"arrivano in Fase 1B/1C (vedi docs/75-llm.md § F0)."
+            f"Provider '{provider}' non ancora implementato: espone un'API "
+            f"non compatibile con il formato OpenAI. Disponibili: provider "
+            f"OpenAI-compatibili (lm-studio/, openrouter/, openai/, "
+            f"openai-compatible/) e mock/*."
         )
+
+
+class LLMConnectionError(RuntimeError):
+    """Errore di connessione o chiamata a un endpoint OpenAI-compatibile."""
 
 
 # --------------------------------------------------------------------------- #
@@ -179,6 +185,153 @@ class MockFixedLLM(BaseLLM):
         yield self._FIXED
 
 
+class OpenAICompatibleLLM(BaseLLM):
+    """LLM via endpoint OpenAI-compatibile (LM Studio, OpenRouter, OpenAI, ...).
+
+    Un'unica implementazione per ogni servizio che espone l'API chat
+    completions in formato OpenAI: cambiano solo ``base_url`` e
+    ``api_key``. Il client ``openai`` è inizializzato lazy.
+
+    Args:
+        metadata: metadati del modello.
+        base_url: URL base dell'endpoint (es. ``http://localhost:1234/v1``).
+        api_key: chiave API (per LM Studio va bene un segnaposto).
+        model_name: nome modello da usare nelle chiamate; ``"auto"``
+            (o ``None``) → rileva il primo modello caricato dall'endpoint
+            (GET /v1/models).
+    """
+
+    def __init__(
+        self,
+        metadata: LLMMetadata,
+        base_url: str,
+        api_key: str,
+        model_name: Optional[str] = None,
+        **params: Any,
+    ) -> None:
+        super().__init__(**params)
+        self.name = metadata.model_name
+        self.metadata = metadata
+        self._base_url = base_url
+        self._api_key = api_key
+        self._model_name = model_name or "auto"
+        self._client: Any = None  # lazy
+        self._resolved_model: Optional[str] = None
+
+    # ..................................................................... #
+    # Client
+    # ..................................................................... #
+
+    def _get_client(self) -> Any:
+        """Inizializza (lazy) il client OpenAI-compatibile."""
+        if self._client is None:
+            try:
+                from openai import OpenAI
+            except ImportError as exc:
+                raise LLMConnectionError(
+                    "Il pacchetto 'openai' non è installato. "
+                    "Eseguire: uv sync"
+                ) from exc
+            self._client = OpenAI(
+                base_url=self._base_url,
+                api_key=self._api_key,
+            )
+        return self._client
+
+    def _resolve_model(self) -> str:
+        """Ritorna il model_name da usare; con ``auto`` rileva il primo
+        modello caricato sull'endpoint."""
+        if self._resolved_model:
+            return self._resolved_model
+        if self._model_name not in ("auto", None):
+            self._resolved_model = self._model_name
+            return self._resolved_model
+
+        client = self._get_client()
+        try:
+            models = client.models.list()
+            names = [m.id for m in getattr(models, "data", [])]
+        except Exception as exc:
+            raise LLMConnectionError(
+                f"Impossibile contattare l'endpoint {self._base_url} "
+                f"per l'auto-detect del modello: {exc}"
+            ) from exc
+        if not names:
+            raise LLMConnectionError(
+                f"Endpoint {self._base_url} raggiunto ma nessun modello "
+                f"caricato: carica un modello in LM Studio e riprova"
+            )
+        self._resolved_model = names[0]
+        logger.info(
+            "Auto-detect LLM: %s (da %s)", self._resolved_model, self._base_url
+        )
+        return self._resolved_model
+
+    # ..................................................................... #
+    # LLMStrategy
+    # ..................................................................... #
+
+    def generate(
+        self,
+        messages: List[Dict[str, str]],
+        *,
+        max_tokens: int = 1024,
+        temperature: float = 0.0,
+        **kwargs: Any,
+    ) -> str:
+        client = self._get_client()
+        model = self._resolve_model()
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+        except Exception as exc:
+            raise LLMConnectionError(
+                f"Chiamata LLM fallita ({self._base_url}, modello '{model}'): "
+                f"{exc}"
+            ) from exc
+        content = getattr(
+            getattr(getattr(response, "choices", [{}])[0], "message", None),
+            "content",
+            None,
+        )
+        return content or ""
+
+    def stream(
+        self,
+        messages: List[Dict[str, str]],
+        *,
+        max_tokens: int = 1024,
+        temperature: float = 0.0,
+        **kwargs: Any,
+    ) -> Iterator[str]:
+        client = self._get_client()
+        model = self._resolve_model()
+        try:
+            stream = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stream=True,
+            )
+        except Exception as exc:
+            raise LLMConnectionError(
+                f"Chiamata LLM fallita ({self._base_url}, modello '{model}'): "
+                f"{exc}"
+            ) from exc
+        for chunk in stream:
+            if not getattr(chunk, "choices", None):
+                continue
+            delta = getattr(chunk.choices[0], "delta", None)
+            content = getattr(delta, "content", None)
+            if content:
+                yield content
+
+
 def _make_mock_metadata(model_name: str) -> LLMMetadata:
     return LLMMetadata(
         model_name=model_name,
@@ -207,7 +360,7 @@ _ABBREVIATIONS: Dict[str, str] = {
     "fast": "openai/gpt-4o-mini",
     "cheap": "openai/gpt-4o-mini",
     "quality": "openai/gpt-4o",
-    "local": "ollama/llama3.1",
+    "local": "lm-studio/auto",
 }
 
 
@@ -218,6 +371,8 @@ _ABBREVIATIONS: Dict[str, str] = {
 
 _API_KEY_ENV: Dict[str, str] = {
     "openai": "OPENAI_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "openai-compatible": "OPENAI_COMPATIBLE_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
     "google": "GEMINI_API_KEY",
     "cohere": "COHERE_API_KEY",
@@ -227,24 +382,25 @@ _API_KEY_ENV: Dict[str, str] = {
 # MissingAPIKeyError("OpenAI", ...) anziché il provider lowercase).
 _PROVIDER_DISPLAY: Dict[str, str] = {
     "openai": "OpenAI",
+    "openrouter": "OpenRouter",
+    "openai-compatible": "endpoint OpenAI-compatibile",
+    "lm-studio": "LM Studio",
     "anthropic": "Anthropic",
     "google": "Google",
     "cohere": "Cohere",
-    "ollama": "Ollama",
-    "llamacpp": "llama.cpp",
-    "vllm": "vLLM",
 }
 
 _BASE_URL_ENV: Dict[str, str] = {
-    "ollama": "OLLAMA_BASE_URL",
-    "llamacpp": "LLAMACPP_BASE_URL",
-    "vllm": "VLLM_BASE_URL",
+    "lm-studio": "LM_STUDIO_BASE_URL",
+    "openrouter": "OPENROUTER_BASE_URL",
+    "openai-compatible": "OPENAI_COMPATIBLE_BASE_URL",
 }
 
 _DEFAULT_BASE_URLS: Dict[str, str] = {
-    "ollama": "http://localhost:11434/v1",
-    "llamacpp": "http://localhost:8080/v1",
-    "vllm": "http://localhost:8000/v1",
+    "lm-studio": "http://localhost:1234/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "openai": "https://api.openai.com/v1",
+    "openai-compatible": "http://localhost:1234/v1",
 }
 
 
@@ -259,10 +415,7 @@ _MOCK_MODELS: List[Dict[str, Any]] = [
 ]
 
 _REMOTE_MODELS: List[Dict[str, Any]] = [
-    {"model_name": "openai/gpt-4o",                "provider": "openai",    "context_window": 128000,  "supports_streaming": True,  "supports_json": True},
-    {"model_name": "openai/gpt-4o-mini",           "provider": "openai",    "context_window": 128000,  "supports_streaming": True,  "supports_json": True},
-    {"model_name": "openai/gpt-4.1",               "provider": "openai",    "context_window": 1000000, "supports_streaming": True,  "supports_json": True},
-    {"model_name": "openai/o3-mini",               "provider": "openai",    "context_window": 200000,  "supports_streaming": True,  "supports_json": True},
+    # Provider non OpenAI-compatibili: solo stub (factory=None).
     {"model_name": "anthropic/claude-3.5-haiku",   "provider": "anthropic", "context_window": 200000,  "supports_streaming": True,  "supports_json": True},
     {"model_name": "anthropic/claude-3.5-sonnet",  "provider": "anthropic", "context_window": 200000,  "supports_streaming": True,  "supports_json": True},
     {"model_name": "anthropic/claude-4-opus",      "provider": "anthropic", "context_window": 200000,  "supports_streaming": True,  "supports_json": True},
@@ -270,11 +423,14 @@ _REMOTE_MODELS: List[Dict[str, Any]] = [
     {"model_name": "cohere/command-r-plus",         "provider": "cohere",    "context_window": 128000,  "supports_streaming": True,  "supports_json": True},
 ]
 
-_LOCAL_MODELS: List[Dict[str, Any]] = [
-    {"model_name": "ollama/llama3.1",     "provider": "ollama",    "context_window": 8192,  "supports_streaming": True,  "supports_json": False},
-    {"model_name": "ollama/mistral-nemo", "provider": "ollama",    "context_window": 32768, "supports_streaming": True,  "supports_json": True},
-    {"model_name": "llamacpp/llama-7b",   "provider": "llamacpp", "context_window": 4096,  "supports_streaming": True,  "supports_json": False},
-    {"model_name": "vllm/mistral-nemo",   "provider": "vllm",     "context_window": 32768, "supports_streaming": True,  "supports_json": True},
+# Modelli registrati con factory: endpoint OpenAI-compatibili.
+# ``lm-studio/auto`` rileva il primo modello caricato (GET /v1/models).
+_OPENAI_COMPATIBLE_MODELS: List[Dict[str, Any]] = [
+    {"model_name": "openai/gpt-4o",                "provider": "openai",    "context_window": 128000,  "supports_streaming": True,  "supports_json": True},
+    {"model_name": "openai/gpt-4o-mini",           "provider": "openai",    "context_window": 128000,  "supports_streaming": True,  "supports_json": True},
+    {"model_name": "openai/gpt-4.1",               "provider": "openai",    "context_window": 1000000, "supports_streaming": True,  "supports_json": True},
+    {"model_name": "openai/o3-mini",               "provider": "openai",    "context_window": 200000,  "supports_streaming": True,  "supports_json": True},
+    {"model_name": "lm-studio/auto",               "provider": "lm-studio", "context_window": 32768,  "supports_streaming": True,  "supports_json": True},
 ]
 
 
@@ -291,6 +447,7 @@ def _register_mock(entry: Dict[str, Any]) -> None:
 
 
 def _register_remote(entry: Dict[str, Any]) -> None:
+    """Registra provider non OpenAI-compatibili come stub (factory=None)."""
     md = LLMMetadata(
         model_name=entry["model_name"],
         provider=entry["provider"],
@@ -299,22 +456,42 @@ def _register_remote(entry: Dict[str, Any]) -> None:
         supports_streaming=entry["supports_streaming"],
         supports_json=entry["supports_json"],
     )
-    # In Fase 1A: solo metadati (factory=None). La factory solleverà
+    # Solo metadati (factory=None): la factory solleverà
     # ProviderNotImplementedError (previa validazione API key).
     llm_registry.register(entry["model_name"], md, factory=None)
 
 
-def _register_local(entry: Dict[str, Any]) -> None:
+def _register_openai_compatible(entry: Dict[str, Any]) -> None:
+    """Registra un modello su endpoint OpenAI-compatibile con factory.
+
+    La factory risolve ``base_url`` (env con default) e ``api_key``
+    (env; per LM Studio un segnaposto) e istanzia
+    :class:`OpenAICompatibleLLM`.
+    """
     md = LLMMetadata(
         model_name=entry["model_name"],
         provider=entry["provider"],
         context_window=entry["context_window"],
-        requires_api=False,
+        requires_api=entry["provider"] != "lm-studio",
         supports_streaming=entry["supports_streaming"],
         supports_json=entry["supports_json"],
     )
-    # In Fase 1A: solo metadati (factory=None).
-    llm_registry.register(entry["model_name"], md, factory=None)
+    provider = entry["provider"]
+    model_id = entry["model_name"].partition("/")[2]
+
+    def _factory(_md=md, _provider=provider, _model_id=model_id) -> LLMStrategy:
+        base_url = os.environ.get(
+            _BASE_URL_ENV.get(_provider, ""), _DEFAULT_BASE_URLS[_provider]
+        )
+        api_key = os.environ.get(_API_KEY_ENV.get(_provider, ""), "lm-studio")
+        return OpenAICompatibleLLM(
+            metadata=_md,
+            base_url=base_url,
+            api_key=api_key,
+            model_name=_model_id,
+        )
+
+    llm_registry.register(entry["model_name"], md, factory=_factory)
 
 
 for _entry in _MOCK_MODELS:
@@ -323,8 +500,8 @@ for _entry in _MOCK_MODELS:
 for _entry in _REMOTE_MODELS:
     _register_remote(_entry)
 
-for _entry in _LOCAL_MODELS:
-    _register_local(_entry)
+for _entry in _OPENAI_COMPATIBLE_MODELS:
+    _register_openai_compatible(_entry)
 
 
 # --------------------------------------------------------------------------- #
@@ -341,6 +518,50 @@ def clear_llm_cache() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Prefissi dinamici: modelli non registrati singolarmente
+# --------------------------------------------------------------------------- #
+
+
+_DYNAMIC_PREFIXES: Tuple[str, ...] = (
+    "lm-studio/",
+    "openrouter/",
+    "openai-compatible/",
+)
+
+
+def _build_dynamic_llm(model_name: str) -> LLMStrategy:
+    """Costruisce un :class:`OpenAICompatibleLLM` per un modello con
+    prefisso dinamico non registrato nel registry (es.
+    ``lm-studio/Qwen2.5-7B-Instruct``, ``openrouter/deepseek/...``)."""
+    provider, _, model_id = model_name.partition("/")
+    if provider == "lm-studio":
+        api_key = "lm-studio"  # segnaposto, LM Studio non la verifica
+    else:
+        env_var = _API_KEY_ENV[provider]
+        api_key = os.environ.get(env_var)
+        if not api_key:
+            raise MissingAPIKeyError(_PROVIDER_DISPLAY[provider], env_var)
+
+    base_url = os.environ.get(
+        _BASE_URL_ENV.get(provider, ""), _DEFAULT_BASE_URLS[provider]
+    )
+    md = LLMMetadata(
+        model_name=model_name,
+        provider=provider,
+        context_window=32768,
+        requires_api=provider != "lm-studio",
+        supports_streaming=True,
+        supports_json=True,
+    )
+    return OpenAICompatibleLLM(
+        metadata=md,
+        base_url=base_url,
+        api_key=api_key,
+        model_name=model_id,
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Factory pubblica
 # --------------------------------------------------------------------------- #
 
@@ -353,46 +574,64 @@ def llm_factory(model_name: str) -> LLMStrategy:
     risolto): stessa strategy per stesso model_name, vedi
     ``docs/75-llm.md`` § Integrazione con AppContext.
 
-    In **Fase 1A (F0)** sono istanziabili solo i mock; i provider
-    remoti/locali sollevano:
+    Casi supportati:
 
-    - :class:`MissingAPIKeyError` se il provider richiede API key e la
-      env var è assente (errore all'istanziazione, non a runtime);
-    - :class:`ProviderNotImplementedError` altrimenti (l'implementazione
-      concreta arriva in Fase 1B/1C).
+    - ``mock/*`` → istanze mock;
+    - modelli registrati con factory (``openai/*``, ``lm-studio/auto``) →
+      :class:`OpenAICompatibleLLM` (con validazione API key se richiesta);
+    - prefissi dinamici (``lm-studio/<modello>``,
+      ``openrouter/<modello>``, ``openai-compatible/<modello>``) →
+      :class:`OpenAICompatibleLLM` costruito al volo;
+    - stub non OpenAI-compatibili (``anthropic/``, ``google/``,
+      ``cohere/``) → :class:`MissingAPIKeyError` se manca la chiave,
+      altrimenti :class:`ProviderNotImplementedError`.
 
     Args:
         model_name: identificatore del modello (es. ``"mock/fixed"``,
-            ``"openai/gpt-4o-mini"``, abbreviazione ``"fast"``).
+            ``"lm-studio/auto"``, ``"openrouter/deepseek/..."``).
 
     Raises:
         UnknownLLMModelError: se ``model_name`` (e la sua abbreviazione
-            risolta) non è registrato.
+            risolta) non è riconosciuto.
+        MissingAPIKeyError: se il provider richiede API key e la env var
+            è assente.
     """
     resolved = _ABBREVIATIONS.get(model_name, model_name)
 
     if resolved in _LLM_CACHE:
         return _LLM_CACHE[resolved]
 
-    if not llm_registry.contains(resolved):
-        raise UnknownLLMModelError(model_name)
-
-    md = llm_registry.get_metadata(resolved)
-
-    if md.provider == "mock":
+    if llm_registry.contains(resolved):
+        md = llm_registry.get_metadata(resolved)
         factory = llm_registry.get_factory(resolved)
-        instance = factory()  # type: ignore[misc]
-        _LLM_CACHE[resolved] = instance
-        return instance
 
-    # Provider non-mock: in Fase 1A sono tutti stub. Convalida API key
-    # prima, così l'errore è coerente col comportamento della spec
-    # (errore all'istanziazione se la key manca).
-    if md.requires_api:
-        env_var = _API_KEY_ENV.get(md.provider)
-        if env_var and not os.environ.get(env_var):
-            raise MissingAPIKeyError(
-                _PROVIDER_DISPLAY.get(md.provider, md.provider), env_var
-            )
+        if factory is not None:
+            if md.requires_api:
+                env_var = _API_KEY_ENV.get(md.provider)
+                if env_var and not os.environ.get(env_var):
+                    raise MissingAPIKeyError(
+                        _PROVIDER_DISPLAY.get(md.provider, md.provider),
+                        env_var,
+                    )
+            instance = factory()  # type: ignore[misc]
+            _LLM_CACHE[resolved] = instance
+            return instance
 
-    raise ProviderNotImplementedError(md.provider)
+        # Stub non OpenAI-compatibili: convalida API key prima, così
+        # l'errore è coerente (errore all'istanziazione se la key manca).
+        if md.requires_api:
+            env_var = _API_KEY_ENV.get(md.provider)
+            if env_var and not os.environ.get(env_var):
+                raise MissingAPIKeyError(
+                    _PROVIDER_DISPLAY.get(md.provider, md.provider), env_var
+                )
+        raise ProviderNotImplementedError(md.provider)
+
+    # Prefissi dinamici non registrati singolarmente
+    for prefix in _DYNAMIC_PREFIXES:
+        if resolved.startswith(prefix):
+            instance = _build_dynamic_llm(resolved)
+            _LLM_CACHE[resolved] = instance
+            return instance
+
+    raise UnknownLLMModelError(model_name)
