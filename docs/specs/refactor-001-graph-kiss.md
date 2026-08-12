@@ -61,6 +61,20 @@ Sempre allineato al corpus corrente → nessun meccanismo di aggiornamento incre
 
 **Tenere:** `ExactMatchResolver` ridotto a dedup su coppia `(name_normalizzato, label_dominio)` — con label fissa `Entity` il raggruppamento per label Cypher non serve; la discriminazione sta nella proprietà `label` di dominio ("Persona" vs "Organizzazione"). Gli id locali spariti (estrazione per name) → il resolver è solo normalizzazione + rete di sicurezza; la dedup vera avviene nel prompt di estrazione (nomi normalizzati).
 
+### 7. Retriever (`retriever.py`) — **1 solo retriever**
+
+**Tenere:** `HybridCypherRetriever` (vector + fulltext + traversal entità) — l'unico che sfrutta il grafo: senza traversal i risultati sarebbero identici a Chroma. Il default `retrieval_query` (traversal `[:MENTIONS]` chunk→entità) resta.
+
+**Eliminare:** `VectorRetriever`, `VectorCypherRetriever`, `HybridRetriever`, `Text2CypherRetriever`, `ToolsRetriever` (mai implementato), `RetrieverFactory`, config `[graph].retriever` (nessuna scelta → istanziazione diretta nel GraphManager). Restano `create_vector_index` + `create_fulltext_index` (l'hybrid li usa entrambi).
+
+### Invarianti (vincoli non negoziabili)
+
+1. **1 grafo per workspace** (mai per-base): i chunk di tutte le basi del workspace vivono nello stesso grafo Neo4j; `base_name` è una proprietà dei nodi Chunk.
+2. **La ricerca sul grafo rispetta domini/basi/file/chunk ATTIVI esattamente come la ricerca vettoriale** (spec feat-020, da allineare al retriever unico):
+   - pre-retrieval: `active_base_names` via `is_base_searchable` → filtro `WHERE node.base_name IN $active_base_names` nel retriever;
+   - post-retrieval: `filter_active_chunks` sugli stessi `chunk_id`;
+   - entità: raggiungibilità dai chunk attivi (traversal), nessun filtro su `base_name` delle entità.
+
 ### File da toccare (parziale, in aggiornamento)
 
 | File | Modifica |
@@ -69,6 +83,7 @@ Sempre allineato al corpus corrente → nessun meccanismo di aggiornamento incre
 | `graph/extraction.py` | Prompt a label fisse, riferimenti per name, rimozione id locali |
 | `graph/writer.py` | Rimuovere `write_nodes_multi_label` e `update_properties` |
 | `graph/resolver.py` | Solo `ExactMatchResolver`; via spaCy, noop e factory |
+| `graph/retriever.py` | Solo `HybridCypherRetriever` + filtro `active_base_names`; via factory e altri 5 |
 | `graph/store.py` | Aggiungere query di derivazione schema (labels/relationshipTypes/properties) |
 | `docs/40-graph.md` | Riscrivere: niente pipeline neo4j-graphrag in costruzione; schema derivato |
 
@@ -77,7 +92,7 @@ Sempre allineato al corpus corrente → nessun meccanismo di aggiornamento incre
 - ~~Estrazione (`extraction.py`)~~ → risolto: label fisse, per name, custom
 - ~~Writer (`writer.py`)~~ → risolto: 8 metodi, trigger invariati
 - ~~Resolver (`resolver.py`)~~ → risolto: solo exact su (name, label); via spaCy
-- Retriever (`retriever.py`): quanti dei 6 metodi tenere (oggi: vector, vector_cypher, hybrid, hybrid_cypher, text2cypher, tools)
+- ~~Retriever (`retriever.py`)~~ → risolto: solo hybrid_cypher + filtro attivi; invarianti: 1 grafo per workspace, ricerca rispetta stato attivo
 - GraphManager (feat-016) e CLI `ks graph` (feat-017): definire dopo i punti sopra
 
 ### Verifica (da completare)

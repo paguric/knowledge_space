@@ -19,11 +19,7 @@ I retriever di `graph/retriever.py` eseguono query su tutto il grafo Neo4j senza
      2. costruisce il retriever da `RetrieverFactory.build(...)` passando `active_base_names`;
      3. post-filtra con `filter_active_chunks(results, kb)` (riuso diretto, stesso formato `chunk_id`).
 
-2. **Filtro pre-retrieval nei retriever**: firma `search(query, *, top_k=5, active_base_names=None, **kwargs)`:
-   - `VectorRetriever` / `HybridRetriever`: `WHERE node.base_name IN $active_base_names` dopo `YIELD` (o in `WHERE` full-text);
-   - `VectorCypherRetriever` / `HybridCypherRetriever`: vincolo nella `retrieval_query` sui candidati chunk;
-   - `Text2CypherRetriever`: vincolo nel template della query generata (limite: possibile; se non iniettabile → post-filtro sui chunk_id);
-   - `active_base_names == None` → nessun filtro (compatibilità test esistenti).
+2. **Filtro pre-retrieval nel retriever**: firma `search(query, *, top_k=5, active_base_names=None, **kwargs)` sul solo `HybridCypherRetriever` (refactor-001: unico retriever rimasto): vincolo `WHERE node.base_name IN $active_base_names` nella `retrieval_query` sui candidati chunk (e nel full-text `WHERE`); `active_base_names == None` → nessun filtro (compatibilità test esistenti).
 
 3. **Entità condivise**: nessun filtro sul `base_name` delle entità — l'appartenenza al sotto-grafo attivo è la raggiungibilità dai chunk candidati attivi (il traversal parte da chunk già filtrati, quindi il contesto è corretto per costruzione).
 
@@ -32,7 +28,7 @@ I retriever di `graph/retriever.py` eseguono query su tutto il grafo Neo4j senza
 | File | Modifica |
 |------|----------|
 | `packages/knowledge-base/src/knowledge_base/graph_search_service.py` | **Nuovo**: GraphSearchService |
-| `packages/knowledge-base/src/knowledge_base/graph/retriever.py` | Parametro `active_base_names` in 5 retriever |
+| `packages/knowledge-base/src/knowledge_base/graph/retriever.py` | Parametro `active_base_names` in `HybridCypherRetriever` |
 | `packages/knowledge-base/tests/test_graph.py` | Test filtro active (mock store) |
 
 ### Verifica
