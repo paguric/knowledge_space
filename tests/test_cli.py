@@ -1256,3 +1256,187 @@ class TestWorkspaceOverride:
 
 
 # --------------------------------------------------------------------------- #
+
+
+# --------------------------------------------------------------------------- #
+# Test activate/deactivate (feat-009)
+# --------------------------------------------------------------------------- #
+
+
+class TestActivateDeactivate:
+    """Test comandi activate/deactivate per workspace, base, file, chunk, domain."""
+
+    def _load_state(self, workspace_dir: Path):
+        from knowledge_base.persistence import WorkspaceConfig
+
+        config_path = workspace_dir / ".knowledge-space" / "state.json"
+        return WorkspaceConfig(config_path, workspace_dir).load()
+
+    def test_workspace_activate_deactivate(self, workspace_dir: Path):
+        runner.invoke(app, ["workspace", "add", str(workspace_dir)])
+        result = runner.invoke(app, ["workspace", "activate", str(workspace_dir)])
+        assert result.exit_code == 0
+        assert "attivato" in result.output.lower()
+
+        result = runner.invoke(app, ["workspace", "deactivate"])
+        assert result.exit_code == 0
+        assert "disattivato" in result.output.lower()
+
+    def test_workspace_activate_non_registrato(self, tmp_path: Path):
+        ws = tmp_path / "non_registrato"
+        ws.mkdir()
+        result = runner.invoke(app, ["workspace", "activate", str(ws)])
+        assert result.exit_code == 1
+        assert "non registrato" in result.output.lower()
+
+    def test_workspace_activate_switch_richiede_conferma(
+        self, workspace_dir: Path, tmp_path: Path
+    ):
+        """Attivare un secondo workspace senza conferma → annullato."""
+        ws2 = tmp_path / "ws2"
+        ws2.mkdir()
+        runner.invoke(app, ["workspace", "add", str(workspace_dir)])
+        runner.invoke(app, ["workspace", "add", str(ws2)])
+        runner.invoke(app, ["workspace", "activate", str(workspace_dir)])
+
+        result = runner.invoke(
+            app, ["workspace", "activate", str(ws2)], input="n\n"
+        )
+        assert result.exit_code == 1
+        assert "annullata" in result.output.lower()
+
+        # L'attivo resta il primo
+        result = runner.invoke(app, ["workspace", "activate"])
+        assert result.exit_code == 0
+        assert str(workspace_dir) in result.output
+
+    def test_status_mostra_workspace_attivo(self, workspace_dir: Path):
+        runner.invoke(app, ["workspace", "add", str(workspace_dir)])
+        runner.invoke(app, ["workspace", "activate", str(workspace_dir)])
+        result = runner.invoke(app, ["status"])
+        assert result.exit_code == 0
+        assert "[attivo]" in result.output
+
+    def test_base_activate_deactivate(self, workspace_dir: Path, base_dir: Path):
+        from knowledge_base.models import KnowledgeBase, WorkspaceConfigData
+        from knowledge_base.persistence import WorkspaceConfig
+
+        config_path = workspace_dir / ".knowledge-space" / "state.json"
+        kb = KnowledgeBase(path=base_dir, active=True)
+        WorkspaceConfig(config_path, workspace_dir).save(
+            WorkspaceConfigData(bases={"my_base": kb})
+        )
+
+        result = runner.invoke(
+            app, ["base", "deactivate", "my_base", "-w", str(workspace_dir)]
+        )
+        assert result.exit_code == 0
+        assert "disattivata" in result.output.lower()
+        assert self._load_state(workspace_dir).bases["my_base"].active is False
+
+        result = runner.invoke(
+            app, ["base", "activate", "my_base", "-w", str(workspace_dir)]
+        )
+        assert result.exit_code == 0
+        assert "attivata" in result.output.lower()
+        assert self._load_state(workspace_dir).bases["my_base"].active is True
+
+    def test_base_activate_inesistente(self, workspace_dir: Path):
+        result = runner.invoke(
+            app, ["base", "activate", "nope", "-w", str(workspace_dir)]
+        )
+        assert result.exit_code == 1
+        assert "non trovata" in result.output.lower()
+
+    def test_file_activate_deactivate(self, workspace_dir: Path, base_dir: Path):
+        from knowledge_base.models import FileEntry, KnowledgeBase, WorkspaceConfigData
+        from knowledge_base.persistence import WorkspaceConfig
+
+        config_path = workspace_dir / ".knowledge-space" / "state.json"
+        kb = KnowledgeBase(
+            path=base_dir,
+            files={"doc.md": FileEntry(
+                name="doc.md", file_id="f1", mtime=0.0,
+                added="2026-01-01T00:00:00", active=True,
+            )},
+        )
+        WorkspaceConfig(config_path, workspace_dir).save(
+            WorkspaceConfigData(bases={"my_base": kb})
+        )
+
+        result = runner.invoke(
+            app,
+            ["file", "deactivate", "my_base", "doc.md", "-w", str(workspace_dir)],
+        )
+        assert result.exit_code == 0
+        assert "disattivato" in result.output.lower()
+        assert self._load_state(workspace_dir).bases["my_base"].files["doc.md"].active is False
+
+    def test_chunk_activate_deactivate(self, workspace_dir: Path, base_dir: Path):
+        from knowledge_base.models import ChunkRef, FileEntry, KnowledgeBase, WorkspaceConfigData
+        from knowledge_base.persistence import WorkspaceConfig
+
+        config_path = workspace_dir / ".knowledge-space" / "state.json"
+        kb = KnowledgeBase(
+            path=base_dir,
+            files={
+                "doc.md": FileEntry(
+                    name="doc.md",
+                    file_id="f1",
+                    mtime=0.0,
+                    added="2026-01-01T00:00:00",
+                    active=True,
+                    chunks=[ChunkRef(index=0, content_hash="c0")],
+                )
+            },
+        )
+        WorkspaceConfig(config_path, workspace_dir).save(
+            WorkspaceConfigData(bases={"my_base": kb})
+        )
+
+        result = runner.invoke(
+            app,
+            ["chunk", "deactivate", "my_base::f1::0", "-w", str(workspace_dir)],
+        )
+        assert result.exit_code == 0
+        assert "disattivato" in result.output.lower()
+        state = self._load_state(workspace_dir)
+        assert state.bases["my_base"].files["doc.md"].chunks[0].active is False
+
+        # Chunk id malformato
+        result = runner.invoke(
+            app, ["chunk", "deactivate", "non-valido", "-w", str(workspace_dir)]
+        )
+        assert result.exit_code == 1
+
+    def test_domain_activate_deactivate(self, workspace_dir: Path):
+        from knowledge_base.models import Domain, WorkspaceConfigData
+        from knowledge_base.persistence import WorkspaceConfig
+
+        config_path = workspace_dir / ".knowledge-space" / "state.json"
+        WorkspaceConfig(config_path, workspace_dir).save(
+            WorkspaceConfigData(
+                domains=[Domain(name="D1", active=True, base_names=["my_base"])]
+            )
+        )
+
+        result = runner.invoke(
+            app, ["domain", "deactivate", "D1", "-w", str(workspace_dir)]
+        )
+        assert result.exit_code == 0
+        assert "disattivato" in result.output.lower()
+        assert self._load_state(workspace_dir).domains[0].active is False
+
+        result = runner.invoke(
+            app, ["domain", "activate", "D1", "-w", str(workspace_dir)]
+        )
+        assert result.exit_code == 0
+        assert "attivato" in result.output.lower()
+        assert self._load_state(workspace_dir).domains[0].active is True
+
+    def test_domain_activate_inesistente(self, workspace_dir: Path):
+        result = runner.invoke(
+            app, ["domain", "activate", "nope", "-w", str(workspace_dir)]
+        )
+        assert result.exit_code == 1
+        assert "non trovato" in result.output.lower()

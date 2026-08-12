@@ -89,6 +89,66 @@ def list_workspaces(
 
 
 @app.command()
+def activate(
+    path: Optional[str] = typer.Argument(
+        None, help="Path del workspace da attivare (default: ultimo usato)."
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
+) -> None:
+    """Attiva un workspace (solo uno attivo per volta)."""
+    ctx = get_context(verbose=verbose)
+
+    if path:
+        ws_path = Path(path).resolve()
+        if ws_path not in ctx.workspace_manager.list():
+            typer.echo(
+                f"Errore: workspace non registrato: {ws_path} "
+                f"(usa 'ks workspace add')",
+                err=True,
+            )
+            raise typer.Exit(1)
+        if not ws_path.is_dir():
+            typer.echo(f"Errore: la cartella non esiste: {ws_path}", err=True)
+            raise typer.Exit(1)
+    else:
+        ws_path = ctx.workspace_manager.get_last_workspace()
+        if ws_path is None:
+            typer.echo(
+                "Nessun workspace attivo. "
+                "Usa 'ks workspace activate <path>' o 'ks workspace add <path>'.",
+                err=True,
+            )
+            raise typer.Exit(1)
+
+    current = ctx.workspace_manager.get_last_workspace()
+    if current is not None and current != ws_path:
+        if not typer.confirm(
+            f"Il workspace {current} è attivo. Disattivarlo?"
+        ):
+            typer.echo("Operazione annullata.")
+            raise typer.Exit(1)
+
+    ctx.workspace_manager.set_last_workspace(ws_path)
+    logger.info("Workspace attivato: %s", ws_path)
+    typer.echo(f"Workspace attivato: {ws_path}")
+
+
+@app.command()
+def deactivate(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
+) -> None:
+    """Disattiva il workspace attivo."""
+    ctx = get_context(verbose=verbose)
+    current = ctx.workspace_manager.get_last_workspace()
+    if current is None:
+        typer.echo("Nessun workspace attivo.")
+        return
+    ctx.workspace_manager.clear_last_workspace()
+    logger.info("Workspace disattivato: %s", current)
+    typer.echo(f"Workspace disattivato: {current}")
+
+
+@app.command()
 def remove(
     path: str = typer.Argument(help="Path del workspace da rimuovere."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),

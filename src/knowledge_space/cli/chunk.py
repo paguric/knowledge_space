@@ -19,6 +19,7 @@ from knowledge_space.cli.common import (
     get_workspace,
     output_json,
     resolve_base_name,
+    save_workspace_state,
 )
 
 app = typer.Typer(help="Gestione chunk.")
@@ -120,3 +121,76 @@ def show(
 
     text = chunk_path.read_text(encoding="utf-8")
     typer.echo(text)
+
+
+# --------------------------------------------------------------------------- #
+# activate / deactivate
+# --------------------------------------------------------------------------- #
+
+
+def _parse_chunk_id(chunk_id: str):
+    """Scompone ``<base>::<file_id>::<index>`` in (base_name, file_id, index)."""
+    parts = chunk_id.split("::")
+    if len(parts) != 3:
+        return None
+    base_name, file_id, index = parts
+    try:
+        return base_name, file_id, int(index)
+    except ValueError:
+        return None
+
+
+def _set_chunk_active(
+    chunk_id: str,
+    active: bool,
+    workspace: Optional[str],
+    verbose: bool,
+) -> None:
+    """Imposta lo stato attivo di un chunk e salva lo stato."""
+    parsed = _parse_chunk_id(chunk_id)
+    if parsed is None:
+        typer.echo(f"Chunk id non valido: {chunk_id} (atteso base::file_id::index)", err=True)
+        raise typer.Exit(1)
+    base_name, file_id, index = parsed
+
+    ctx = get_context(verbose=verbose)
+    ws = get_workspace(ctx, workspace)
+    base_name = resolve_base_name(base_name, workspace=ws)
+    if base_name not in ws.bases:
+        typer.echo(f"Base non trovata: {base_name}", err=True)
+        raise typer.Exit(1)
+    kb = ws.bases[base_name]
+    entry = next((f for f in kb.files.values() if f.file_id == file_id), None)
+    if entry is None:
+        typer.echo(f"File con file_id {file_id} non trovato nella base {base_name}", err=True)
+        raise typer.Exit(1)
+    chunk = next((c for c in entry.chunks if c.index == index), None)
+    if chunk is None:
+        typer.echo(f"Chunk {index} non trovato nel file {entry.name}", err=True)
+        raise typer.Exit(1)
+
+    chunk.active = active
+    save_workspace_state(ctx, ws)
+    azione = "attivato" if active else "disattivato"
+    logger.info("Chunk %s: %s", chunk_id, azione)
+    typer.echo(f"Chunk {azione}: {chunk_id}")
+
+
+@app.command()
+def activate(
+    chunk_id: str = typer.Argument(help="Chunk id (base::file_id::index)."),
+    workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
+) -> None:
+    """Attiva un chunk (incluso nella ricerca)."""
+    _set_chunk_active(chunk_id, True, workspace, verbose)
+
+
+@app.command()
+def deactivate(
+    chunk_id: str = typer.Argument(help="Chunk id (base::file_id::index)."),
+    workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
+) -> None:
+    """Disattiva un chunk (escluso dalla ricerca)."""
+    _set_chunk_active(chunk_id, False, workspace, verbose)

@@ -24,6 +24,7 @@ from knowledge_space.cli.common import (
     output_json,
     output_table,
     resolve_base_name,
+    save_workspace_state,
 )
 
 app = typer.Typer(help="Gestione basi di conoscenza.")
@@ -232,3 +233,48 @@ def info(
             typer.echo(f"    chunking.method = {config_info.get('chunking_method', '-')}")
             typer.echo(f"    chunking.chunk_size = {config_info.get('chunking_size', '-')}")
             typer.echo(f"    embedding.model = {config_info.get('embedding_model', '-')}")
+
+
+# --------------------------------------------------------------------------- #
+# activate / deactivate
+# --------------------------------------------------------------------------- #
+
+
+def _set_base_active(
+    base_name: str,
+    active: bool,
+    workspace: Optional[str],
+    verbose: bool,
+) -> None:
+    """Imposta lo stato attivo di una base e salva lo stato."""
+    ctx = get_context(verbose=verbose)
+    ws = get_workspace(ctx, workspace)
+    base_name = resolve_base_name(base_name, workspace=ws)
+    if base_name not in ws.bases:
+        typer.echo(f"Base non trovata: {base_name}", err=True)
+        raise typer.Exit(1)
+    ws.bases[base_name].active = active
+    save_workspace_state(ctx, ws)
+    azione = "attivata" if active else "disattivata"
+    logger.info("Base %s: %s", base_name, azione)
+    typer.echo(f"Base {azione}: {base_name}")
+
+
+@app.command()
+def activate(
+    base_name: str = typer.Argument(help="Nome della base."),
+    workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
+) -> None:
+    """Attiva una base (inclusa nella ricerca)."""
+    _set_base_active(base_name, True, workspace, verbose)
+
+
+@app.command()
+def deactivate(
+    base_name: str = typer.Argument(help="Nome della base."),
+    workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
+) -> None:
+    """Disattiva una base (esclusa dalla ricerca)."""
+    _set_base_active(base_name, False, workspace, verbose)

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Optional
 
 import typer
@@ -46,6 +47,10 @@ def status_command(
 
     ws = get_workspace(ctx, workspace, sync=True)
 
+    # Il workspace "attivo" è l'ultimo usato nel GlobalIndex
+    active_ws = ctx.workspace_manager.get_last_workspace()
+    is_active = active_ws is not None and Path(active_ws).resolve() == Path(ws.path).resolve()
+
     # Statistiche
     n_bases = len(ws.bases)
     n_domains = len(ws.domains)
@@ -69,6 +74,7 @@ def status_command(
     if json_output:
         output_json({
             "workspace": str(ws.path),
+            "active": is_active,
             "bases": n_bases,
             "active_bases": active_bases,
             "domains": n_domains,
@@ -78,7 +84,10 @@ def status_command(
             "embedding_models": sorted(models),
         })
     else:
-        typer.echo(f"Workspace: {ws.path}")
+        attivo = " [attivo]" if is_active else " [inattivo]"
+        typer.echo(f"Workspace: {ws.path}{attivo}")
+        if active_ws is not None and not is_active:
+            typer.echo(f"  Attivo:    {active_ws}")
         typer.echo()
         typer.echo(f"  Basi:         {n_bases} ({active_bases} attive)")
         typer.echo(f"  Domini:       {n_domains}")

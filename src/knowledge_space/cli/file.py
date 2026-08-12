@@ -22,6 +22,7 @@ from knowledge_space.cli.common import (
     output_json,
     output_table,
     resolve_base_name,
+    save_workspace_state,
 )
 
 app = typer.Typer(help="Gestione file indicizzati.")
@@ -201,3 +202,55 @@ def remove(
         logger.error("Base non trovata: %s", exc)
         typer.echo(f"Errore: base non trovata: {exc}", err=True)
         raise typer.Exit(1)
+
+
+# --------------------------------------------------------------------------- #
+# activate / deactivate
+# --------------------------------------------------------------------------- #
+
+
+def _set_file_active(
+    base_name: str,
+    file_name: str,
+    active: bool,
+    workspace: Optional[str],
+    verbose: bool,
+) -> None:
+    """Imposta lo stato attivo di un file e salva lo stato."""
+    ctx = get_context(verbose=verbose)
+    ws = get_workspace(ctx, workspace)
+    base_name = resolve_base_name(base_name, workspace=ws)
+    if base_name not in ws.bases:
+        typer.echo(f"Base non trovata: {base_name}", err=True)
+        raise typer.Exit(1)
+    kb = ws.bases[base_name]
+    if file_name not in kb.files:
+        typer.echo(f"File non trovato: {file_name}", err=True)
+        raise typer.Exit(1)
+    kb.files[file_name].active = active
+    save_workspace_state(ctx, ws)
+    azione = "attivato" if active else "disattivato"
+    logger.info("File %s: %s", file_name, azione)
+    typer.echo(f"File {azione}: {file_name}")
+
+
+@app.command()
+def activate(
+    base_name: str = typer.Argument(help="Nome della base."),
+    file_name: str = typer.Argument(help="Nome del file."),
+    workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
+) -> None:
+    """Attiva un file (incluso nella ricerca)."""
+    _set_file_active(base_name, file_name, True, workspace, verbose)
+
+
+@app.command()
+def deactivate(
+    base_name: str = typer.Argument(help="Nome della base."),
+    file_name: str = typer.Argument(help="Nome del file."),
+    workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
+) -> None:
+    """Disattiva un file (escluso dalla ricerca)."""
+    _set_file_active(base_name, file_name, False, workspace, verbose)

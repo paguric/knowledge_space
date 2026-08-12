@@ -35,6 +35,8 @@ Interfaccia a riga di comando (Typer) per gestire workspace, domini, basi, file,
 | `workspace remove <path\|name>` | Rimuove dal GlobalIndex |
 | `workspace move <old> <new>` | Aggiorna path |
 | `workspace info [<path>]` | Mostra stato |
+| `workspace activate [<path>]` | Attiva un workspace (default: ultimo usato); chiede conferma se un altro è attivo |
+| `workspace deactivate` | Disattiva il workspace attivo |
 
 **Domain:**
 

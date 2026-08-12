@@ -132,6 +132,10 @@ class WorkspaceManager:
         logger.debug("Ultimo workspace impostato: %s", path)
         self._index.set_last_workspace(Path(path))
 
+    def clear_last_workspace(self) -> None:
+        """Disattiva il workspace attivo (rimuove ``last_workspace``)."""
+        self._index.clear_last_workspace()
+
     def get_last_workspace(self) -> Optional[Path]:
         return self._index.get_last_workspace()
 

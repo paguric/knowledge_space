@@ -220,6 +220,21 @@ def output_json(data: Any) -> None:
     typer.echo(json.dumps(data, indent=2, ensure_ascii=False, default=str))
 
 
+def save_workspace_state(ctx: Any, ws: Any) -> None:
+    """Persiste lo stato di un workspace su ``state.json``.
+
+    Usato dai comandi che modificano direttamente il modello
+    (es. ``activate``/``deactivate`` di base/file/chunk).
+    """
+    from knowledge_base.models import WorkspaceConfigData
+    from knowledge_base.persistence import WorkspaceConfig
+
+    config_path = ctx.runtime_paths.workspace_state_file(ws.path)
+    WorkspaceConfig(
+        config_path=config_path, workspace_path=ws.path
+    ).save(WorkspaceConfigData(version=1, domains=ws.domains, bases=ws.bases))
+
+
 def output_table(headers: List[str], rows: List[List[str]]) -> None:
     """Stampa tabella formattata su stdout.
 

@@ -24,6 +24,7 @@ from knowledge_space.cli.common import (
     output_json,
     output_table,
     resolve_base_name,
+    save_workspace_state,
 )
 
 app = typer.Typer(help="Gestione domini.")
@@ -198,3 +199,49 @@ def auto_generate(
     typer.echo(f"Domini generati: {len(ws.domains)}")
     for d in ws.domains:
         typer.echo(f"  {d.name}: {', '.join(d.base_names) or '(vuoto)'}")
+
+
+# --------------------------------------------------------------------------- #
+# activate / deactivate
+# --------------------------------------------------------------------------- #
+
+
+def _set_domain_active(
+    name: str,
+    active: bool,
+    workspace: Optional[str],
+    verbose: bool,
+) -> None:
+    """Imposta lo stato attivo di un dominio e salva lo stato."""
+    ctx = get_context(verbose=verbose)
+    ws = get_workspace(ctx, workspace)
+    domain = next((d for d in ws.domains if d.name == name), None)
+    if domain is None:
+        typer.echo(f"Dominio non trovato: {name}", err=True)
+        typer.echo(f"Domini disponibili: {', '.join(d.name for d in ws.domains) or '(nessuno)'}", err=True)
+        raise typer.Exit(1)
+    domain.active = active
+    save_workspace_state(ctx, ws)
+    azione = "attivato" if active else "disattivato"
+    logger.info("Dominio %s: %s", name, azione)
+    typer.echo(f"Dominio {azione}: {name}")
+
+
+@app.command()
+def activate(
+    name: str = typer.Argument(help="Nome del dominio."),
+    workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
+) -> None:
+    """Attiva un dominio (le basi incluse tornano nella ricerca)."""
+    _set_domain_active(name, True, workspace, verbose)
+
+
+@app.command()
+def deactivate(
+    name: str = typer.Argument(help="Nome del dominio."),
+    workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
+) -> None:
+    """Disattiva un dominio (le basi incluse escluse dalla ricerca)."""
+    _set_domain_active(name, False, workspace, verbose)

@@ -64,6 +64,12 @@ class GlobalIndex:
         data.last_workspace = Path(workspace_path)
         self._write(data)
 
+    def clear_last_workspace(self) -> None:
+        """Rimuove il riferimento al workspace attivo (ultimo usato)."""
+        data = self._read()
+        data.last_workspace = None
+        self._write(data)
+
     def add_workspace(self, workspace_path: Path) -> bool:
         """Registra un workspace. Restituisce ``True`` se era nuovo."""
         data = self._read()
