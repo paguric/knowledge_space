@@ -124,3 +124,18 @@ RestartSec=5
 3. `systemctl --user restart ks-serve` — restart with the new code
 
 > **Without `uv sync` the service keeps using the old bytecode/linking** (packages are `.pth`-linked to the source tree, but it's best practice to rebuild before restarting).
+
+## CLI globale `ks` (uv tool install)
+
+Il comando `ks` globale (senza `uv run`) è installato come tool uv in **modalità editable**:
+
+```bash
+uv tool install --editable --force --refresh .
+```
+
+- **`--editable`**: il tool punta ai sorgenti del repo (`.pth`) → le modifiche al codice sono visibili subito, nessuna reinstallazione per il codice.
+- **`--refresh` è ESSENZIALE**: senza, uv riusa il wheel cacheato (build cache) e installa codice vecchio anche con `--force` (già capitato due volte).
+- **Reinstallare** (stesso comando) solo quando cambiano le **dipendenze** in `pyproject.toml`.
+- Il servizio systemd NON usa il tool: gira con `uv run` dal repo (vedi sopra), quindi per il servizio valgono `uv sync` + restart.
+
+Verifica rapida dopo l'install: `ks workspace --help` deve mostrare `activate`/`deactivate`; `ks status` deve mostrare `[attivo]` sul workspace attivo.
