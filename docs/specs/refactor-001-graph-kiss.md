@@ -47,19 +47,28 @@ Sempre allineato al corpus corrente → nessun meccanismo di aggiornamento incre
 | `extract_batch` con merge interno | Estrazione per-chunk; aggregazione nel GraphManager |
 | JSON invalido → risultato vuoto silenzioso | invariato (warning + skip) |
 
+### 5. Writer (`writer.py`) — **da 10 a 8 metodi**
+
+**Eliminare:** `write_nodes_multi_label` (inutile con label fissa `Entity`), `update_properties` (generico senza chiamanti concreti).
+
+**Tenere:** `write_nodes`, `write_edges`, `delete_chunks`, `delete_file_nodes`, `update_chunk_file_name`, `update_chunk_embeddings` + `create_vector_index`/`create_fulltext_index` (in base al retriever, step 7).
+
+**Propagazione:** i 5 trigger della doc restano invariati (content change eager, move/rename property-only, cambio modello property-only, cambio chunking full, cambio ingestion full) + blocco cambio config.
+
 ### File da toccare (parziale, in aggiornamento)
 
 | File | Modifica |
 |------|----------|
 | `graph/schema.py` | Ridurre a helper di derivazione dal DB (o rimuovere) |
 | `graph/extraction.py` | Prompt a label fisse, riferimenti per name, rimozione id locali |
+| `graph/writer.py` | Rimuovere `write_nodes_multi_label` e `update_properties` |
 | `graph/store.py` | Aggiungere query di derivazione schema (labels/relationshipTypes/properties) |
 | `docs/40-graph.md` | Riscrivere: niente pipeline neo4j-graphrag in costruzione; schema derivato |
 
 ### Punti aperti (prossimi step)
 
 - ~~Estrazione (`extraction.py`)~~ → risolto: label fisse, per name, custom
-- Writer (`writer.py`): quali metodi servono davvero
+- ~~Writer (`writer.py`)~~ → risolto: 8 metodi, trigger invariati
 - Resolver (`resolver.py`): quanti resolver tenere (oggi 4: semantic/fuzzy/exact/noop)
 - Retriever (`retriever.py`): quanti dei 6 metodi tenere (oggi: vector, vector_cypher, hybrid, hybrid_cypher, text2cypher, tools)
 - GraphManager (feat-016) e CLI `ks graph` (feat-017): definire dopo i punti sopra
