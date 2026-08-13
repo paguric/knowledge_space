@@ -9,6 +9,18 @@ Quando il watcher scopre una base che contiene sotto-basi (es. `Paper Accademici
 
 Caso "join": se la base padre è già in un dominio, le nuove sotto-basi ereditano quel dominio invece di crearne uno nuovo.
 
+## Configurabile per workspace (default `false`)
+
+L'auto-generazione è **disattivata di default** e va abilitata esplicitamente per workspace, con una chiave nel `defaults.toml` del workspace:
+
+```toml
+[domains]
+auto_generate = false   # default: i domini restano manuali
+```
+
+- `false` (default): comportamento attuale — domini solo manuali (`domain new`, `domain auto-generate`, `domain add-base`).
+- `true`: attiva l'auto-generazione descritta sotto a ogni discovery.
+
 ## Causa
 
 Oggi i domini vanno creati manualmente con `domain auto-generate` o `domain new`. Il watcher scopre le basi ma non le raggruppa in domini.
@@ -29,8 +41,9 @@ File coinvolti:
 
 | File | Modifica |
 |------|----------|
-| `packages/knowledge-base/src/knowledge_base/workspace_manager.py` | `sync_and_ingest`: auto-generazione dominio dopo discovery |
+| `packages/knowledge-base/src/knowledge_base/workspace_manager.py` | `sync_and_ingest`: auto-generazione dominio dopo discovery (solo se `[domains].auto_generate = true`) |
 | `packages/knowledge-base/src/knowledge_base/domain_manager.py` | Eventuale helper `find_domain_for_base()` |
+| `packages/knowledge-base/src/knowledge_base/base_config.py` | Sezione `[domains]` con `auto_generate = false` (default) |
 | `docs/85-cli.md` | Nota su auto-generazione automatica |
 
 ### Verifica
