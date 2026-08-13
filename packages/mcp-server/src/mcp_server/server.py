@@ -51,16 +51,11 @@ def _make_server(
     )
 
     # --- Tool definitions ---
-    # L'MCP espone SOLO la ricerca e la lettura dello stato, sempre
+    # L'MCP espone SOLO la lettura dello stato e la ricerca, sempre
     # rispetto al workspace attivo (ultimo usato). Niente operazioni di
-    # scrittura (add/remove/ingest/sync).
+    # scrittura (add/remove/ingest/sync) né elenchi globali.
 
     _TOOLS = [
-        types.Tool(
-            name="workspace_list",
-            description="Elenca tutti i workspace registrati.",
-            inputSchema={"type": "object", "properties": {}, "required": []},
-        ),
         types.Tool(
             name="base_list",
             description="Elenca le basi del workspace attivo.",
@@ -145,14 +140,7 @@ def _make_server(
     async def _dispatch_tool(name: str, args: dict[str, Any]) -> str:
         """Dispatcha la chiamata al tool e restituisce il risultato come testo."""
 
-        if name == "workspace_list":
-            workspaces = workspace_manager.list()
-            if not workspaces:
-                return "Nessun workspace registrato."
-            lines = [str(p) for p in workspaces]
-            return "\n".join(lines)
-
-        elif name == "base_list":
+        if name == "base_list":
             ws = _get_active_workspace()
             if not ws.bases:
                 return "Nessuna base nel workspace."
@@ -288,9 +276,14 @@ async def run_sse(
     *,
     state_home: Path,
     host: str = "127.0.0.1",
-    port: int = 8080,
+    port: int = 8456,
+    mount_path: str = "knowledge-space",
 ) -> None:
-    """Avvia il server MCP su trasporto SSE (HTTP).
+    """Avvia il server MCP su trasporto Streamable HTTP.
+
+    L'app MCP viene montata sotto ``/<mount_path>``: l'endpoint finale è
+    ``http://<host>:<port>/<mount_path>/mcp`` (es.
+    ``http://127.0.0.1:8456/knowledge-space/mcp``).
 
     Args:
         workspace_manager: manager CRUD workspace.
@@ -298,6 +291,7 @@ async def run_sse(
         state_home: directory di stato dell'applicazione.
         host: indirizzo di bind.
         port: porta di ascolto.
+        mount_path: prefisso URL sotto cui montare l'app MCP.
     """
     import uvicorn
 
@@ -306,9 +300,24 @@ async def run_sse(
         config_path_for,
         state_home=state_home,
     )
-    logger.info("Avvio server MCP su SSE %s:%s", host, port)
+    logger.info(
+        "Avvio server MCP su %s:%s/%s/mcp", host, port, mount_path
+    )
 
-    app = server.streamable_http_app()
-    config = uvicorn.Config(app, host=host, port=port, log_level="info")
+    mcp_app = server.streamable_http_app()
+    # L'app espone una sola route "/mcp": la ricostruisce sotto il
+    # prefisso (es. /knowledge-space/mcp). Niente Mount: il lifespan
+    # della sub-app non verrebbe avviato da uvicorn.
+    from starlette.routing import Route
+
+    for i, route in enumerate(mcp_app.router.routes):
+        if getattr(route, "path", "") == "/mcp":
+            mcp_app.router.routes[i] = Route(
+                path=f"/{mount_path}/mcp",
+                endpoint=route.endpoint,
+                methods=route.methods,
+                name=route.name,
+            )
+    config = uvicorn.Config(mcp_app, host=host, port=port, log_level="info")
     srv = uvicorn.Server(config)
     await srv.serve()

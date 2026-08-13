@@ -85,12 +85,12 @@ class TestToolRegistry:
 
     def test_solo_tool_di_lettura(self, tmp_path):
         names = self._tool_names(tmp_path)
-        assert names == ["workspace_list", "base_list", "domain_list", "search"]
+        assert names == ["base_list", "domain_list", "search"]
 
     def test_niente_tool_di_scrittura(self, tmp_path):
         names = self._tool_names(tmp_path)
-        for rimossi in ["workspace_add", "workspace_remove", "base_add",
-                        "file_ingest", "sync"]:
+        for rimossi in ["workspace_list", "workspace_add", "workspace_remove",
+                        "base_add", "file_ingest", "sync"]:
             assert rimossi not in names
 
     def test_search_non_richiede_workspace_path(self, tmp_path):

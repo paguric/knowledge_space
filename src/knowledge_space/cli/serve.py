@@ -171,9 +171,9 @@ class WorkspacesWatcher:
 
 
 def serve_command(
-    host: str = typer.Option("127.0.0.1", help="Indirizzo di bind per SSE."),
-    port: int = typer.Option(8080, help="Porta di ascolto per SSE."),
-    sse: bool = typer.Option(False, "--sse", help="Usa trasporto SSE invece di stdio."),
+    host: str = typer.Option("127.0.0.1", help="Indirizzo di bind del server MCP."),
+    port: int = typer.Option(8456, help="Porta di ascolto del server MCP."),
+    sse: bool = typer.Option(False, "--sse", help="Usa trasporto HTTP (streamable) invece di stdio."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
 ) -> None:
     """Avvia watcher filesystem + server MCP.

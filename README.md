@@ -105,6 +105,44 @@ systemctl --user stop ks-serve     # ferma
 > del progetto deve essere allineata con il path indicato (modifica il percorso
 > se il repo è altrove).
 
+## Client MCP (es. Claude Code)
+
+Il server MCP espone solo **lettura dello stato e ricerca** sul workspace
+attivo (niente operazioni di scrittura). Endpoint:
+
+```
+http://127.0.0.1:8456/knowledge-space/mcp
+```
+
+**Tool disponibili:** `base_list`, `domain_list`, `search`.
+
+### Claude Code
+
+```bash
+claude mcp add --transport http knowledge-space \
+  http://127.0.0.1:8456/knowledge-space/mcp
+```
+
+Oppure in `.mcp.json` (progetto) / `~/.claude.json` (globale):
+
+```json
+{
+  "mcpServers": {
+    "knowledge-space": {
+      "type": "http",
+      "url": "http://127.0.0.1:8456/knowledge-space/mcp"
+    }
+  }
+}
+```
+
+**Requisiti:** il servizio `ks-serve` deve essere attivo e un workspace
+attivo (`ks workspace activate <path>`). Verifica con:
+
+```bash
+ks status          # deve mostrare [attivo]
+```
+
 ## Utilizzo rapido
 
 > Se hai usato `uv sync` senza attivare il venv, anteponi `uv run` a ogni comando:
