@@ -422,6 +422,94 @@ class KnowledgeBaseManager:
         )
         return len(new_ids)
 
+    def copy_chroma_collection_from(
+        self,
+        other_workspace: Path,
+        other_base_name: str,
+        new_base_name: str,
+    ) -> int:
+        """Copia la collection Chroma di una base da un altro workspace.
+
+        Bug 020 (copia tra workspace): quando una base viene copiata con
+        ``cp -r`` da un workspace a un altro, i chunk su disco arrivano
+        con la copia ma modello e Chroma restano nel workspace sorgente.
+        Questo metodo riusa gli embedding esistenti: legge la collection
+        dal client Chroma del workspace sorgente e la riscrive nel client
+        del workspace corrente (chunk_id e metadata col nuovo
+        ``base_name`` se diverso). Il workspace target è nuovo → nessun
+        drop della sorgente.
+
+        Args:
+            other_workspace: path del workspace sorgente.
+            other_base_name: nome della base nel workspace sorgente.
+            new_base_name: nome della base nel workspace corrente.
+
+        Returns:
+            Numero di chunk copiati (0 se il Chroma sorgente non esiste
+            o la collection non c'è).
+        """
+        from chromadb import PersistentClient
+
+        src_path = Path(other_workspace) / self._dot / "chroma"
+        if not src_path.is_dir():
+            logger.info(
+                "Chroma sorgente non trovato: %s", src_path
+            )
+            return 0
+
+        src_name = chroma_collection_name(other_base_name)
+        client_src = PersistentClient(path=str(src_path))
+        try:
+            col_src = client_src.get_collection(src_name)
+        except Exception:
+            logger.info(
+                "Collection %s non trovata in %s, nessuna copia",
+                src_name, src_path,
+            )
+            return 0
+
+        data = col_src.get(include=["documents", "embeddings", "metadatas"])
+        ids = data.get("ids") or []
+        if not ids:
+            return 0
+
+        new_ids: List[str] = []
+        new_metas: List[Dict[str, Any]] = []
+        for rec_id, meta in zip(ids, data.get("metadatas") or []):
+            meta = dict(meta or {})
+            parts = str(rec_id).rsplit("::", 2)
+            if len(parts) == 3:
+                file_id, index = parts[1], parts[2]
+            else:
+                file_id = str(meta.get("file_id", ""))
+                index = str(meta.get("chunk_index", ""))
+            new_ids.append(f"{new_base_name}::{file_id}::{index}")
+            meta["chunk_id"] = new_ids[-1]
+            meta["base_name"] = new_base_name
+            new_metas.append(meta)
+
+        client_dst = self._chroma_client()
+        col_dst = client_dst.get_or_create_collection(
+            name=chroma_collection_name(new_base_name),
+            metadata={"hnsw:space": "cosine"},
+        )
+        kwargs: Dict[str, Any] = {
+            "ids": new_ids,
+            "metadatas": new_metas,
+        }
+        documents = data.get("documents")
+        if documents is not None:
+            kwargs["documents"] = documents
+        embeddings = data.get("embeddings")
+        if embeddings is not None:
+            kwargs["embeddings"] = embeddings
+        col_dst.upsert(**kwargs)
+        logger.info(
+            "Collection %s copiata da %s: %d chunk migrati",
+            src_name, src_path, len(new_ids),
+        )
+        return len(new_ids)
+
     # ..................................................................... #
     # CRUD base
     # ..................................................................... #

@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from knowledge_base.models import KnowledgeBase, Workspace
 from knowledge_base.persistence import GlobalIndex, WorkspaceConfig
@@ -249,6 +249,14 @@ class WorkspaceManager:
 
         # 2. Indicizza file NUOVI/MODIFICATI nelle basi ESISTENTI.
         for base_name in basi_esistenti:
+            kb = workspace.bases[base_name]
+            # Base già registrata ma con modello VUOTO e chunk su disco
+            # (es. workspace add ha scoperto la base prima dell'adozione):
+            # tenta comunque l'adozione, poi l'ingest normale.
+            if not kb.files and self._try_adopt_existing_state(
+                base_manager, workspace, base_name, stato_pre
+            ):
+                continue
             self._ingest_new_files_in_existing_base(
                 base_manager, workspace, base_name
             )
@@ -317,9 +325,24 @@ class WorkspaceManager:
         if not disk_ids:
             return False
 
+        # Candidati sorgente: prima le basi dello stesso workspace
+        # (rename/copia interna), poi le basi degli altri workspace
+        # registrati (copia cross-workspace con ``cp -r``).
+        candidati: List[Tuple[Optional[Path], str, KnowledgeBase]] = []
         for old_name, old_kb in stato_pre.items():
-            if old_name == base_name:
+            if old_name != base_name:
+                candidati.append((None, old_name, old_kb))
+        for other_ws in self._index.list_workspaces():
+            if Path(other_ws).resolve() == Path(workspace.path).resolve():
                 continue
+            try:
+                stato_altro = self._config(Path(other_ws)).load()
+            except Exception:
+                continue
+            for old_name, old_kb in stato_altro.bases.items():
+                candidati.append((Path(other_ws), old_name, old_kb))
+
+        for other_ws, old_name, old_kb in candidati:
             src_ids = {fe.file_id for fe in old_kb.files.values() if fe.file_id}
             # La copia deve contenere ALMENO i chunk della sorgente (può
             # avere file_id orfani in più, es. ingestione interrotta).
@@ -337,33 +360,50 @@ class WorkspaceManager:
                         pass
             workspace.bases[base_name] = nuovo
 
-            # 2. Chroma: rinomina collection. Drop della sorgente solo se
-            #    non esiste più (caso move/rename), non in caso di copia.
-            drop_old = old_name not in workspace.bases
-            rename_fn = getattr(base_manager, "rename_chroma_collection", None)
-            if rename_fn is not None:
-                try:
-                    rename_fn(old_name, base_name, drop_old=drop_old)
-                except Exception as exc:
-                    logger.warning(
-                        "Rename collection %s → %s fallito: %s",
-                        old_name, base_name, exc,
-                    )
+            # 2. Chroma: stessa collection del workspace → rename (drop
+            #    della sorgente solo se non esiste più, caso move/rename);
+            #    workspace diverso → copia della collection (import, mai
+            #    drop della sorgente). In entrambi i casi gli embedding
+            #    esistenti vengono riusati, nessun ricalcolo.
+            if other_ws is None:
+                drop_old = old_name not in workspace.bases
+                rename_fn = getattr(base_manager, "rename_chroma_collection", None)
+                if rename_fn is not None:
+                    try:
+                        rename_fn(old_name, base_name, drop_old=drop_old)
+                    except Exception as exc:
+                        logger.warning(
+                            "Rename collection %s → %s fallito: %s",
+                            old_name, base_name, exc,
+                        )
+            else:
+                copy_fn = getattr(base_manager, "copy_chroma_collection_from", None)
+                if copy_fn is not None:
+                    try:
+                        copy_fn(other_ws, old_name, base_name)
+                    except Exception as exc:
+                        logger.warning(
+                            "Copia collection %s da %s fallita: %s",
+                            old_name, other_ws, exc,
+                        )
 
-            # 3. Domini: sostituisci (rename) o aggiungi (copia).
-            for d in workspace.domains:
-                if old_name in d.base_names:
-                    if drop_old:
-                        d.base_names = [
-                            base_name if n == old_name else n
-                            for n in d.base_names
-                        ]
-                    elif base_name not in d.base_names:
-                        d.base_names.append(base_name)
+            # 3. Domini: solo per sorgente nello stesso workspace (i
+            #    domini sono per-workspace).
+            if other_ws is None:
+                for d in workspace.domains:
+                    if old_name in d.base_names:
+                        if drop_old:
+                            d.base_names = [
+                                base_name if n == old_name else n
+                                for n in d.base_names
+                            ]
+                        elif base_name not in d.base_names:
+                            d.base_names.append(base_name)
 
+            sorgente = old_name if other_ws is None else f"{old_name}@{other_ws}"
             logger.info(
                 "Base %s: stato adottato da %s (%d file, %d chunk su disco riusati)",
-                base_name, old_name, len(nuovo.files), len(disk_ids),
+                base_name, sorgente, len(nuovo.files), len(disk_ids),
             )
             return True
         return False

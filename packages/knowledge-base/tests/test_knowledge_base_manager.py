@@ -405,8 +405,78 @@ class TestRenameChromaCollection:
         # La vecchia collection resta (caso copia)
         col_old = client.get_collection(name="ks_vecchia")
         assert col_old.count() == 2
-        col_new = client.get_collection(name="ks_copia")
-        assert col_new.count() == 2
+
+
+class TestCopyChromaCollectionFrom:
+    """Bug 020: copia della collection da un altro workspace (import, no
+    ricalcolo degli embedding)."""
+
+    def _make_manager(self, ws_path: Path, chroma_path: Optional[Path] = None):
+        from knowledge_base.models import Workspace
+
+        def _config_path_for(ws: Path) -> Path:
+            return ws / ".knowledge-space" / "config.json"
+
+        cfg = _config_path_for(ws_path)
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        return KnowledgeBaseManager(
+            workspace=Workspace(path=ws_path),
+            config_loader=_make_config_loader(),
+            config_path_for=_config_path_for,
+            chroma_path=chroma_path,
+            ingestion_factory=_stub_ingestion_factory,
+            chunking_factory=_stub_chunking_factory,
+            embedder_factory=_stub_embedder_factory,
+        )
+
+    def test_copy_importa_chunk_e_embedding(self, tmp_path: Path):
+        # Workspace sorgente con base ingerita (Chroma nel default)
+        src_ws = tmp_path / "src_ws"
+        src_ws.mkdir()
+        src_mgr = self._make_manager(src_ws)
+        (src_ws / "vecchia").mkdir()
+        src_mgr.add(src_ws / "vecchia")
+        src = _write_source(src_ws / "vecchia", "doc.md", "p1\n\np2")
+        entry = src_mgr.add_file("vecchia", src)
+
+        # Workspace target (nuovo)
+        dst_ws = tmp_path / "dst_ws"
+        dst_ws.mkdir()
+        dst_mgr = self._make_manager(dst_ws)
+
+        copied = dst_mgr.copy_chroma_collection_from(
+            src_ws, "vecchia", "RAG"
+        )
+
+        assert copied == 2
+        col = dst_mgr._chroma_client().get_collection(name="ks_RAG")
+        data = col.get(include=["metadatas", "embeddings"])
+        assert len(data["ids"]) == 2
+        for meta in data["metadatas"]:
+            assert meta["base_name"] == "RAG"
+            assert meta["chunk_id"].startswith(f"RAG::{entry.file_id}::")
+        # Embedding copiati (non ricalcolati): uguali alla sorgente
+        col_src = src_mgr._chroma_client().get_collection(name="ks_vecchia")
+        src_data = col_src.get(include=["embeddings"])
+        import numpy as np
+
+        assert np.allclose(data["embeddings"], src_data["embeddings"])
+
+    def test_copy_ws_senza_chroma_restituisce_zero(self, tmp_path: Path):
+        dst_ws = tmp_path / "dst_ws"
+        dst_ws.mkdir()
+        dst_mgr = self._make_manager(dst_ws)
+        # Workspace sorgente senza Chroma
+        empty_ws = tmp_path / "empty_ws"
+        empty_ws.mkdir()
+        assert dst_mgr.copy_chroma_collection_from(empty_ws, "x", "y") == 0
+
+    def test_copy_collection_inesistente_restituisce_zero(self, tmp_path: Path):
+        src_ws = tmp_path / "src_ws"
+        src_ws.mkdir()
+        (src_ws / ".knowledge-space").mkdir(parents=True)
+        dst_mgr = self._make_manager(tmp_path / "dst_ws")
+        assert dst_mgr.copy_chroma_collection_from(src_ws, "x", "y") == 0
 
     def test_rename_collection_inesistente_ritorna_zero(
         self, manager: KnowledgeBaseManager, workspace: Workspace

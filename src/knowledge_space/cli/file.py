@@ -130,6 +130,24 @@ def sync(
     manager = ctx.base_manager_factory(ws)
     logger.info("Sync file per basi")
 
+    # Senza base specifica, delega a sync_and_ingest del workspace
+    # manager: scopre basi nuove, tenta l'adozione dello stato di basi
+    # copiate/spostate (bug 020, anche cross-workspace) e indicizza.
+    if base_name is None:
+        ws = ctx.workspace_manager.sync_and_ingest(ws)
+        total_indexed = 0
+        for bname, kb in ws.bases.items():
+            for fe in kb.files.values():
+                total_indexed += len(fe.chunks) if fe.chunks else 0
+        logger.info(
+            "Sync and ingest completato: %d basi, %d chunk",
+            len(ws.bases), total_indexed,
+        )
+        typer.echo(
+            f"Sync completato: {len(ws.bases)} basi, {total_indexed} chunk"
+        )
+        return
+
     bases_to_scan = {}
     if base_name:
         base_name = resolve_base_name(base_name, workspace=ws)

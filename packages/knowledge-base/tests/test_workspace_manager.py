@@ -866,3 +866,109 @@ def test_sync_and_ingest_adotta_con_chunk_orfani_nella_copia(tmp_path):
     )
     add_calls = [c for c in bm.add_file.call_args_list if c[0][0] == "src_copy"]
     assert add_calls == []
+
+
+def test_sync_and_ingest_adotta_copia_da_altro_workspace(tmp_path):
+    """Bug 020 cross-workspace: base copiata con cp -r da un altro
+    workspace → stato adottato (modello clonato, nessuna re-ingest)."""
+    import shutil
+
+    # ws1 con base ingerita
+    ws1 = tmp_path / "ws1"
+    ws1.mkdir()
+    (ws1 / "src").mkdir()
+    (ws1 / "src" / "doc.md").write_text("p1\n\np2", encoding="utf-8")
+
+    mgr = _make_manager(tmp_path)
+    mgr.add(ws1)
+    ws1_obj = mgr.load(ws1)
+    bm = _make_fake_base_manager(ws1_obj)
+    mgr._base_manager_factory = lambda _w: bm  # type: ignore[assignment]
+    mgr.sync_and_ingest(ws1_obj)
+    bm.add_file.reset_mock()
+
+    # ws2: base copiata con cp -r (chunks su disco inclusi)
+    ws2 = tmp_path / "ws2"
+    ws2.mkdir()
+    shutil.copytree(ws1 / "src", ws2 / "src")
+    mgr.add(ws2)
+    ws2_obj = mgr.load(ws2)
+    mgr.sync_and_ingest(ws2_obj)
+
+    # Stato adottato: file nel modello, nessuna re-ingest
+    assert "src" in ws2_obj.bases
+    assert len(ws2_obj.bases["src"].files) == 1
+    add_calls = [c for c in bm.add_file.call_args_list if c[0][0] == "src"]
+    assert add_calls == []
+    bm.copy_chroma_collection_from.assert_called_once_with(
+        ws1, "src", "src"
+    )
+
+
+def test_sync_and_ingest_non_adotta_da_altro_workspace_se_già_ingerita(tmp_path):
+    """Base già presente (e ingerita) in ws2 → nessuna adozione, ingest
+    solo dei file nuovi."""
+    import shutil
+
+    ws1 = tmp_path / "ws1"
+    ws1.mkdir()
+    (ws1 / "src").mkdir()
+    (ws1 / "src" / "doc.md").write_text("p1\n\np2", encoding="utf-8")
+
+    mgr = _make_manager(tmp_path)
+    mgr.add(ws1)
+    ws1_obj = mgr.load(ws1)
+    bm = _make_fake_base_manager(ws1_obj)
+    mgr._base_manager_factory = lambda _w: bm  # type: ignore[assignment]
+    mgr.sync_and_ingest(ws1_obj)
+    bm.add_file.reset_mock()
+
+    # ws2 con la stessa base già ingerita (stesso file_id via fake add_file:
+    # l'hash md5 del nome è deterministico → stessi file_id su disco)
+    ws2 = tmp_path / "ws2"
+    ws2.mkdir()
+    shutil.copytree(ws1 / "src", ws2 / "src")
+    mgr.add(ws2)
+    ws2_obj = mgr.load(ws2)
+    mgr.sync_and_ingest(ws2_obj)
+
+    # La base in ws2 è stata ingerita (nuova) → file presente
+    assert len(ws2_obj.bases["src"].files) == 1
+
+
+def test_sync_and_ingest_adotta_base_gia_registrata_con_modello_vuoto(tmp_path):
+    """Caso reale: workspace add scopre la base (sync) PRIMA dell'ingest;
+    sync_and_ingest successivo deve comunque adottare lo stato da un
+    altro workspace (base esistente con modello vuoto)."""
+    import shutil
+
+    ws1 = tmp_path / "ws1"
+    ws1.mkdir()
+    (ws1 / "src").mkdir()
+    (ws1 / "src" / "doc.md").write_text("p1\n\np2", encoding="utf-8")
+
+    mgr = _make_manager(tmp_path)
+    mgr.add(ws1)
+    ws1_obj = mgr.load(ws1)
+    bm = _make_fake_base_manager(ws1_obj)
+    mgr._base_manager_factory = lambda _w: bm  # type: ignore[assignment]
+    mgr.sync_and_ingest(ws1_obj)
+    bm.add_file.reset_mock()
+
+    # ws2: copia; base registrata da workspace add (solo sync, modello vuoto)
+    ws2 = tmp_path / "ws2"
+    ws2.mkdir()
+    shutil.copytree(ws1 / "src", ws2 / "src")
+    mgr.add(ws2)
+    ws2_obj = mgr.load(ws2)
+    mgr.sync(ws2_obj)  # registra la base nel modello (files={})
+
+    # Il sync_and_ingest successivo deve adottare (modello vuoto → adozione)
+    bm.add_file.reset_mock()
+    bm.copy_chroma_collection_from.reset_mock()
+    mgr.sync_and_ingest(ws2_obj)
+
+    assert len(ws2_obj.bases["src"].files) == 1
+    add_calls = [c for c in bm.add_file.call_args_list if c[0][0] == "src"]
+    assert add_calls == []
+    bm.copy_chroma_collection_from.assert_called_once_with(ws1, "src", "src")
