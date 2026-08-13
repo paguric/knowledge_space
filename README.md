@@ -9,26 +9,13 @@ Pipeline di ingestione, indicizzazione e retrieval su documenti. Architettura mo
 git clone <repo-url>
 cd knowledge_space
 
-# Installa con uv (consigliato per sviluppo)
+# Installazione dipendenze
+sudo apt install curl
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Installazione system-wide via uv
 uv sync
-```
-
-> **Nota:** dopo `uv sync`, il comando `ks` è disponibile via `uv run ks` (consigliato),
-oppure attivando il venv con `source .venv/bin/activate`.
-
-Per un'installazione **system-wide** permanente (senza bisogno di `uv run` o attivazione):
-
-```bash
-# Con uv tool install — installa come tool nella directory bin di uv
-# (tipicamente ~/.local/bin/), disponibile da qualsiasi terminale
 uv tool install -e .
-
-# Con pip (installa globalmente, richiede che la variabile d'ambiente PATH
-# includa la directory degli script di pip)
-pip install -e .
-
-# Oppure con uv, installando il pacchetto nell'ambiente Python di sistema
-uv pip install -e . --system
 ```
 
 ## Database a grafo (opzionale, per il modulo Graph)
