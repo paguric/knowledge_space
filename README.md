@@ -29,6 +29,8 @@ Il modulo Graph (grafo della conoscenza, `ks graph`) richiede un'istanza
 docker run -d --name neo4j -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/tua-password neo4j:5-community
 ```
 
+**Nota:** la password dev'essere lunga almeno 8 caratteri.
+
 - Porta `7687` = protocollo **Bolt** (usato dal programma) · `7474` = browser
   (http://localhost:7474).
 - Alternative: tarball nativo (neo4j.com), Neo4j Desktop (Windows/macOS),
