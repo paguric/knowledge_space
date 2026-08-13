@@ -4,14 +4,16 @@ Pipeline di ingestione, indicizzazione e retrieval su documenti. Architettura mo
 
 ## Installazione
 
+Il progetto gestisce le dipendenze via `uv`. È necessario installarlo prima di poter procedere con l'installazione:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
 ```bash
 # Clona il repo
 git clone <repo-url>
 cd knowledge_space
-
-# Installazione dipendenze
-sudo apt install curl
-curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Installazione system-wide via uv
 uv sync
