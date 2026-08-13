@@ -37,10 +37,7 @@ Il modulo Graph (grafo della conoscenza, `ks graph`) richiede un'istanza
 **Neo4j** (non embedded). L'opzione più semplice è Docker:
 
 ```bash
-docker run -d --name neo4j \
-  -p 7474:7474 -p 7687:7687 \
-  -e NEO4J_AUTH=neo4j/<password> \
-  neo4j:5-community
+docker run -d --name neo4j -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/tua-password neo4j:5-community
 ```
 
 - Porta `7687` = protocollo **Bolt** (usato dal programma) · `7474` = browser
