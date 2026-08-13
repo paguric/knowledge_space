@@ -51,7 +51,7 @@ password resta solo nelle env var).
 registrati: qualsiasi modifica al filesystem (file aggiunti, spostati, rimossi)
 viene rilevata in tempo reale e sincronizzata automaticamente.
 
-Su Linux il modo più semplice è un **systemd user service**:
+Se non si vuole avviare ogni volta manualmente, su Linux il modo più semplice per impostare l'avvio automatico è un **systemd user service**:
 
 ```bash
 # 1. Abilita il linger per avviare servizi senza login
@@ -94,8 +94,7 @@ systemctl --user stop ks-serve     # ferma
 
 ## Client MCP (es. Claude Code)
 
-Il server MCP espone solo **lettura dello stato e ricerca** sul workspace
-attivo (niente operazioni di scrittura). Endpoint:
+Il server MCP è raggiungibile all'endpoint:
 
 ```
 http://127.0.0.1:8456/knowledge-space/mcp
@@ -131,9 +130,6 @@ ks status          # deve mostrare [attivo]
 ```
 
 ## Utilizzo rapido
-
-> Se hai usato `uv sync` senza attivare il venv, anteponi `uv run` a ogni comando:
-> `uv run ks --help`, `uv run ks workspace add ...`, ecc.
 
 ```bash
 # Mostra tutti i comandi disponibili
@@ -216,7 +212,7 @@ ks models list                   # Elenca modelli embedding
 ks models info <name>            # Dettaglio modello
 ```
 
-## LLM (modelli linguistici)
+## Configurazione LLM
 
 Non esiste una sezione `[llm]` globale: **ogni componente** che usa un LLM
 sceglie il proprio modello nel TOML (cascata per-base), nel parametro
@@ -289,12 +285,6 @@ l'endpoint non risponde, l'errore indica URL e modello (`LLMConnectionError`).
 Stadi che usano LLM: pre-retrieval `multi_query`, `step_back`,
 `least_to_most`; retrieval con `query_mode = "hyde"`; post-retrieval
 `relevance`/`cross_encoder` (dove configurato).
-
-### Status
-
-```bash
-ks status                        # Panoramica workspace attivo
-```
 
 ## Flag globali
 
