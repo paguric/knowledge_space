@@ -181,6 +181,15 @@ class WorkspaceManager:
             for name in list(workspace.bases):
                 if name not in seen and not workspace.bases[name].path.exists():
                     del workspace.bases[name]
+                    # Bug 022: la base va rimossa anche dai domini
+                    # (altrimenti resta elencata come orfana).
+                    for d in workspace.domains:
+                        if name in d.base_names:
+                            d.base_names.remove(name)
+                            logger.info(
+                                "Base '%s' rimossa dal dominio '%s'",
+                                name, d.name,
+                            )
                     logger.info("Base rimossa (cartella assente): %s", name)
 
         # 3. Persiste.

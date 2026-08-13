@@ -221,6 +221,32 @@ def test_sync_removes_nested_bases_whose_folder_is_gone(tmp_path):
     assert "Papers/2024" not in ws.bases
 
 
+def test_sync_removes_base_from_domains_too(tmp_path):
+    """Bug 022: base rimossa da disco sparisce anche da domain.base_names."""
+    from knowledge_base.models import Domain, WorkspaceConfigData
+
+    mgr = _make_manager(tmp_path)
+    ws_path = tmp_path / "ws_domain"
+    ws_path.mkdir()
+    mgr.add(ws_path)
+    ws = mgr.load(ws_path)
+    ws.domains = [Domain(name="Paper", active=True, base_names=["Papers/Base1"])]
+
+    kb_dir = ws_path / "Papers" / "Base1"
+    kb_dir.mkdir(parents=True)
+    mgr.sync(ws)
+    assert "Papers/Base1" in ws.bases
+    assert "Papers/Base1" in ws.domains[0].base_names
+
+    import shutil
+
+    shutil.rmtree(ws_path / "Papers")
+    mgr.sync(ws)
+
+    assert "Papers/Base1" not in ws.bases
+    assert ws.domains[0].base_names == []
+
+
 def test_sync_is_idempotent(tmp_path):
     mgr = _make_manager(tmp_path)
     ws_path = tmp_path / "ws_idem"
