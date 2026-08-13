@@ -44,9 +44,6 @@ def _make_server(
     Returns:
         Server MCP configurato.
     """
-    from knowledge_base.base_config import BaseConfigLoader
-    from knowledge_base.knowledge_base_manager import KnowledgeBaseManager
-
     server = Server(
         name="knowledge-space",
         version="0.1.0",
@@ -54,6 +51,9 @@ def _make_server(
     )
 
     # --- Tool definitions ---
+    # L'MCP espone SOLO la ricerca e la lettura dello stato, sempre
+    # rispetto al workspace attivo (ultimo usato). Niente operazioni di
+    # scrittura (add/remove/ingest/sync).
 
     _TOOLS = [
         types.Tool(
@@ -62,73 +62,24 @@ def _make_server(
             inputSchema={"type": "object", "properties": {}, "required": []},
         ),
         types.Tool(
-            name="workspace_add",
-            description="Registra un nuovo workspace.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "Path assoluto del workspace."},
-                },
-                "required": ["path"],
-            },
-        ),
-        types.Tool(
-            name="workspace_remove",
-            description="Rimuove un workspace dal registro.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "Path assoluto del workspace."},
-                },
-                "required": ["path"],
-            },
-        ),
-        types.Tool(
             name="base_list",
-            description="Elenca le basi di un workspace.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "workspace_path": {
-                        "type": "string",
-                        "description": "Path del workspace. Se omesso usa l'ultimo usato.",
-                    },
-                },
-                "required": [],
-            },
+            description="Elenca le basi del workspace attivo.",
+            inputSchema={"type": "object", "properties": {}, "required": []},
         ),
         types.Tool(
-            name="base_add",
-            description="Aggiunge una nuova base a un workspace.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "workspace_path": {"type": "string", "description": "Path del workspace."},
-                    "base_path": {"type": "string", "description": "Path della cartella base."},
-                },
-                "required": ["workspace_path", "base_path"],
-            },
-        ),
-        types.Tool(
-            name="file_ingest",
-            description="Ingestisce un file in una base.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "workspace_path": {"type": "string", "description": "Path del workspace."},
-                    "base_name": {"type": "string", "description": "Nome della base."},
-                    "file_path": {"type": "string", "description": "Path del file da ingestire."},
-                },
-                "required": ["workspace_path", "base_name", "file_path"],
-            },
+            name="domain_list",
+            description="Elenca i domini del workspace attivo.",
+            inputSchema={"type": "object", "properties": {}, "required": []},
         ),
         types.Tool(
             name="search",
-            description="Ricerca vettoriale nelle basi di un workspace.",
+            description=(
+                "Ricerca vettoriale nel workspace attivo "
+                "(rispetta domini/basi/file/chunk attivi)."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "workspace_path": {"type": "string", "description": "Path del workspace."},
                     "query": {"type": "string", "description": "Query di ricerca."},
                     "base_name": {
                         "type": "string",
@@ -139,18 +90,7 @@ def _make_server(
                         "description": "Numero massimo di risultati (default 5).",
                     },
                 },
-                "required": ["workspace_path", "query"],
-            },
-        ),
-        types.Tool(
-            name="sync",
-            description="Forza la sincronizzazione di un workspace col filesystem.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "workspace_path": {"type": "string", "description": "Path del workspace."},
-                },
-                "required": ["workspace_path"],
+                "required": ["query"],
             },
         ),
     ]
@@ -165,30 +105,17 @@ def _make_server(
 
     server.add_request_handler("tools/list", types.PaginatedRequestParams, _list_tools)
 
-    # --- Helper: risolvi workspace ---
+    # --- Helper: workspace attivo ---
 
-    def _resolve_ws_path(workspace_path: str) -> Path:
-        p = Path(workspace_path).resolve()
-        if not p.is_dir():
-            raise ValueError(f"Workspace non trovato: {p}")
-        return p
-
-    def _get_workspace(workspace_path: str):
-        ws_path = _resolve_ws_path(workspace_path)
-        return workspace_manager.load(ws_path)
-
-    def _get_base_manager(workspace):
-        from knowledge_base.base_config import BaseConfigLoader
-
-        config_loader = BaseConfigLoader(
-            workspace_path=workspace.path,
-            dot_folder_name=".knowledge-space",
-        )
-        return KnowledgeBaseManager(
-            workspace=workspace,
-            config_loader=config_loader,
-            config_path_for=config_path_for,
-        )
+    def _get_active_workspace():
+        """Carica il workspace attivo (ultimo usato nel GlobalIndex)."""
+        ws_path = workspace_manager.get_last_workspace()
+        if ws_path is None:
+            raise ValueError(
+                "Nessun workspace attivo. Attivane uno con 'ks workspace activate'."
+            )
+        ws = workspace_manager.load(ws_path)
+        return ws
 
     # --- Handler: call_tool ---
 
@@ -225,51 +152,31 @@ def _make_server(
             lines = [str(p) for p in workspaces]
             return "\n".join(lines)
 
-        elif name == "workspace_add":
-            path = Path(args["path"]).resolve()
-            added = workspace_manager.add(path)
-            if added:
-                return f"Workspace registrato: {path}"
-            return f"Workspace già registrato: {path}"
-
-        elif name == "workspace_remove":
-            path = Path(args["path"]).resolve()
-            removed = workspace_manager.remove(path)
-            if removed:
-                return f"Workspace rimosso: {path}"
-            return f"Workspace non trovato: {path}"
-
         elif name == "base_list":
-            ws = _get_workspace(args["workspace_path"])
+            ws = _get_active_workspace()
             if not ws.bases:
                 return "Nessuna base nel workspace."
             lines = []
             for bname, kb in ws.bases.items():
                 n_files = len(kb.files)
                 n_chunks = sum(len(f.chunks) for f in kb.files.values())
-                lines.append(f"{bname}: {n_files} file, {n_chunks} chunk")
+                stato = "attiva" if kb.active else "inattiva"
+                lines.append(f"{bname}: {n_files} file, {n_chunks} chunk ({stato})")
             return "\n".join(lines)
 
-        elif name == "base_add":
-            ws = _get_workspace(args["workspace_path"])
-            bm = _get_base_manager(ws)
-            base_path = Path(args["base_path"]).resolve()
-            kb = bm.add(base_path)
-            return f"Base aggiunta: {base_path.name}"
-
-        elif name == "file_ingest":
-            ws = _get_workspace(args["workspace_path"])
-            bm = _get_base_manager(ws)
-            base_name = args["base_name"]
-            file_path = Path(args["file_path"]).resolve()
-            entry = bm.add_file(base_name, file_path)
-            return (
-                f"File ingerito: {entry.name} "
-                f"(file_id={entry.file_id}, {len(entry.chunks)} chunk)"
-            )
+        elif name == "domain_list":
+            ws = _get_active_workspace()
+            if not ws.domains:
+                return "Nessun dominio nel workspace."
+            lines = []
+            for d in ws.domains:
+                stato = "attivo" if d.active else "inattivo"
+                basi = ", ".join(d.base_names) or "(vuoto)"
+                lines.append(f"{d.name}: {stato} — basi: {basi}")
+            return "\n".join(lines)
 
         elif name == "search":
-            ws = _get_workspace(args["workspace_path"])
+            ws = _get_active_workspace()
             query = args["query"]
             base_name = args.get("base_name")
             top_k = args.get("top_k", 5)
@@ -328,12 +235,6 @@ def _make_server(
             if not results:
                 return "Nessun risultato trovato."
             return "\n".join(results[:top_k])
-
-        elif name == "sync":
-            ws = _get_workspace(args["workspace_path"])
-            workspace_manager.sync(ws)
-            n_bases = len(ws.bases)
-            return f"Sincronizzazione completata: {n_bases} basi scoperte."
 
         else:
             raise ValueError(f"Tool sconosciuto: {name}")

@@ -63,3 +63,53 @@ class TestMakeServer:
         mgr = _make_workspace_manager(tmp_path)
         server = _make_server(mgr, lambda p: p, state_home=tmp_path)
         assert "ping" in server._request_handlers
+
+
+class TestToolRegistry:
+    """L'MCP espone SOLO ricerca + lettura stato sul workspace attivo."""
+
+    def _tool_names(self, tmp_path) -> list[str]:
+        import asyncio
+
+        from mcp.types import PaginatedRequestParams
+
+        mgr = _make_workspace_manager(tmp_path)
+        server = _make_server(mgr, lambda p: p, state_home=tmp_path)
+
+        async def _list():
+            handler = server._request_handlers["tools/list"]
+            result = await handler.handler(None, PaginatedRequestParams())
+            return [t.name for t in result.tools]
+
+        return asyncio.run(_list())
+
+    def test_solo_tool_di_lettura(self, tmp_path):
+        names = self._tool_names(tmp_path)
+        assert names == ["workspace_list", "base_list", "domain_list", "search"]
+
+    def test_niente_tool_di_scrittura(self, tmp_path):
+        names = self._tool_names(tmp_path)
+        for rimossi in ["workspace_add", "workspace_remove", "base_add",
+                        "file_ingest", "sync"]:
+            assert rimossi not in names
+
+    def test_search_non_richiede_workspace_path(self, tmp_path):
+        """Il tool search non espone più il parametro workspace_path."""
+        import asyncio
+
+        from mcp.types import PaginatedRequestParams
+
+        mgr = _make_workspace_manager(tmp_path)
+        server = _make_server(mgr, lambda p: p, state_home=tmp_path)
+
+        async def _list():
+            handler = server._request_handlers["tools/list"]
+            result = await handler.handler(None, PaginatedRequestParams())
+            return result.tools
+
+        tools = asyncio.run(_list())
+        search = next(t for t in tools if t.name == "search")
+        props = search.input_schema.get("properties", {})
+        assert "workspace_path" not in props
+        assert "query" in props
+        assert search.input_schema["required"] == ["query"]
