@@ -23,6 +23,7 @@ Interfaccia a riga di comando (Typer) per gestire workspace, domini, basi, file,
 
 - **Cwd-context**: rileva il workspace corrente cercando `.knowledge-space/` (stile git). Override con `--workspace <path>`.
 - **Flag globali**: `--help`, `--version`, `--verbose`/`-v`, `--json`, `--workspace <path>`
+- **Sync implicito**: i comandi di sola lettura (`status`, `tree`, `workspace info`, `domain list`, `base list`, `base info`, `file list`, `chunk list`, `chunk show`) eseguono `sync()` prima di mostrare lo stato: basi/domini orfani rimossi, nuove basi scoperte. I comandi che modificano (add/remove/activate/deactivate) non fanno sync.
 
 ### Inventario comandi
 

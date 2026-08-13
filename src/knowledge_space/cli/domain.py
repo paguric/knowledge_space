@@ -80,7 +80,7 @@ def list_domains(
 ) -> None:
     """Elenca i domini del workspace."""
     ctx = get_context(verbose=verbose)
-    ws = get_workspace(ctx, workspace)
+    ws = get_workspace(ctx, workspace, sync=True)
     logger.info("Elenco domini")
 
     if json_output:
@@ -124,6 +124,22 @@ def remove(
         raise typer.Exit(1)
 
 
+def _resolve_base_name_for_domain(raw_name: str, ws: Any) -> str:
+    """Risolve il nome base per i comandi dominio (bug-024).
+
+    Le basi annidate sono registrate con chiave = path relativo completo
+    (es. ``Papers/Base1``); ``resolve_base_name`` la riduce a ``Path.name``
+    (``Base1``) e fallisce. Se la risoluzione normale non trova la chiave,
+    ritenta con il nome raw esatto.
+    """
+    resolved = resolve_base_name(raw_name, workspace=ws)
+    if resolved in ws.bases:
+        return resolved
+    if raw_name in ws.bases:
+        return raw_name
+    return resolved
+
+
 @app.command("add-base")
 def add_base(
     domain_name: str = typer.Argument(
@@ -138,7 +154,7 @@ def add_base(
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
     domain_name = normalize_base_name(domain_name)
-    base_name = resolve_base_name(base_name, workspace=ws)
+    base_name = _resolve_base_name_for_domain(base_name, ws)
     logger.info("Aggiunta base %s al dominio %s", base_name, domain_name)
 
     added = ctx.domain_manager.add_base(ws, domain_name, base_name)
@@ -168,7 +184,7 @@ def remove_base(
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
     domain_name = normalize_base_name(domain_name)
-    base_name = resolve_base_name(base_name, workspace=ws)
+    base_name = _resolve_base_name_for_domain(base_name, ws)
     logger.info("Rimozione base %s dal dominio %s", base_name, domain_name)
 
     removed = ctx.domain_manager.remove_base(ws, domain_name, base_name)

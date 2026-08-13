@@ -87,7 +87,7 @@ def list_bases(
 ) -> None:
     """Elenca le basi del workspace."""
     ctx = get_context(verbose=verbose)
-    ws = get_workspace(ctx, workspace)
+    ws = get_workspace(ctx, workspace, sync=True)
     logger.info("Elenco basi del workspace")
 
     if json_output:
@@ -176,7 +176,7 @@ def info(
 ) -> None:
     """Mostra dettagli e configurazione di una base."""
     ctx = get_context(verbose=verbose)
-    ws = get_workspace(ctx, workspace)
+    ws = get_workspace(ctx, workspace, sync=True)
     name = resolve_base_name(name, workspace=ws)
     logger.info("Info base: %s", name)
 

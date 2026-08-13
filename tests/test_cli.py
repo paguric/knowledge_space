@@ -1440,3 +1440,72 @@ class TestActivateDeactivate:
         )
         assert result.exit_code == 1
         assert "non trovato" in result.output.lower()
+
+
+# --------------------------------------------------------------------------- #
+# Test bug-024 + feat-023
+# --------------------------------------------------------------------------- #
+
+
+class TestDomainNestedBase:
+    """Bug-024: add-base/remove-base con basi annidate."""
+
+    def test_domain_add_base_annidata(self, workspace_dir: Path):
+        from knowledge_base.models import Domain, KnowledgeBase, WorkspaceConfigData
+        from knowledge_base.persistence import WorkspaceConfig
+
+        nested = workspace_dir / "Papers" / "Base1"
+        nested.mkdir(parents=True)
+        config_path = workspace_dir / ".knowledge-space" / "state.json"
+        WorkspaceConfig(config_path, workspace_dir).save(
+            WorkspaceConfigData(
+                domains=[Domain(name="Paper", active=True, base_names=[])],
+                bases={"Papers/Base1": KnowledgeBase(path=nested)},
+            )
+        )
+
+        result = runner.invoke(
+            app,
+            ["domain", "add-base", "Paper", "Papers/Base1", "-w", str(workspace_dir)],
+        )
+        assert result.exit_code == 0
+        assert "Papers/Base1" in result.output
+
+        result = runner.invoke(
+            app,
+            ["domain", "remove-base", "Paper", "Papers/Base1", "-w", str(workspace_dir)],
+        )
+        assert result.exit_code == 0
+        assert "rimossa" in result.output.lower()
+
+
+class TestListCommandsSync:
+    """Feat-023: i comandi di sola lettura fanno sync implicito."""
+
+    def test_domain_list_rimuove_base_cancellata(self, workspace_dir: Path):
+        from knowledge_base.models import Domain, KnowledgeBase, WorkspaceConfigData
+        from knowledge_base.persistence import WorkspaceConfig
+
+        base_dir = workspace_dir / "BaseInDomain"
+        base_dir.mkdir()
+        config_path = workspace_dir / ".knowledge-space" / "state.json"
+        WorkspaceConfig(config_path, workspace_dir).save(
+            WorkspaceConfigData(
+                domains=[Domain(name="Paper", active=True, base_names=["BaseInDomain"])],
+                bases={"BaseInDomain": KnowledgeBase(path=base_dir)},
+            )
+        )
+
+        import shutil
+
+        shutil.rmtree(base_dir)
+
+        result = runner.invoke(
+            app, ["domain", "list", "-w", str(workspace_dir)]
+        )
+        assert result.exit_code == 0
+        # Dopo il sync la base non è più nel dominio
+        from knowledge_base.persistence import WorkspaceConfig
+
+        state = WorkspaceConfig(config_path, workspace_dir).load()
+        assert state.domains[0].base_names == []

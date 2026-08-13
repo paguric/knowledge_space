@@ -72,7 +72,7 @@ def list_files(
 ) -> None:
     """Elenca i file indicizzati."""
     ctx = get_context(verbose=verbose)
-    ws = get_workspace(ctx, workspace)
+    ws = get_workspace(ctx, workspace, sync=True)
     logger.info("Elenco file indicizzati")
 
     # Raccogli file da tutte le basi o da una specifica

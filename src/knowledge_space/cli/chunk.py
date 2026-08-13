@@ -35,7 +35,7 @@ def list_chunks(
 ) -> None:
     """Elenca i chunk di un file."""
     ctx = get_context(verbose=verbose)
-    ws = get_workspace(ctx, workspace)
+    ws = get_workspace(ctx, workspace, sync=True)
     base_name = resolve_base_name(base_name, workspace=ws)
     logger.info("Elenco chunk per file %s nella base %s", file_name, base_name)
 
@@ -83,7 +83,7 @@ def show(
 ) -> None:
     """Mostra il testo di un chunk."""
     ctx = get_context(verbose=verbose)
-    ws = get_workspace(ctx, workspace)
+    ws = get_workspace(ctx, workspace, sync=True)
     logger.info("Visualizzazione chunk: %s", chunk_id)
 
     # Parsa chunk_id: base::file_id::index
