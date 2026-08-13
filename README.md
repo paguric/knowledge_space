@@ -31,6 +31,36 @@ pip install -e .
 uv pip install -e . --system
 ```
 
+## Database a grafo (opzionale, per il modulo Graph)
+
+Il modulo Graph (grafo della conoscenza, `ks graph`) richiede un'istanza
+**Neo4j** (non embedded). L'opzione più semplice è Docker:
+
+```bash
+docker run -d --name neo4j \
+  -p 7474:7474 -p 7687:7687 \
+  -e NEO4J_AUTH=neo4j/<password> \
+  neo4j:5-community
+```
+
+- Porta `7687` = protocollo **Bolt** (usato dal programma) · `7474` = browser
+  (http://localhost:7474).
+- Alternative: tarball nativo (neo4j.com), Neo4j Desktop (Windows/macOS),
+  AuraDB cloud.
+
+La connessione si specifica con variabili d'ambiente (nessuna password nei
+file di configurazione):
+
+```bash
+export NEO4J_URI="bolt://localhost:7687"   # default
+export NEO4J_USER="neo4j"                  # default
+export NEO4J_PASSWORD="la-tua-password"
+```
+
+Al primo `ks graph init -w <workspace>` la connessione viene registrata in
+`<workspace>/.knowledge-space/graph/graph.json` (uri e database; la
+password resta solo nelle env var).
+
 ## Avvio automatico del server
 
 `ks serve` avvia il server MCP e attiva i watcher filesystem su tutti i workspace
