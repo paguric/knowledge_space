@@ -830,6 +830,78 @@ class TestStatus:
         assert result.exit_code == 0
         assert "my_base" not in result.output
 
+    def test_status_mostra_domini(self, workspace_dir: Path, base_dir: Path):
+        """Feat-008: status mostra i domini con le basi associate e le basi
+        standalone."""
+        runner.invoke(
+            app, ["base", "add", str(base_dir), "--workspace", str(workspace_dir)]
+        )
+        runner.invoke(
+            app, ["domain", "new", "diritto", "--workspace", str(workspace_dir)]
+        )
+        runner.invoke(
+            app,
+            ["domain", "add-base", "diritto", "my_base", "--workspace", str(workspace_dir)],
+        )
+
+        result = runner.invoke(
+            app, ["status", "--workspace", str(workspace_dir)]
+        )
+        assert result.exit_code == 0
+        assert "Domini:" in result.output
+        assert "diritto: my_base" in result.output
+
+    def test_status_mostra_basi_standalone(self, workspace_dir: Path, base_dir: Path):
+        """Feat-008: una base fuori da ogni dominio appare in 'Basi standalone'."""
+        runner.invoke(
+            app, ["base", "add", str(base_dir), "--workspace", str(workspace_dir)]
+        )
+        runner.invoke(
+            app, ["domain", "new", "vuoto", "--workspace", str(workspace_dir)]
+        )
+
+        result = runner.invoke(
+            app, ["status", "--workspace", str(workspace_dir)]
+        )
+        assert result.exit_code == 0
+        assert "Basi standalone:" in result.output
+        assert "my_base" in result.output
+
+    def test_status_all_mostra_file_e_chunk(self, workspace_dir: Path, base_dir: Path):
+        """Feat-008: con -a status mostra file e chunk nidificati per base."""
+        runner.invoke(
+            app, ["base", "add", str(base_dir), "--workspace", str(workspace_dir)]
+        )
+        # Popola lo stato con un file indicizzato (senza pipeline reale)
+        state = json.loads(
+            (workspace_dir / ".knowledge-space" / "state.json").read_text(encoding="utf-8")
+        )
+        state["bases"]["my_base"]["files"] = {
+            "doc.md": {
+                "mtime": 1783699858.842,
+                "added": "2026-07-13T20:04:44",
+                "file_id": "8f1c2d3e4a5b6c7d8e9f0a1b2c3d4e5f",
+                "name": "doc.md",
+                "content_hash": "a1b2c3d4",
+                "active": True,
+                "chunks": [
+                    {"index": 0, "active": True, "content_hash": "abc123"},
+                    {"index": 1, "active": True, "content_hash": "def456"},
+                ],
+            }
+        }
+        (workspace_dir / ".knowledge-space" / "state.json").write_text(
+            json.dumps(state), encoding="utf-8"
+        )
+
+        result = runner.invoke(
+            app, ["status", "--workspace", str(workspace_dir), "--all"]
+        )
+        assert result.exit_code == 0
+        assert "doc.md: 2 chunk" in result.output
+        assert "[0] hash=abc123" in result.output
+        assert "[1] hash=def456" in result.output
+
     def test_workspace_info_non_mostra_base_rimossa_da_disco(
         self, workspace_dir: Path, base_dir: Path
     ):

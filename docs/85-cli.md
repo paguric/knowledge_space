@@ -145,7 +145,9 @@ Interfaccia a riga di comando (Typer) per gestire workspace, domini, basi, file,
 
 | Comando | Descrizione |
 |---------|-------------|
-| `status` | Panoramica workspace attivo, basi, file, chunk, grafo |
+| `status` | Panoramica: workspace attivo, statistiche, domini con basi associate, basi standalone |
+| `status -a`/`--all` | Come sopra + file e chunk nidificati per ogni base |
+| `status --json` | Output JSON (statistiche + modelli) |
 
 ### Autocompletamento per `config set`
 

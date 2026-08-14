@@ -24,9 +24,14 @@ from knowledge_space.cli.common import (
 def status_command(
     workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
     json_output: bool = typer.Option(False, "--json", help="Output JSON."),
+    all_details: bool = typer.Option(False, "--all", "-a", help="Mostra anche file e chunk per ogni base."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
 ) -> None:
-    """Mostra una panoramica dello stato del workspace."""
+    """Mostra una panoramica dello stato del workspace.
+
+    Default: statistiche + domini con le basi associate. Con ``-a``
+    mostra anche file e chunk nidificati per ogni base.
+    """
     ctx = get_context(verbose=verbose)
     logger.info("Visualizzazione stato workspace")
 
@@ -109,3 +114,37 @@ def status_command(
                     f"    [{status_icon}] {name}: "
                     f"{n_kb_files} file, {n_kb_chunks} chunk, modello={model}"
                 )
+                if all_details:
+                    for fname, fentry in kb.files.items():
+                        f_icon = "✓" if fentry.active else "✗"
+                        n_f_chunks = len(fentry.chunks)
+                        typer.echo(
+                            f"        [{f_icon}] {fname}: {n_f_chunks} chunk"
+                        )
+                        for cref in fentry.chunks:
+                            c_icon = "✓" if cref.active else "✗"
+                            typer.echo(
+                                f"          [{c_icon}] [{cref.index}] "
+                                f"hash={cref.content_hash or '-'}"
+                            )
+
+        # Domini con le basi associate + basi standalone
+        if ws.domains or ws.bases:
+            domain_bases: set = set()
+            if ws.domains:
+                typer.echo("\n  Domini:")
+                for dom in ws.domains:
+                    d_icon = "✓" if dom.active else "✗"
+                    names = [b for b in dom.base_names if b in ws.bases]
+                    domain_bases.update(names)
+                    typer.echo(
+                        f"    [{d_icon}] {dom.name}: "
+                        f"{', '.join(names) if names else '(nessuna base)'}"
+                    )
+            standalone = [n for n in ws.bases if n not in domain_bases]
+            if standalone:
+                typer.echo("  Basi standalone:")
+                for n in standalone:
+                    kb = ws.bases[n]
+                    s_icon = "✓" if kb.active else "✗"
+                    typer.echo(f"    [{s_icon}] {n}")
