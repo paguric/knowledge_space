@@ -14,6 +14,11 @@ dependencies = [
     "typer>=0.15.0",
     "mcp>=1.0.0",
     "rank-bm25>=0.2.2",
+    # Diretta solo per applicare [tool.uv.sources] (canale CPU) a torch,
+    # che altrimenti resterebbe transitiva (sentence-transformers) e
+    # verrebbe risolta da PyPI con CUDA. Il vincolo coincide con quello
+    # di sentence-transformers: nessun effetto collaterale sulla versione.
+    "torch>=2.0",
 ]
 
 [tool.uv.workspace]
@@ -25,6 +30,17 @@ members = [
 [tool.uv.sources]
 mcp-server = { workspace = true }
 knowledge-base = { workspace = true }
+
+# torch CPU-only di default (risparmio ~4 GB di librerie CUDA: nvidia-*, triton).
+# Per usare la GPU con docling (vedi README, sezione Aggiornamento/GPU):
+# commenta queste due righe e la sezione [[tool.uv.index]] qui sotto, poi
+# `uv sync --extra docling`.
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [project.scripts]
 knowledge-space = "knowledge_space.cli:app"

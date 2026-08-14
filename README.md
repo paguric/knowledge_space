@@ -32,6 +32,28 @@ uv tool install --refresh --extra docling --extra pymupdf4llm .
 Se una libreria manca, `ks file add` solleva un errore con il comando
 esatto da eseguire.
 
+### GPU con docling (opzionale)
+
+Di default il progetto installa **torch CPU-only** (canale
+`download.pytorch.org/whl/cpu`, via `[tool.uv.sources]` in `pyproject.toml`):
+~4 GB in meno di librerie CUDA. Per usare la GPU con docling (OCR, layout,
+tabelle — serve `use_gpu = true` nel TOML `[ingestion].params`):
+
+1. In `pyproject.toml` commenta la riga `torch = { index = "pytorch-cpu" }`
+   e tutta la sezione `[[tool.uv.index]]` (il torch CUDA torna da PyPI).
+2. Sincronizza con docling e reinstalla il tool globale:
+
+```bash
+uv sync --extra docling
+uv tool install --editable --force --refresh --extra docling .
+systemctl --user restart ks-serve
+```
+
+> Nota: il canale CPU si applica solo se `torch` è dipendenza **diretta**
+> del progetto (per questo sta in `[project.dependencies]` con vincolo
+> `>=2.0`): le source uv non si applicano alle dipendenze transitive
+> (torch arriva da sentence-transformers).
+
 ## Aggiornamento
 
 ```bash
