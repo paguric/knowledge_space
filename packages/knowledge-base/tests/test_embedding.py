@@ -43,11 +43,11 @@ from knowledge_base.strategies.embedding import (
 class TestEmbeddingRegistry:
     def test_twelve_models_registered(self):
         names = set(embedding_registry.list_names())
-        assert len(names) == 12
+        assert len(names) == 13
 
     def test_all_local_models_present(self):
         names = set(embedding_registry.list_names())
-        assert "sentence-transformers/all-mpnet-base-v2" in names
+        assert "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" in names
         assert "sentence-transformers/all-MiniLM-L6-v2" in names
         assert "Alibaba-NLP/gte-large-en-v1.5" in names
         assert "BAAI/bge-large-en-v1.5" in names
@@ -77,6 +77,7 @@ class TestEmbeddingMetadata:
     @pytest.mark.parametrize(
         "model,dim,max_ctx,langs,requires_api,license",
         [
+            ("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", 384, 512, ["en", "it", "de", "fr", "es", "pt"], False, "Apache 2.0"),
             ("sentence-transformers/all-mpnet-base-v2", 768, 384, ["en"], False, "Apache 2.0"),
             ("sentence-transformers/all-MiniLM-L6-v2", 384, 384, ["en"], False, "Apache 2.0"),
             ("Alibaba-NLP/gte-large-en-v1.5", 1024, 8192, ["en"], False, "Apache 2.0"),

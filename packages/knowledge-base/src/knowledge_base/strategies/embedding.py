@@ -334,6 +334,10 @@ class VoyageEmbedding(BaseEmbedding):
 
 _LOCAL_MODELS: List[Dict[str, Any]] = [
     {
+        "model_name": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        "languages": ["en", "it", "de", "fr", "es", "pt"], "dim": 384, "max_ctx": 512, "license": "Apache 2.0",
+    },
+    {
         "model_name": "sentence-transformers/all-mpnet-base-v2",
         "languages": ["en"], "dim": 768, "max_ctx": 384, "license": "Apache 2.0",
     },

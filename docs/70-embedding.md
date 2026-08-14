@@ -45,6 +45,7 @@ class EmbeddingStrategy(Protocol):
 
 | Modello | `languages` | `dim` | `max_context_tokens` | Licenza | API | Note |
 |---|---|---|---|---|---|---|
+| `paraphrase-multilingual-MiniLM-L12-v2` | EN, IT, DE, FR, ES, PT | 384 | 512 | Apache 2.0 | No | **Default**: multilingua leggero (118MB) |
 | `all-mpnet-base-v2` | EN | 768 | 384 | Apache 2.0 | No | Solo inglese |
 | `all-MiniLM-L6-v2` | EN | 384 | 384 | Apache 2.0 | No | Leggero, solo EN |
 | `gte-large-en-v1.5` | EN | 1024 | 8192 | Apache 2.0 | No | Top EN su MTEB |

@@ -60,7 +60,7 @@ enabled = false               # interruttore (defaults.toml workspace; base.toml
 on_chunk_change = "lazy"      # "eager" | "lazy" — propagazione trigger 1
 top_k = 5                     # default risultati graph search
 extraction_model = None       # LLM per l'estrazione entità, via llm_factory (es. "lm-studio/auto"); None → no-op con warning
-embedding_model = "BAAI/bge-m3"  # modello embedding del grafo (multilingua, grande)
+embedding_model = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"  # multilingua it+en, 118MB — stesso default delle basi (riciclo embedding sempre attivo)
 ```
 
 **Via dalla config:** `retriever`, `schema_mode`, `resolver`, `schema_model`, `vector_index`, `fulltext_index`, `retrieval_query`, `return_properties`, `chunk_embedding_property`, `params` (costanti nel codice o non più esistenti). **Non nel TOML:** connessione Neo4j (`graph.json` o env `NEO4J_URI`/`NEO4J_AUTH`), nomi indici (costanti, creati una volta per workspace).
@@ -80,7 +80,7 @@ embedding_model = "BAAI/bge-m3"  # modello embedding del grafo (multilingua, gra
 
 ### 7-bis. Embedding del grafo (opzione 2: ricalcolo su mismatch)
 
-**Un solo modello embedding per workspace**, il più grande e multilingua possibile: default `BAAI/bge-m3` (configurabile in `[graph] embedding_model`). Motivo: un unico spazio vettoriale per l'indice `chunk-embeddings` e per l'embedder della query del retriever.
+**Un solo modello embedding per workspace**, multilingua (it+en) e leggero: default `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (118MB, 384 dim — configurabile in `[graph] embedding_model`). È lo **stesso default delle basi** (`[embedding] model`): nel caso comune il riciclo da Chroma non scatta mai e serve un solo download. Motivo: un unico spazio vettoriale per l'indice `chunk-embeddings` e per l'embedder della query del retriever.
 
 - `KSChunkLoader` riceve l'embedder del grafo e il modello atteso.
 - Base con `embedding_model` == modello del grafo → **riciclo** embedding da Chroma (zero ricalcolo).

@@ -118,7 +118,7 @@ chunk_overlap = 120
 separator = "\n\n"
 
 [embedding]
-model = "sentence-transformers/all-mpnet-base-v2"
+model = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 [graph]
 schema = "manuale"

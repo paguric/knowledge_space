@@ -49,7 +49,7 @@ File: `<workspace>/.knowledge-space/state.json`
     "test_kb1": {
       "path": "/home/lapo225/test_ws2/test_kb1",
       "active": true,
-      "embedding_model": "sentence-transformers/all-mpnet-base-v2",
+      "embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
       "files": {
         "descrizione_progtes.pdf": {
           "file_id": "8f1c2d3e-4a5b-6c7d-8e9f-0a1b2c3d4e5f",
@@ -68,7 +68,7 @@ File: `<workspace>/.knowledge-space/state.json`
     "bolt_uri": "bolt://localhost:7687",
     "database": "neo4j",
     "schema_ref": ".knowledge-space/schema.json",
-    "embedding_model": "sentence-transformers/all-mpnet-base-v2",
+    "embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
     "retriever": "hybrid_cypher"
   }
 }

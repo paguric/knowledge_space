@@ -44,7 +44,7 @@ class ChunkingConfig(BaseModel):
 class EmbeddingConfig(BaseModel):
     """Sezione ``[embedding]`` del TOML."""
 
-    model: str = "sentence-transformers/all-mpnet-base-v2"
+    model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     device: Optional[str] = None
     api_base: Optional[str] = None
     params: Dict[str, Any] = Field(default_factory=dict)
@@ -503,7 +503,7 @@ chunk_overlap = 120
 separator = "\\n\\n"
 
 [embedding]
-model = "sentence-transformers/all-mpnet-base-v2"
+model = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 # device = "cpu"
 # api_base = ""
 

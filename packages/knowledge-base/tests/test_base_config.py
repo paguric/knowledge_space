@@ -79,7 +79,7 @@ def test_base_config_hardcoded_defaults():
     assert cfg.chunking.method == "recursive"
     assert cfg.chunking.chunk_size == 800
     assert cfg.chunking.chunk_overlap == 120
-    assert cfg.embedding.model == "sentence-transformers/all-mpnet-base-v2"
+    assert cfg.embedding.model == "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     assert cfg.embedding.device is None
 
 
@@ -394,7 +394,7 @@ def test_from_toml_empty_dict_returns_hardcoded_defaults():
     assert cfg == BaseConfig()
     assert cfg.ingestion.library == "docling"
     assert cfg.chunking.chunk_size == 800
-    assert cfg.embedding.model == "sentence-transformers/all-mpnet-base-v2"
+    assert cfg.embedding.model == "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 
 # --------------------------------------------------------------------------- #
@@ -495,7 +495,7 @@ def test_defaults_toml_template_is_valid_toml():
     assert data["chunking"]["method"] == "recursive"
     assert data["chunking"]["chunk_size"] == 800
     assert data["chunking"]["chunk_overlap"] == 120
-    assert data["embedding"]["model"] == "sentence-transformers/all-mpnet-base-v2"
+    assert data["embedding"]["model"] == "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 
 # --------------------------------------------------------------------------- #

@@ -342,7 +342,7 @@ class SearchService:
 
         embedder = None
         if self._embedder_factory:
-            model_name = params.pop("model", "sentence-transformers/all-mpnet-base-v2")
+            model_name = params.pop("model", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
             try:
                 embedder = self._embedder_factory(model_name)
             except Exception:
@@ -444,7 +444,7 @@ class SearchService:
         if method == "mmr" and "embedder" not in params:
             if self._embedder_factory:
                 model_name = params.pop(
-                    "model", "sentence-transformers/all-mpnet-base-v2"
+                    "model", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
                 )
                 try:
                     params["embedder"] = self._embedder_factory(model_name)
