@@ -34,49 +34,31 @@ esatto da eseguire.
 
 ## Aggiornamento
 
-Non serve fermare `ks serve` prima di aggiornare: il servizio systemd
-carica il codice dal repo a ogni avvio, quindi `systemctl restart` fa
-tutto (stop + start con il codice nuovo). Procedura:
-
 ```bash
 cd knowledge_space
-git pull            # ultimo codice dal branch dev
-uv sync             # sincronizza le dipendenze (da fare SEMPRE)
-systemctl --user daemon-reload   # solo se cambia il file di servizio
-systemctl --user restart ks-serve
-```
-
-Il tool globale `ks` è installato in modalità editable (punta ai sorgenti
-del repo): il nuovo codice è visibile subito. **Reinstallarlo solo quando
-cambiano le dipendenze** in `pyproject.toml`:
-
-```bash
+git pull
+uv sync
 uv tool install --editable --force --refresh .
+
 ```
 
-> `--refresh` è essenziale: senza, uv riusa il wheel cacheato e installa
-> codice vecchio anche con `--force`.
-
-**Nota:** `git pull` mentre il servizio gira è sicuro — il processo tiene
-in memoria il codice già caricato e lo ricarica solo al restart. Se hai
-modifiche locali non committate, `git pull` può fallire (stash prima).
-
-**Se hai avviato il server a mano** (`ks serve`, senza systemd): il
-processo resta col vecchio codice in memoria finché non lo fermi.
-Dopo `git pull` + `uv sync`, termina il processo e rilancia:
+Per ricaricare il server MCP, se hai avviato il server a mano con `ks serve`:
 
 ```bash
 # in foreground: Ctrl+C nella finestra del server
-# in background: trova e termina il processo
+# in background:
 pkill -f "ks serve"
-# oppure, se lanciato con uv run: pkill -f "uv run ks serve"
 
 # poi rilancia
 ks serve
 ```
 
-**Nota Windows:** i file Python in uso sono bloccati: chiudi prima il
-server, poi fai `git pull`.
+Se attivato come **systemd user service** (vedi sotto):
+
+```bash
+systemctl --user daemon-reload
+systemctl --user restart ks-serve
+```
 
 ## Database a grafo (opzionale, per il modulo Graph)
 
