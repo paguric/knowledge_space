@@ -89,6 +89,17 @@ model = "BAAI/bge-m3"
 mode = "standard"                         # "standard" | "late_chunking" (pausa)
 ```
 
+### Rilevamento lingua (feat-010)
+
+Prima del chunking, la lingua del documento viene rilevata (via `langdetect`, primi 500 caratteri del Markdown) e confrontata con `EmbeddingMetadata.languages` del modello configurato:
+
+- lingua in `languages`, oppure `"*"`/`"multilingual"` → si procede;
+- lingua non supportata → warning + **skip** del file:
+  `Documento in 'it' ma il modello 'all-mpnet-base-v2' supporta solo ['en']. Skipping base/ita.md.`
+- lingua non rilevabile (testo vuoto/ambiguo) → si procede senza controllo.
+
+Il controllo avviene anche nel reindex `--model-change` (prima dello short-circuit): i documenti in lingua non supportata dal nuovo modello vengono saltati, gli altri re-embeddati.
+
 ### Validazione contesto
 
 Prima di chiamare `embed()`, il `KnowledgeBaseManager` stima la lunghezza in token del chunk e la confronta con `max_context_tokens`:

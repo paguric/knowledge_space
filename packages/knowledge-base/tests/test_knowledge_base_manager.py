@@ -31,6 +31,7 @@ from knowledge_base.knowledge_base_manager import (
     BaseNotFoundError,
     ChunkPersistError,
     KnowledgeBaseManager,
+    LanguageNotSupportedError,
     chroma_collection_name,
 )
 from knowledge_base.models import (
@@ -92,14 +93,19 @@ class StubChunkerLarge:
 
 
 class StubEmbedder:
-    """Embedder fitto: vettori deterministici, dim fissa, max_ctx 384."""
+    """Embedder fitto: vettori deterministici, dim fissa, max_ctx 384.
+
+    Lingue: ``multilingual`` di default (i test non devono preoccuparsi
+    del rilevamento lingua feat-010); i test del feat-010 impostano
+    lingue esplicite (es. ``["en"]``).
+    """
 
     name = "stub-embedder"
 
     def __init__(self) -> None:
         self.metadata = EmbeddingMetadata(
             model_name="stub-embedder",
-            languages=["en"],
+            languages=["multilingual"],
             dim=8,
             max_context_tokens=384,
             license="test",
@@ -497,6 +503,96 @@ class TestSavedMarkdown:
 
         manager.remove("kb1")
         assert not docs_dir.exists()
+
+
+class TestLanguageDetection:
+    """Feat-010: documento in lingua non supportata dal modello embedding
+    → LanguageNotSupportedError (skip); altrimenti procede."""
+
+    _TEXT_IT = (
+        "Questo documento è stato scritto in lingua italiana per verificare "
+        "il funzionamento del rilevamento automatico della lingua dei "
+        "documenti indicizzati. Il sistema deve riconoscere correttamente "
+        "che il testo è in italiano e confrontarlo con le lingue supportate "
+        "dal modello di embedding configurato per la base di conoscenza."
+    )
+    _TEXT_EN = (
+        "This document is written in English to test the automatic language "
+        "detection feature of the indexing pipeline. The system should "
+        "recognize that the text is in English and compare it with the "
+        "languages supported by the configured embedding model for the "
+        "knowledge base."
+    )
+
+    def _make_manager(self, workspace, tmp_path, languages):
+        chroma_path = tmp_path / "chroma3"
+
+        def _config_path_for(ws_path: Path) -> Path:
+            return Path(ws_path) / ".knowledge-space" / "config.json"
+
+        cfg_path = _config_path_for(workspace.path)
+        cfg_path.parent.mkdir(parents=True, exist_ok=True)
+
+        def embedder_factory(_model_name: str):
+            embedder = StubEmbedder()
+            embedder.metadata.languages = languages
+            return embedder
+
+        return KnowledgeBaseManager(
+            workspace=workspace,
+            config_loader=_make_config_loader(),
+            config_path_for=_config_path_for,
+            chroma_path=chroma_path,
+            ingestion_factory=_stub_ingestion_factory,
+            chunking_factory=_stub_chunking_factory,
+            embedder_factory=embedder_factory,
+        )
+
+    def test_italiano_saltato_con_modello_english_only(
+        self, workspace: Workspace, tmp_path: Path
+    ):
+        """Documento italiano + modello ['en'] → skip con errore esplicito."""
+        manager = self._make_manager(workspace, tmp_path, languages=["en"])
+        manager.add(workspace.path / "kb1")
+        src = _write_source(workspace.path / "kb1", "doc.md", self._TEXT_IT)
+
+        with pytest.raises(LanguageNotSupportedError, match="it.*supporta solo"):
+            manager.add_file("kb1", src)
+        assert "doc.md" not in workspace.bases["kb1"].files
+
+    def test_inglese_ok_con_modello_english_only(
+        self, workspace: Workspace, tmp_path: Path
+    ):
+        """Documento inglese + modello ['en'] → indicizzato."""
+        manager = self._make_manager(workspace, tmp_path, languages=["en"])
+        manager.add(workspace.path / "kb1")
+        src = _write_source(workspace.path / "kb1", "doc.md", self._TEXT_EN)
+
+        entry = manager.add_file("kb1", src)
+        assert entry is not None
+
+    def test_italiano_ok_con_modello_multilingue(
+        self, workspace: Workspace, tmp_path: Path
+    ):
+        """Documento italiano + modello ['multilingual'] → indicizzato."""
+        manager = self._make_manager(workspace, tmp_path, languages=["multilingual"])
+        manager.add(workspace.path / "kb1")
+        src = _write_source(workspace.path / "kb1", "doc.md", self._TEXT_IT)
+
+        entry = manager.add_file("kb1", src)
+        assert entry is not None
+
+    def test_lingua_non_rilevabile_procede(
+        self, workspace: Workspace, tmp_path: Path
+    ):
+        """Testo troppo corto/ambiguo: il controllo viene saltato."""
+        manager = self._make_manager(workspace, tmp_path, languages=["en"])
+        manager.add(workspace.path / "kb1")
+        # Testo vuoto: langdetect solleva → controllo saltato, si procede
+        src = _write_source(workspace.path / "kb1", "doc.md", "")
+
+        entry = manager.add_file("kb1", src)
+        assert entry is not None
 
 
 class TestIdempotency:

@@ -15,6 +15,7 @@ import typer
 
 logger = logging.getLogger(__name__)
 
+from knowledge_base.knowledge_base_manager import LanguageNotSupportedError
 from knowledge_space.cli.common import (
     get_context,
     get_workspace,
@@ -53,6 +54,10 @@ def add(
         logger.error("File non trovato: %s", exc)
         typer.echo(f"Errore: {exc}", err=True)
         raise typer.Exit(1)
+    except LanguageNotSupportedError as exc:
+        # feat-010: lingua non supportata dal modello → skip, non è un errore
+        logger.warning("%s", exc)
+        typer.echo(f"Attenzione: {exc}")
     except KeyError as exc:
         logger.error("Base non trovata: %s", exc)
         typer.echo(f"Errore: base non trovata: {exc}", err=True)

@@ -1192,6 +1192,7 @@ dependencies = [
     { name = "langchain-chroma" },
     { name = "langchain-huggingface" },
     { name = "langchain-text-splitters" },
+    { name = "langdetect" },
     { name = "markitdown" },
     { name = "openai" },
     { name = "sentence-transformers" },
@@ -1221,6 +1222,7 @@ requires-dist = [
     { name = "langchain-chroma", specifier = ">=1.1.0" },
     { name = "langchain-huggingface", specifier = ">=1.2.2" },
     { name = "langchain-text-splitters", specifier = ">=1.1.2" },
+    { name = "langdetect", specifier = ">=1.0.9" },
     { name = "markitdown", specifier = ">=0.1.7" },
     { name = "openai", specifier = ">=1.0.0" },
     { name = "openai", marker = "extra == 'remote'", specifier = ">=1.0.0" },
@@ -1380,6 +1382,15 @@ sdist = { url = "https://files.pythonhosted.org/packages/26/9f/6c545900fefb7b00d
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d3/26/1ef06f56198d631296d646a6223de35bcc6cf9795ceb2442816bc963b84c/langchain_text_splitters-1.1.2-py3-none-any.whl", hash = "sha256:a2de0d799ff31886429fd6e2e0032df275b60ec817c19059a7b46181cc1c2f10", size = 35903, upload-time = "2026-04-16T14:20:38.243Z" },
 ]
+
+[[package]]
+name = "langdetect"
+version = "1.0.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0e/72/a3add0e4eec4eb9e2569554f7c70f4a3c27712f40e3284d483e88094cc0e/langdetect-1.0.9.tar.gz", hash = "sha256:cbc1fef89f8d062739774bd51eda3da3274006b3661d199c2655f6b3f6d605a0", size = 981474, upload-time = "2021-05-07T07:54:13.562Z" }
 
 [[package]]
 name = "langgraph"

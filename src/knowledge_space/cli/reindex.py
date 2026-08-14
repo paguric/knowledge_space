@@ -14,6 +14,7 @@ import typer
 
 logger = logging.getLogger(__name__)
 
+from knowledge_base.knowledge_base_manager import LanguageNotSupportedError
 from knowledge_space.cli.common import (
     get_context,
     get_workspace,
@@ -108,6 +109,10 @@ def reindex_command(
                 )
                 logger.info("File %s reindicizzato: %d chunk", fname, len(result.chunks))
                 typer.echo(f"  ✓ {fname} ({len(result.chunks)} chunk)")
+            except LanguageNotSupportedError as exc:
+                # feat-010: lingua non supportata dal modello → skip, warning
+                logger.warning("%s", exc)
+                typer.echo(f"  ⚠ {fname}: {exc}")
             except Exception as exc:
                 logger.error("Errore reindicizzazione %s: %s", fname, exc)
                 typer.echo(f"  ✗ {fname}: {exc}", err=True)

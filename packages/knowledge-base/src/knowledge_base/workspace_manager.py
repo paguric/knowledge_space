@@ -14,6 +14,7 @@ import threading
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+from knowledge_base.knowledge_base_manager import LanguageNotSupportedError
 from knowledge_base.models import KnowledgeBase, Workspace
 from knowledge_base.persistence import GlobalIndex, WorkspaceConfig
 
@@ -300,6 +301,15 @@ class WorkspaceManager:
             try:
                 base_manager.add_file(base_name, file_path)
                 logger.info("File indicizzato: %s/%s", base_name, file_path.name)
+            except LanguageNotSupportedError as exc:
+                # feat-010: lingua del documento non supportata dal modello
+                # → salta il file (warning, non errore).
+                logger.warning(
+                    "%s/%s saltato: %s",
+                    base_name,
+                    file_path.name,
+                    exc,
+                )
             except Exception as exc:
                 logger.error(
                     "Errore nell'indicizzazione di %s/%s: %s",
@@ -464,6 +474,15 @@ class WorkspaceManager:
             try:
                 base_manager.add_file(base_name, file_path)
                 logger.info("File indicizzato: %s/%s", base_name, file_path.name)
+            except LanguageNotSupportedError as exc:
+                # feat-010: lingua del documento non supportata dal modello
+                # → salta il file (warning, non errore).
+                logger.warning(
+                    "%s/%s saltato: %s",
+                    base_name,
+                    file_path.name,
+                    exc,
+                )
             except Exception as exc:
                 logger.error(
                     "Errore nell'indicizzazione di %s/%s: %s",

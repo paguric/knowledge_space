@@ -91,6 +91,28 @@ class FileAlreadyIndexedError(ValueError):
     """Sollevata quando ``add_file`` riceve un path già indicizzato."""
 
 
+class LanguageNotSupportedError(ValueError):
+    """Sollevata quando la lingua del documento non è supportata dal
+    modello di embedding configurato (feat-010). Il file viene saltato."""
+
+    def __init__(
+        self,
+        language: str,
+        model_name: str,
+        supported: List[str],
+        base_name: str,
+        file_name: str,
+    ) -> None:
+        self.language = language
+        self.model_name = model_name
+        self.supported = supported
+        super().__init__(
+            f"Documento in '{language}' ma il modello '{model_name}' "
+            f"supporta solo {supported}. "
+            f"Skipping {base_name}/{file_name}."
+        )
+
+
 class ChunkPersistError(RuntimeError):
     """Sollevata quando un chunk supera il limite ``max_context_tokens``."""
 
@@ -693,6 +715,13 @@ class KnowledgeBaseManager:
             md_reused = False
         new_md_hash = _sha256(markdown)
 
+        # 1-bis. Embedder + rilevamento lingua (feat-010). PRIMA dello
+        # short-circuit: il reindex --model-change su file invariato deve
+        # comunque saltare i documenti in lingua non supportata dal nuovo
+        # modello (lo short-circuit non deve aggirare il controllo).
+        embedder = self._get_embedder(config.embedding.model)
+        self._check_language_support(embedder, markdown, src.name, base_name)
+
         # Short-circuit: file già indicizzato e contenuto invariato → no-op.
         # Feat-007: se la base è pre-feature (doc_path mancante), salva il
         # Markdown retroattivamente per i prossimi reindex.
@@ -712,7 +741,6 @@ class KnowledgeBaseManager:
             return existing
 
         # 2. Chunking (embedder serve solo per strategie semantic)
-        embedder = self._get_embedder(config.embedding.model)
         chunker = self._chunking_factory(config, embedder)
         raw_chunks = chunker.split(markdown)
         new_chunk_hashes = [_sha256(c["text"]) for c in raw_chunks]
@@ -778,6 +806,44 @@ class KnowledgeBaseManager:
         self._save()
         logger.info("File %s indicizzato: %d chunk", src.name, len(existing.chunks))
         return existing
+
+    def _check_language_support(
+        self, embedder: Any, markdown: str, file_name: str, base_name: str
+    ) -> str:
+        """Rileva la lingua del documento e la confronta con le lingue
+        supportate dal modello di embedding (feat-010).
+
+        Il modello supporta il documento se ``languages`` contiene ``"*"``
+        o ``"multilingual"`` o la lingua rilevata. Altrimenti solleva
+        :class:`LanguageNotSupportedError` (il file viene saltato).
+
+        Se la lingua non è rilevabile (testo corto/ambiguo), procede senza
+        controllo (``unknown``).
+
+        Returns:
+            codice lingua rilevato (``"unknown"`` se non rilevabile).
+        """
+        try:
+            from langdetect import detect
+
+            lang = detect(markdown[:500])
+        except Exception:
+            logger.debug(
+                "Lingua non rilevabile per %s/%s: controllo saltato",
+                base_name, file_name,
+            )
+            return "unknown"
+        supported = embedder.metadata.languages
+        if "*" in supported or "multilingual" in supported or lang in supported:
+            return lang
+        logger.warning(
+            "Documento in '%s' ma il modello '%s' supporta solo %s. "
+            "Skipping %s/%s.",
+            lang, embedder.metadata.model_name, supported, base_name, file_name,
+        )
+        raise LanguageNotSupportedError(
+            lang, embedder.metadata.model_name, supported, base_name, file_name
+        )
 
     def _load_saved_markdown(
         self,
