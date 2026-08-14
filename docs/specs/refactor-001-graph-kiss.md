@@ -59,7 +59,7 @@ Nessuno schema persistente (niente `schema.json`, niente modalità FREE/manuale/
 enabled = false               # interruttore (defaults.toml workspace; base.toml può escludere una base)
 on_chunk_change = "lazy"      # "eager" | "lazy" — propagazione trigger 1
 top_k = 5                     # default risultati graph search
-extraction_model = None       # LLM per l'estrazione entità, via llm_factory (es. "lm-studio/auto"); None → no-op con warning
+extraction_model = None       # LLM per l'estrazione entità, via llm_factory (es. "lm-studio/auto"). None = grafo INATTIVO (no-op con warning): senza LLM non c'è estrazione
 embedding_model = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"  # multilingua it+en, 118MB — stesso default delle basi (riciclo embedding sempre attivo)
 ```
 
@@ -75,7 +75,7 @@ embedding_model = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" 
 - `build_graph()` — full build per base attiva: `KSChunkLoader` → estrazione (LLM) → `write_nodes`/`write_edges`/`MENTIONS` (MERGE idempotente) → resolver. Nessuno schema coinvolto.
 - `sync_base(base_name)` — ri-estrazione solo chunk nuovi/modificati (via `content_hash`), idempotente.
 - `remove_base(base_name)` — `delete_file_nodes` per ogni file.
-- Se `graph.enabled == false` o nessun LLM → no-op con warning (l'estrazione entità richiede LLM).
+- Se `graph.enabled == false` o `extraction_model` è `None` → no-op con warning: **l'estrazione entità richiede un LLM**, senza modello non c'è nulla da estrarre (nessuna estrazione rule-based). Il grafo resta vuoto finché l'utente non configura un modello.
 - `bootstrap.py`: cablare `graph_store_factory` in AppContext.
 
 ### 7-bis. Embedding del grafo (opzione 2: ricalcolo su mismatch)
