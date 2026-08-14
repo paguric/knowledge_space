@@ -32,6 +32,35 @@ uv tool install --refresh --extra docling --extra pymupdf4llm .
 Se una libreria manca, `ks file add` solleva un errore con il comando
 esatto da eseguire.
 
+## Aggiornamento
+
+Non serve fermare `ks serve` prima di aggiornare: il servizio systemd
+carica il codice dal repo a ogni avvio, quindi `systemctl restart` fa
+tutto (stop + start con il codice nuovo). Procedura:
+
+```bash
+cd knowledge_space
+git pull            # ultimo codice dal branch dev
+uv sync             # sincronizza le dipendenze (da fare SEMPRE)
+systemctl --user daemon-reload   # solo se cambia il file di servizio
+systemctl --user restart ks-serve
+```
+
+Il tool globale `ks` è installato in modalità editable (punta ai sorgenti
+del repo): il nuovo codice è visibile subito. **Reinstallarlo solo quando
+cambiano le dipendenze** in `pyproject.toml`:
+
+```bash
+uv tool install --editable --force --refresh .
+```
+
+> `--refresh` è essenziale: senza, uv riusa il wheel cacheato e installa
+> codice vecchio anche con `--force`.
+
+**Nota:** `git pull` mentre il servizio gira è sicuro — il processo tiene
+in memoria il codice già caricato e lo ricarica solo al restart. Se hai
+modifiche locali non committate, `git pull` può fallire (stash prima).
+
 ## Database a grafo (opzionale, per il modulo Graph)
 
 Il modulo Graph (grafo della conoscenza, `ks graph`) richiede un'istanza
