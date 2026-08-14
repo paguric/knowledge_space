@@ -12,9 +12,14 @@ Ridurre il componente grafo (`packages/knowledge-base/src/knowledge_base/graph/`
 
 ## Componenti (decisioni)
 
-### 1. Loader (`chunk_loader.py`) — **invariato**
+### 1. Loader (`chunk_loader.py`) — **cambia solo la fonte degli embedding**
 
-Legge chunk da disco + embedding da Chroma. `upsert_chunks` (propagazione incrementale) resta.
+Legge il testo dei chunk da disco (``<base>/.knowledge-space/chunks/``) — invariato. **Embedding: due fonti, secondo il modello della base rispetto a ``[graph] embedding_model`` (vedi 7-bis):**
+
+- base con stesso modello → embedding riciclati da Chroma (come oggi);
+- base con modello diverso → embedding **ricalcolati** dal testo col modello del grafo (serve l'embedder del grafo iniettato nel loader).
+
+`upsert_chunks` (propagazione incrementale) resta, ma nel caso mismatch ricalcola anche gli embedding dei chunk cambiati.
 
 ### 2. Schema (`schema.py`) — **eliminato come input, diventa output**
 
