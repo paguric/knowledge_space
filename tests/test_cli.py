@@ -996,6 +996,78 @@ class TestStatus:
 class TestConfig:
     """Test comandi config."""
 
+    def _register_base_with_state(self, workspace_dir: Path, base_dir: Path):
+        """Registra la base e popola i valori registrati nello state.json."""
+        runner.invoke(
+            app, ["base", "add", str(base_dir), "--workspace", str(workspace_dir)]
+        )
+        state_path = workspace_dir / ".knowledge-space" / "state.json"
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state["bases"]["my_base"]["embedding_model"] = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+        state["bases"]["my_base"]["chunking_method"] = "recursive"
+        state["bases"]["my_base"]["ingestion_library"] = "markitdown"
+        state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    def test_config_refresh_nessun_cambiamento(self, workspace_dir: Path, base_dir: Path):
+        """Feat-014: config identica ai registrati → nessun cambiamento."""
+        self._register_base_with_state(workspace_dir, base_dir)
+        result = runner.invoke(
+            app, ["config", "refresh", "-b", "my_base", "--workspace", str(workspace_dir)]
+        )
+        assert result.exit_code == 0
+        assert "Nessun cambiamento" in result.output
+
+    def test_config_refresh_rileva_cambio(self, workspace_dir: Path, base_dir: Path):
+        """Feat-014: base.toml con modello diverso → cambio segnalato."""
+        self._register_base_with_state(workspace_dir, base_dir)
+        # Modifica manuale del base.toml
+        base_toml = base_dir / ".knowledge-space" / "base.toml"
+        base_toml.write_text('[embedding]\nmodel = "modello-nuovo"\n', encoding="utf-8")
+
+        result = runner.invoke(
+            app, ["config", "refresh", "-b", "my_base", "--workspace", str(workspace_dir)]
+        )
+        assert result.exit_code == 0
+        assert "Configurazione ricaricata" in result.output
+        assert "embedding.model: " in result.output
+        assert "'modello-nuovo'" in result.output
+        assert "modello-vecchio" not in result.output
+
+    def test_config_refresh_toml_malformato(self, workspace_dir: Path, base_dir: Path):
+        """Feat-014: TOML malformato → errore immediato."""
+        self._register_base_with_state(workspace_dir, base_dir)
+        base_toml = base_dir / ".knowledge-space" / "base.toml"
+        base_toml.write_text("[[[rotto\n", encoding="utf-8")
+
+        result = runner.invoke(
+            app, ["config", "refresh", "-b", "my_base", "--workspace", str(workspace_dir)]
+        )
+        assert result.exit_code == 1
+        assert "non valida" in result.output
+
+    def test_config_refresh_chiave_sconosciuta(self, workspace_dir: Path, base_dir: Path):
+        """Feat-014: chiave sconosciuta nel TOML → errore immediato."""
+        self._register_base_with_state(workspace_dir, base_dir)
+        base_toml = base_dir / ".knowledge-space" / "base.toml"
+        base_toml.write_text(
+            "[ingestion]\nlibrary = \"markitdown\"\nbogus_key = 1\n",
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(
+            app, ["config", "refresh", "-b", "my_base", "--workspace", str(workspace_dir)]
+        )
+        assert result.exit_code == 1
+        assert "ingestion.bogus_key" in result.output
+
+    def test_config_refresh_richiede_base(self, workspace_dir: Path):
+        """Feat-014: senza -b né --all e fuori da una base → errore."""
+        result = runner.invoke(
+            app, ["config", "refresh", "--workspace", str(workspace_dir)]
+        )
+        assert result.exit_code == 1
+        assert "Specifica una base" in result.output
+
     def test_config_show(self, workspace_dir: Path):
         result = runner.invoke(
             app, ["config", "show", "--workspace", str(workspace_dir)]

@@ -23,6 +23,7 @@ from knowledge_base.base_config import (
     DEFAULTS_TOML_TEMPLATE,
     BaseConfig,
     BaseConfigLoader,
+    ConfigChangeBlockedError,
     ensure_base_toml,
     ensure_defaults_toml,
     write_toml,
@@ -809,6 +810,125 @@ def edit_cmd(
         raise typer.Exit(result.returncode)
 
     typer.echo(f"File salvato. Usa 'ks config show' per verificare la configurazione.")
+
+
+@app.command(name="refresh")
+def refresh_config(
+    base: Optional[str] = typer.Option(None, "-b", "--base", help="Nome base da ricaricare."),
+    all_bases: bool = typer.Option(False, "--all", help="Ricarica tutte le basi del workspace."),
+    workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
+) -> None:
+    """Ricarica e valida la configurazione TOML dal disco (feat-014).
+
+    Dopo modifiche manuali ai file TOML (``defaults.toml`` / ``base.toml``,
+    ignorati dal watcher), ricarica la configurazione e la valida:
+    TOML malformato o chiavi sconosciute → errore immediato. Poi confronta
+    con i valori registrati nello stato: se ``embedding.model`` /
+    ``chunking.method`` / ``ingestion.library`` sono cambiati, segnala il
+    reindex necessario (``ks reindex <base> --...``) oppure blocca con
+    errore se la collection non è vuota (come ``add_file``).
+    """
+    ctx = get_context(verbose=verbose)
+    ws = get_workspace(ctx, workspace)
+    manager = ctx.base_manager_factory(ws)
+    logger.info("Config refresh")
+
+    # 1. Determina i target
+    if all_bases:
+        targets = list(ws.bases)
+    elif base:
+        base = resolve_base_name(base, workspace=ws)
+        if base not in ws.bases:
+            typer.echo(f"Base non trovata: {base}", err=True)
+            raise typer.Exit(1)
+        targets = [base]
+    else:
+        scope = _autodetect_scope(ws)
+        if scope is None or scope == "defaults":
+            typer.echo(
+                "Specifica una base con -b oppure usa --all.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        targets = [scope]
+
+    # 2. Valida i file TOML coinvolti (malformato / chiavi sconosciute)
+    loader = ctx.base_config_loader_factory(ws.path)
+    toml_paths = [loader.defaults_toml_path]
+    for bn in targets:
+        toml_paths.append(loader.base_toml_path(bn))
+    for p in toml_paths:
+        if p.exists():
+            _validate_toml_file(p)
+
+    # 3. Ricarica e confronta con i valori registrati
+    any_change = False
+    for bn in targets:
+        try:
+            config, changes = manager.reload_and_check_config(bn)
+        except Exception as exc:
+            typer.echo(f"Errore nel ricaricamento di '{bn}': {exc}", err=True)
+            raise typer.Exit(1)
+        summary = (
+            f"modello={config.embedding.model}, "
+            f"chunking={config.chunking.method}, "
+            f"library={config.ingestion.library}"
+        )
+        if not changes:
+            typer.echo(f"Configurazione ricaricata per '{bn}': {summary}. Nessun cambiamento.")
+            continue
+        any_change = True
+        typer.echo(f"Configurazione ricaricata per '{bn}': {summary}.")
+        for field, old, new in changes:
+            typer.echo(f"  ⚠ {field}: '{old}' -> '{new}'")
+        try:
+            manager.check_config_change(bn, config=config)
+            typer.echo(
+                "  Reindex non necessario (collection vuota o registrati assenti)."
+            )
+        except ConfigChangeBlockedError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1)
+    if not any_change:
+        typer.echo("Configurazione ricaricata: nessun cambiamento rilevato.")
+
+
+def _validate_toml_file(path: Path) -> None:
+    """Valida un file TOML: malformato o chiavi sconosciute → errore (feat-014)."""
+    try:
+        with open(path, "rb") as f:
+            data = tomllib.load(f)
+    except tomllib.TOMLDecodeError as exc:
+        typer.echo(f"Configurazione non valida in {path}: {exc}", err=True)
+        raise typer.Exit(1)
+    for section, values in data.items():
+        if section not in _VALID_SECTIONS:
+            typer.echo(
+                f"Configurazione non valida in {path}: sezione [{section}] sconosciuta.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        if not isinstance(values, dict):
+            typer.echo(
+                f"Configurazione non valida in {path}: [{section}] non è una sezione.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        for key in values:
+            if key == "params":
+                continue  # dict libero di parametri della strategy
+            try:
+                cfg = BaseConfig()
+                if not hasattr(getattr(cfg, section), key):
+                    raise AttributeError
+            except AttributeError:
+                typer.echo(
+                    f"Configurazione non valida in {path}: campo '{section}.{key}' "
+                    "sconosciuto.",
+                    err=True,
+                )
+                raise typer.Exit(1)
 
 
 # --------------------------------------------------------------------------- #

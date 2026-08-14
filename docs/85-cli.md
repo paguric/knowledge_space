@@ -122,6 +122,7 @@ Interfaccia a riga di comando (Typer) per gestire workspace, domini, basi, file,
 | Comando | Descrizione |
 |---------|-------------|
 | `config show [<base>]` | Config effettiva (cascata resolved) |
+| `config refresh [-b <base>\|--all]` | Ricarica e valida i TOML dal disco (dopo modifiche manuali); segnala il reindex necessario |
 | `config init` | Genera `defaults.toml` template |
 | `config set <base\|defaults> <key> <value>` | Imposta preferenza (con autocompletamento) |
 | `config unset <base\|defaults> <key>` | Rimuove chiave |

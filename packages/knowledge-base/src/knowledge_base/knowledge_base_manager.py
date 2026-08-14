@@ -292,6 +292,28 @@ class KnowledgeBaseManager:
             )
         return self._config_loader(base_name)
 
+    def reload_and_check_config(
+        self, base_name: str
+    ) -> Tuple[BaseConfig, List[Tuple[str, str, str]]]:
+        """Ricarica la configurazione dal disco e la confronta con i valori
+        registrati nello stato (feat-014).
+
+        Returns:
+            ``(config, changes)`` dove ``changes`` è una lista di
+            ``(campo, vecchio, nuovo)`` per i trigger 3/4/5
+            (embedding.model, chunking.method, ingestion.library).
+        """
+        config = self._load_base_config(base_name)
+        kb = self._load_base_by_name(base_name)
+        changes: List[Tuple[str, str, str]] = []
+        if kb.embedding_model is not None and config.embedding.model != kb.embedding_model:
+            changes.append(("embedding.model", kb.embedding_model, config.embedding.model))
+        if kb.chunking_method is not None and config.chunking.method != kb.chunking_method:
+            changes.append(("chunking.method", kb.chunking_method, config.chunking.method))
+        if kb.ingestion_library is not None and config.ingestion.library != kb.ingestion_library:
+            changes.append(("ingestion.library", kb.ingestion_library, config.ingestion.library))
+        return config, changes
+
     def _get_embedder(self, model_name: str) -> EmbeddingStrategy:
         if model_name in self._embedder_cache:
             return self._embedder_cache[model_name]
