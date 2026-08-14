@@ -40,7 +40,13 @@ Nessuno schema persistente (niente `schema.json`, niente modalità FREE/manuale/
 
 ### 4. Writer (`writer.py`) — **da 10 a 8 metodi**
 
-**Eliminare:** `write_nodes_multi_label` (inutile con label fissa), `update_properties` (generico senza chiamanti). **Tenere:** `write_nodes`, `write_edges`, `delete_chunks`, `delete_file_nodes`, `update_chunk_file_name`, `update_chunk_embeddings`, `create_vector_index`, `create_fulltext_index`. Il writer scrive anche `(c:Chunk)-[:MENTIONS]->(e:Entity)` per ogni entità estratta dal chunk (relazione strutturale, distinta da `RELATED_TO`).
+**Eliminare:** `write_nodes_multi_label` (inutile con label fissa), `update_properties` (generico senza chiamanti). **Tenere:** `write_nodes`, `write_edges`, `delete_chunks`, `delete_file_nodes`, `update_chunk_file_name`, `update_chunk_embeddings`, `create_vector_index`, `create_fulltext_index`. **Aggiungere:** `delete_orphan_entities` — cleanup delle `Entity` senza più alcun `MENTIONS` in entrata (una query, eseguita dopo ogni delete):
+
+```cypher
+MATCH (e:Entity) WHERE NOT (e)<-[:MENTIONS]-() DELETE e
+```
+
+Il writer scrive anche `(c:Chunk)-[:MENTIONS]->(e:Entity)` per ogni entità estratta dal chunk (relazione strutturale, distinta da `RELATED_TO`).
 
 **Propagazione: i 5 trigger della doc restano** (content change eager/lazy, move/rename property-only, cambio modello property-only, cambio chunking full, cambio ingestion full) + blocco cambio config (già implementato in `base_config.py`, invariato).
 
@@ -73,8 +79,8 @@ embedding_model = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" 
 
 - `__init__(workspace, config_loader, graph_store_factory, llm_factory)` — store da `GraphConfigData` (`bolt_uri`, `database`) in `<workspace>/.knowledge-space/graph/graph.json` o env `NEO4J_URI`/`NEO4J_AUTH`; salvato al primo build.
 - `build_graph()` — full build per base attiva: `KSChunkLoader` → estrazione (LLM) → `write_nodes`/`write_edges`/`MENTIONS` (MERGE idempotente) → resolver. Nessuno schema coinvolto.
-- `sync_base(base_name)` — ri-estrazione solo chunk nuovi/modificati (via `content_hash`), idempotente.
-- `remove_base(base_name)` — `delete_file_nodes` per ogni file.
+- `sync_base(base_name)` — ri-estrazione solo chunk nuovi/modificati (via `content_hash`), idempotente; dopo `delete_chunks` (chunk rimossi dal diff) → `delete_orphan_entities`.
+- `remove_base(base_name)` — `delete_file_nodes` per ogni file, poi `delete_orphan_entities` (le entità menzionate solo dai file rimossi sparirebbero altrimenti mai: nessun filtro le toglie, la ricerca per raggiungibilità le ignora ma `graph status`/`graph schema` le conterebbero).
 - Se `graph.enabled == false` o `extraction_model` è `None` → no-op con warning: **l'estrazione entità richiede un LLM**, senza modello non c'è nulla da estrarre (nessuna estrazione rule-based). Il grafo resta vuoto finché l'utente non configura un modello.
 - `bootstrap.py`: cablare `graph_store_factory` in AppContext.
 
