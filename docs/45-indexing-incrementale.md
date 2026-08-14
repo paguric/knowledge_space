@@ -20,7 +20,7 @@ Descrive **quando e come** l'indice vettoriale (Chroma) e i chunk su disco vengo
 |---------|--------|
 | `file_id` | UUID4 stabile, disaccoppiato dal nome |
 | Insert in mezzo | Approccio B (shift accettato, re-embed da quel punto) |
-| Blocco config | Errore se model/method/library diverso + collection non vuota |
+| Blocco config | Errore se model/method/library diverso + collection non vuota; **il reindex con flag è il comando di sblocco** (bypassa il blocco) |
 | Chunk editabili | No — Chroma fonte di verità |
 
 ## Dettagli

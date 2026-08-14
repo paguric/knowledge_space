@@ -582,7 +582,11 @@ class KnowledgeBaseManager:
     # ..................................................................... #
 
     def check_config_change(
-        self, base_name: str, *, config: Optional[BaseConfig] = None
+        self,
+        base_name: str,
+        *,
+        config: Optional[BaseConfig] = None,
+        skip_block: bool = False,
     ) -> None:
         """Verifica il blocco cambio config all'avvio.
 
@@ -592,14 +596,22 @@ class KnowledgeBaseManager:
         :class:`ConfigChangeBlockedError` se il cambio richiede reindex
         esplicito.
 
+        ``skip_block=True``: bypassa il blocco. Usato dal reindex esplicito
+        con flag (``--model-change``/``--chunking-change``/
+        ``--ingestion-change``), che è il comando di sblocco suggerito
+        dall'errore: senza bypass non potrebbe mai sbloccare.
+
         Args:
             base_name: nome della base.
             config: configurazione già caricata. Se ``None``, viene caricata
                 dal config_loader (retro-compatibilità).
+            skip_block: se ``True``, non solleva :class:`ConfigChangeBlockedError`.
         """
         kb = self._load_base_by_name(base_name)
         if config is None:
             config = self._load_base_config(base_name)
+        if skip_block:
+            return
         check_config_change_blocked(
             base_name,
             config,
@@ -619,6 +631,7 @@ class KnowledgeBaseManager:
         source_path: Path,
         *,
         markdown_mode: str = "auto",
+        skip_config_change_block: bool = False,
     ) -> FileEntry:
         """Esegue la pipeline completa su un file: ingestion → chunking →
         embedding → upsert Chroma. Persiste chunk su disco e stato su
@@ -646,6 +659,9 @@ class KnowledgeBaseManager:
         Solleva :class:`ChunkPersistError` (wrap
         :class:`ChunkTooLongError`) se un chunk eccede il ``max_context_tokens``
         del modello di embedding.
+
+        ``skip_config_change_block=True``: bypassa :class:`ConfigChangeBlockedError`
+        (usato dal reindex esplicito con flag, che è il comando di sblocco).
         """
         if markdown_mode not in ("auto", "reuse", "reconvert"):
             raise ValueError(f"markdown_mode non valido: {markdown_mode}")
@@ -660,7 +676,9 @@ class KnowledgeBaseManager:
 
         config = self._load_base_config(base_name)
         # Blocco cambio config (trigger 3/4/5) — controlla prima di operare.
-        self.check_config_change(base_name, config=config)
+        # Il reindex esplicito con flag (skip_config_change_block=True) è il
+        # comando di sblocco: il blocco verrebbe altrimenti sollevato sempre.
+        self.check_config_change(base_name, config=config, skip_block=skip_config_change_block)
 
         key = src.name
         existing = kb.files.get(key)
@@ -679,12 +697,18 @@ class KnowledgeBaseManager:
         # Feat-007: se la base è pre-feature (doc_path mancante), salva il
         # Markdown retroattivamente per i prossimi reindex.
         if existing is not None and existing.content_hash == new_md_hash:
+            # Registra la config attiva anche qui: il reindex con flag su
+            # file invariati (--ingestion-change con markdown identico) deve
+            # comunque sbloccare la base aggiornando la config registrata.
+            kb.embedding_model = config.embedding.model
+            kb.chunking_method = config.chunking.method
+            kb.ingestion_library = config.ingestion.library
             if not existing.doc_path:
                 file_id = existing.file_id or uuid.uuid4().hex
                 self._save_markdown(base_name, file_id, markdown)
                 existing.file_id = file_id
                 existing.doc_path = f".knowledge-space/documents/{file_id}.md"
-                self._save()
+            self._save()
             return existing
 
         # 2. Chunking (embedder serve solo per strategie semantic)

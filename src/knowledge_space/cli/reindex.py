@@ -52,6 +52,10 @@ def reindex_command(
         markdown_mode = "reuse"
     else:
         markdown_mode = "auto"
+    # Con un flag esplicito il reindex è il comando di sblocco: bypassa il
+    # blocco cambio config (altrimenti ConfigChangeBlockedError non lascerebbe
+    # mai sbloccare la base).
+    skip_block = markdown_mode != "auto"
 
     if not all_bases and not base_name:
         logger.warning("Nessuna base specificata per reindex")
@@ -97,7 +101,11 @@ def reindex_command(
                 continue
 
             try:
-                result = manager.add_file(bname, file_path, markdown_mode=markdown_mode)
+                result = manager.add_file(
+                    bname, file_path,
+                    markdown_mode=markdown_mode,
+                    skip_config_change_block=skip_block,
+                )
                 logger.info("File %s reindicizzato: %d chunk", fname, len(result.chunks))
                 typer.echo(f"  ✓ {fname} ({len(result.chunks)} chunk)")
             except Exception as exc:
