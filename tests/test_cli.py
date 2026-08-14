@@ -434,6 +434,68 @@ class TestBase:
         )
         assert result.exit_code == 1
 
+    def test_base_remove_recursive(self, workspace_dir: Path):
+        """Feat-012: --recursive rimuove anche le sotto-basi, foglie prima."""
+        root = workspace_dir / "Paper Accademici"
+        root.mkdir()
+        (root / "papers1").mkdir()
+        (root / "papers2").mkdir()
+        runner.invoke(
+            app, ["base", "add", str(root), "--workspace", str(workspace_dir)]
+        )
+        runner.invoke(
+            app,
+            ["base", "add", str(root / "papers1"), "--workspace", str(workspace_dir)],
+        )
+        runner.invoke(
+            app,
+            ["base", "add", str(root / "papers2"), "--workspace", str(workspace_dir)],
+        )
+
+        # Verifica che le sotto-basi esistono nello stato
+        result = runner.invoke(
+            app, ["base", "list", "--workspace", str(workspace_dir)]
+        )
+        assert "papers1" in result.output
+        assert "papers2" in result.output
+
+        result = runner.invoke(
+            app,
+            [
+                "base", "remove", "Paper Accademici", "--recursive", "--force",
+                "--workspace", str(workspace_dir),
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Sotto-base rimossa: Paper Accademici/papers1" in result.output
+        assert "Sotto-base rimossa: Paper Accademici/papers2" in result.output
+        assert "Base rimossa: Paper Accademici" in result.output
+
+        # Nessuna traccia nello stato (state.json, senza sync che
+        # riscoprirebbe le cartelle ancora presenti su disco)
+        state = json.loads(
+            (workspace_dir / ".knowledge-space" / "state.json").read_text(encoding="utf-8")
+        )
+        assert "Paper Accademici" not in state["bases"]
+        assert "Paper Accademici/papers1" not in state["bases"]
+        assert "Paper Accademici/papers2" not in state["bases"]
+
+    def test_base_remove_recursive_senza_sottobasi(self, workspace_dir: Path, base_dir: Path):
+        """Feat-012: --recursive su base senza sotto-basi si comporta come
+        il remove normale."""
+        runner.invoke(
+            app, ["base", "add", str(base_dir), "--workspace", str(workspace_dir)]
+        )
+        result = runner.invoke(
+            app,
+            [
+                "base", "remove", "my_base", "--recursive", "--force",
+                "--workspace", str(workspace_dir),
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Base rimossa: my_base" in result.output
+
     def test_base_info(self, workspace_dir: Path, base_dir: Path):
         runner.invoke(
             app, ["base", "add", str(base_dir), "--workspace", str(workspace_dir)]

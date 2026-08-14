@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import typer
 
@@ -125,27 +125,53 @@ def list_bases(
 def remove(
     name: str = typer.Argument(help="Nome della base."),
     force: bool = typer.Option(False, "--force", "-y", help="Salta la conferma."),
+    recursive: bool = typer.Option(False, "--recursive", "-r", help="Rimuovi anche le sotto-basi (feat-012)."),
     workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
 ) -> None:
-    """Rimuove una base dal workspace."""
+    """Rimuove una base dal workspace.
+
+    Con ``--recursive`` rimuove anche tutte le sotto-basi (es.
+    ``Paper Accademici/papers1``), prima le foglie poi la radice.
+    """
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
     manager = ctx.base_manager_factory(ws)
 
+    requested = name
     name = normalize_base_name(name)
     logger.info("Rimozione base: %s", name)
 
-    # Mostra warning con conferma se la base contiene file/chunk
+    # Sotto-basi da rimuovere con --recursive. Il prefisso usa la chiave
+    # reale in ws.bases (può contenere il path completo, es.
+    # "Paper Accademici/papers1"): il nome normalizzato ridurrebbe il path.
+    sub_bases: List[str] = []
+    if recursive:
+        root_key = name if name in ws.bases else requested
+        sub_bases = sorted(
+            (n for n in ws.bases if n.startswith(root_key + "/")),
+            reverse=True,  # ordine lessicografico inverso: foglie prima
+        )
+        if sub_bases:
+            logger.info(
+                "Rimozione ricorsiva: %d sotto-basi di %s", len(sub_bases), root_key
+            )
+
+    # Mostra warning con conferma se la base (o le sotto-basi) contiene file/chunk
     if not force:
-        kb = ws.bases.get(name)
-        n_files = len(kb.files) if kb else 0
-        n_chunks = sum(len(f.chunks) for f in kb.files.values()) if kb else 0
+        n_files = 0
+        n_chunks = 0
+        targets = [name] + sub_bases
+        for tname in targets:
+            kb = ws.bases.get(tname)
+            n_files += len(kb.files) if kb else 0
+            n_chunks += sum(len(f.chunks) for f in kb.files.values()) if kb else 0
 
         if n_files > 0 or n_chunks > 0:
             typer.echo(
-                f"Attenzione: la base '{name}' contiene {n_files} file "
-                f"e {n_chunks} chunk indicizzati."
+                f"Attenzione: la rimozione di '{name}'"
+                + (f" e {len(sub_bases)} sotto-basi" if sub_bases else "")
+                + f" eliminerà {n_files} file e {n_chunks} chunk indicizzati."
             )
             typer.echo(
                 "L'operazione eliminerà definitivamente tutti i chunk "
@@ -156,6 +182,11 @@ def remove(
                 logger.info("Rimozione base annullata dall'utente")
                 typer.echo("Operazione annullata.")
                 raise typer.Exit(0)
+
+    for sub in sub_bases:
+        if manager.remove(sub):
+            logger.info("Sotto-base rimossa: %s", sub)
+            typer.echo(f"Sotto-base rimossa: {sub}")
 
     removed = manager.remove(name)
     if removed:
