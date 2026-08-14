@@ -57,17 +57,18 @@ Per supportare il trigger 2 senza ricalcolare, `chunk_id` non può dipendere dal
 ### Trigger 3 — Cambio modello di embedding
 
 **Bloccato** se collection non vuota. `ks reindex <base> --model-change`:
-1. Crea nuova collection con `dim` del nuovo modello.
-2. Legge chunk da disco (testo, NON embedding vecchi).
-3. Re-embed con il nuovo modello.
-4. Swap atomico collection.
-5. Aggiorna `embedding_model` in `state.json`.
-6. Propaga nuovi vettori al grafo (property-only, no re-estrazione).
+1. Riusa il **Markdown salvato** (`documents/`, feat-007) — nessuna conversione.
+2. Crea nuova collection con `dim` del nuovo modello.
+3. Legge chunk da disco (testo, NON embedding vecchi).
+4. Re-embed con il nuovo modello.
+5. Swap atomico collection.
+6. Aggiorna `embedding_model` in `state.json`.
+7. Propaga nuovi vettori al grafo (property-only, no re-estrazione).
 
 ### Trigger 4 — Cambio strategia/parametri di chunking
 
 **Bloccato** se collection non vuota. `ks reindex <base> --chunking-change`:
-1. Re-ingest (o riusa markdown cached).
+1. Riusa il **Markdown salvato** (`documents/`, feat-007) — nessuna conversione docling.
 2. Re-chunk con nuova strategia/parametri.
 3. Riscrivi chunk su disco.
 4. Delete + insert in Chroma.
@@ -77,9 +78,21 @@ Per supportare il trigger 2 senza ricalcolare, `chunk_id` non può dipendere dal
 ### Trigger 5 — Cambio libreria/parametri di ingestion
 
 **Bloccato** se collection non vuota. `ks reindex <base> --ingestion-change`:
-1. Re-ingest con nuova libreria/parametri.
+1. Re-ingest con nuova libreria/parametri (**riconversione** del sorgente).
 2. Se `hash(new_markdown) == hash(old_markdown)` → no-op + warning.
 3. Altrimenti: re-chunk + re-embed + riscrittura + grafo (come trigger 4).
+
+### Markdown salvato (feat-007)
+
+Il Markdown prodotto dalla conversione è persistito in `<base>/.knowledge-space/documents/{file_id}.md` (campo `FileEntry.doc_path`). Fonte del Markdown per `add_file` (parametro `markdown_mode`):
+
+| Mode | Flag CLI | Comportamento |
+|---|---|---|
+| `auto` | (default) | riusa se `mtime` sorgente invariato, altrimenti riconverte |
+| `reuse` | `--chunking-change`, `--model-change` | riusa sempre (fallback: conversione per file pre-feat-007) |
+| `reconvert` | `--ingestion-change` | riconverte sempre |
+
+`ks base remove` / `ks file remove` cancellano anche `documents/` (la dotfolder della base viene rimossa interamente).
 
 ### Tabella riassuntiva comandi CLI
 

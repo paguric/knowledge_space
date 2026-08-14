@@ -24,14 +24,34 @@ from knowledge_space.cli.common import (
 def reindex_command(
     base_name: Optional[str] = typer.Argument(None, help="Nome della base da reindicizzare."),
     all_bases: bool = typer.Option(False, "--all", "-a", help="Reindicizza tutte le basi."),
+    model_change: bool = typer.Option(False, "--model-change", help="Modello embedding cambiato: riusa il Markdown salvato (nessuna riconversione)."),
+    chunking_change: bool = typer.Option(False, "--chunking-change", help="Chunking cambiato: riusa il Markdown salvato (nessuna riconversione)."),
+    ingestion_change: bool = typer.Option(False, "--ingestion-change", help="Ingestion cambiata: riconverte tutto dal sorgente."),
     workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
 ) -> None:
-    """Reindicizza una o tutte le basi."""
+    """Reindicizza una o tutte le basi.
+
+    I flag indicano quale parte della pipeline è cambiata e quindi quanto
+    deve essere rifatto (feat-007):
+
+    - nessun flag: pipeline completa (docling se il sorgente è cambiato,
+      Markdown salvato altrimenti);
+    - ``--chunking-change`` / ``--model-change``: rilegge il Markdown
+      salvato, ri-chunka / ri-embedda senza riconvertire;
+    - ``--ingestion-change``: riconverte tutto dal sorgente.
+    """
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
     manager = ctx.base_manager_factory(ws)
     logger.info("Reindicizzazione basi")
+
+    if ingestion_change:
+        markdown_mode = "reconvert"
+    elif model_change or chunking_change:
+        markdown_mode = "reuse"
+    else:
+        markdown_mode = "auto"
 
     if not all_bases and not base_name:
         logger.warning("Nessuna base specificata per reindex")
@@ -42,7 +62,12 @@ def reindex_command(
     if all_bases:
         bases_to_reindex = list(ws.bases.keys())
     elif base_name:
+        requested = base_name
         base_name = resolve_base_name(base_name, workspace=ws)
+        # Bug-024: basi annidate (clienti/cliente-a) — resolve riduce il
+        # path; se la chiave non esiste riprova col nome raw.
+        if base_name not in ws.bases and requested in ws.bases:
+            base_name = requested
         if base_name not in ws.bases:
             typer.echo(f"Base non trovata: {base_name}", err=True)
             raise typer.Exit(1)
@@ -72,7 +97,7 @@ def reindex_command(
                 continue
 
             try:
-                result = manager.add_file(bname, file_path)
+                result = manager.add_file(bname, file_path, markdown_mode=markdown_mode)
                 logger.info("File %s reindicizzato: %d chunk", fname, len(result.chunks))
                 typer.echo(f"  ✓ {fname} ({len(result.chunks)} chunk)")
             except Exception as exc:

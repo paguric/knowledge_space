@@ -47,6 +47,10 @@ class FileEntry(BaseModel):
     # ``content_hash`` a livello di file (markdown intero): usato per
     # short-circuitare il re-index quando il sorgente è invariato.
     content_hash: Optional[str] = None
+    # Path relativo alla base del Markdown salvato dopo l'ingestione
+    # (feat-007): ``.knowledge-space/documents/{file_id}.md``. ``None``
+    # per basi indicizzate prima della feature (fallback: riconversione).
+    doc_path: Optional[str] = None
     active: bool = True
     chunks: List[ChunkRef] = Field(default_factory=list)
 

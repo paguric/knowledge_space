@@ -101,8 +101,11 @@ Interfaccia a riga di comando (Typer) per gestire workspace, domini, basi, file,
 
 | Comando | Descrizione |
 |---------|-------------|
-| `reindex <base>` | Auto-detect trigger + reindicizza |
+| `reindex <base>` | Pipeline completa (docling se il sorgente è cambiato, Markdown salvato altrimenti) |
 | `reindex --all` | Tutte le basi |
+| `reindex <base> --chunking-change` | Riusa il Markdown salvato, ri-chunka senza riconvertire |
+| `reindex <base> --model-change` | Riusa il Markdown salvato, ri-embedda senza riconvertire |
+| `reindex <base> --ingestion-change` | Riconverte tutto dal sorgente |
 
 **Graph:**
 

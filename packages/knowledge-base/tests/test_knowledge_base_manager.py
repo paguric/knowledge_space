@@ -337,6 +337,168 @@ class TestAddFilePipeline:
 # --------------------------------------------------------------------------- #
 
 
+class TestSavedMarkdown:
+    """Feat-007: il Markdown prodotto dall'ingestione viene salvato e
+    riusato nei reindex che non richiedono riconversione."""
+
+    def _manager_with_convert_counter(self, workspace, tmp_path):
+        """Manager con factory ingestion che conta le conversioni."""
+        counter = {"converts": 0}
+
+        def counting_ingestion_factory(config):
+            ingestion = _stub_ingestion_factory(config)
+            original = ingestion.convert
+
+            def convert(src):
+                counter["converts"] += 1
+                return original(src)
+
+            ingestion.convert = convert
+            return ingestion
+
+        from pathlib import Path
+
+        chroma_path = tmp_path / "chroma2"
+
+        def _config_path_for(ws_path: Path) -> Path:
+            return Path(ws_path) / ".knowledge-space" / "config.json"
+
+        cfg_path = _config_path_for(workspace.path)
+        cfg_path.parent.mkdir(parents=True, exist_ok=True)
+
+        manager = KnowledgeBaseManager(
+            workspace=workspace,
+            config_loader=_make_config_loader(),
+            config_path_for=_config_path_for,
+            chroma_path=chroma_path,
+            ingestion_factory=counting_ingestion_factory,
+            chunking_factory=_stub_chunking_factory,
+            embedder_factory=_stub_embedder_factory,
+        )
+        return manager, counter
+
+    def test_add_file_salva_markdown(self, workspace: Workspace, tmp_path: Path):
+        """Dopo add_file, documents/{file_id}.md esiste e doc_path è valorizzato."""
+        manager, _ = self._manager_with_convert_counter(workspace, tmp_path)
+        manager.add(workspace.path / "kb1")
+        src = _write_source(workspace.path / "kb1", "doc.md", "p1\n\np2")
+        entry = manager.add_file("kb1", src)
+
+        assert entry.doc_path == f".knowledge-space/documents/{entry.file_id}.md"
+        doc = workspace.path / "kb1" / entry.doc_path
+        assert doc.is_file()
+        assert doc.read_text(encoding="utf-8") == "p1\n\np2"
+
+    def test_auto_reusa_markdown_se_mtime_invariato(self, workspace: Workspace, tmp_path: Path):
+        """add_file con sorgente invariato riusa il Markdown (0 conversioni)."""
+        manager, counter = self._manager_with_convert_counter(workspace, tmp_path)
+        manager.add(workspace.path / "kb1")
+        src = _write_source(workspace.path / "kb1", "doc.md", "p1\n\np2")
+        entry1 = manager.add_file("kb1", src)
+        assert counter["converts"] == 1
+
+        # Seconda add_file: il file non è cambiato → riusa il Markdown salvato
+        entry2 = manager.add_file("kb1", src)
+        assert entry2 is entry1
+        assert counter["converts"] == 1
+
+    def test_auto_riconverte_se_mtime_cambiato(self, workspace: Workspace, tmp_path: Path):
+        """File modificato su disco → riconversione e nuovo content_hash."""
+        manager, counter = self._manager_with_convert_counter(workspace, tmp_path)
+        manager.add(workspace.path / "kb1")
+        src = _write_source(workspace.path / "kb1", "doc.md", "p1\n\np2")
+        entry1 = manager.add_file("kb1", src)
+        assert counter["converts"] == 1
+
+        # Modifica il sorgente (mtime cambia)
+        old_hash = entry1.content_hash
+        src.write_text("p1\n\np2\n\np3", encoding="utf-8")
+        import time
+
+        time.sleep(0.01)
+        entry2 = manager.add_file("kb1", src)
+        assert entry2 is entry1
+        assert counter["converts"] == 2
+        assert entry2.content_hash != old_hash
+        assert len(entry2.chunks) == 3
+        # Il Markdown salvato è aggiornato
+        doc = workspace.path / "kb1" / entry2.doc_path
+        assert doc.read_text(encoding="utf-8") == "p1\n\np2\n\np3"
+
+    def test_reuse_non_converte_anche_se_mtime_cambiato(self, workspace: Workspace, tmp_path: Path):
+        """markdown_mode='reuse' (reindex --chunking-change/--model-change)
+        riusa il Markdown salvato anche se il sorgente è cambiato."""
+        manager, counter = self._manager_with_convert_counter(workspace, tmp_path)
+        manager.add(workspace.path / "kb1")
+        src = _write_source(workspace.path / "kb1", "doc.md", "p1\n\np2")
+        manager.add_file("kb1", src)
+        assert counter["converts"] == 1
+
+        # Sorgente modificato, ma mode='reuse': nessuna conversione
+        src.write_text("contenuto diverso sul disco", encoding="utf-8")
+        import time
+
+        time.sleep(0.01)
+        entry2 = manager.add_file("kb1", src, markdown_mode="reuse")
+        assert counter["converts"] == 1
+        # Il modello usa il Markdown salvato (hash invariato → short-circuit)
+        assert len(entry2.chunks) == 2
+
+    def test_reconvert_converte_sempre(self, workspace: Workspace, tmp_path: Path):
+        """markdown_mode='reconvert' (reindex --ingestion-change) riconverte
+        anche se il sorgente è invariato."""
+        manager, counter = self._manager_with_convert_counter(workspace, tmp_path)
+        manager.add(workspace.path / "kb1")
+        src = _write_source(workspace.path / "kb1", "doc.md", "p1\n\np2")
+        entry1 = manager.add_file("kb1", src)
+        assert counter["converts"] == 1
+
+        entry2 = manager.add_file("kb1", src, markdown_mode="reconvert")
+        assert counter["converts"] == 2
+        assert entry2 is entry1
+
+    def test_shortcircuit_salva_markdown_retroattivo(self, workspace: Workspace, tmp_path: Path):
+        """File pre-feat-007 (senza doc_path): lo short-circuit salva il
+        Markdown retroattivamente."""
+        manager, _ = self._manager_with_convert_counter(workspace, tmp_path)
+        manager.add(workspace.path / "kb1")
+        src = _write_source(workspace.path / "kb1", "doc.md", "p1\n\np2")
+        entry = manager.add_file("kb1", src)
+
+        # Simula una base pre-feature: togli doc_path
+        entry.doc_path = None
+        entry2 = manager.add_file("kb1", src)
+        assert entry2 is entry
+        assert entry2.doc_path == f".knowledge-space/documents/{entry2.file_id}.md"
+        doc = workspace.path / "kb1" / entry2.doc_path
+        assert doc.is_file()
+        assert doc.read_text(encoding="utf-8") == "p1\n\np2"
+
+    def test_remove_file_cancella_documento(self, workspace: Workspace, tmp_path: Path):
+        """remove_file cancella anche il Markdown salvato."""
+        manager, _ = self._manager_with_convert_counter(workspace, tmp_path)
+        manager.add(workspace.path / "kb1")
+        src = _write_source(workspace.path / "kb1", "doc.md", "p1\n\np2")
+        entry = manager.add_file("kb1", src)
+        doc = workspace.path / "kb1" / entry.doc_path
+        assert doc.is_file()
+
+        manager.remove_file("kb1", "doc.md")
+        assert not doc.exists()
+
+    def test_remove_cancella_documenti(self, workspace: Workspace, tmp_path: Path):
+        """remove base cancella la cartella documents/."""
+        manager, _ = self._manager_with_convert_counter(workspace, tmp_path)
+        manager.add(workspace.path / "kb1")
+        src = _write_source(workspace.path / "kb1", "doc.md", "p1\n\np2")
+        entry = manager.add_file("kb1", src)
+        docs_dir = workspace.path / "kb1" / ".knowledge-space" / "documents"
+        assert docs_dir.is_dir()
+
+        manager.remove("kb1")
+        assert not docs_dir.exists()
+
+
 class TestIdempotency:
     def test_add_file_twice_same_content_is_noop(
         self, manager: KnowledgeBaseManager, workspace: Workspace

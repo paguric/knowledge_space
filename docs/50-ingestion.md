@@ -6,6 +6,21 @@
 
 Conversione dei file sorgenti nei formati supportati in testo Markdown strutturato, pronto per il chunking. Ogni strategia incapsula una libreria di conversione e ne espone i parametri configurabili via TOML (`[ingestion].params`).
 
+## Markdown persistito (feat-007)
+
+Il Markdown prodotto dalla conversione viene **salvato** in
+`<base>/.knowledge-space/documents/{file_id}.md` prima del chunking, con
+riferimento in `FileEntry.doc_path`. I reindex che non cambiano la
+conversione lo **riusano** senza riconvertire il sorgente:
+
+| Fonte del Markdown | Quando |
+|---|---|
+| `markdown_mode="auto"` (default) | sorgente invariato (stesso `mtime`) → riusa; altrimenti riconverte |
+| `markdown_mode="reuse"` (`--chunking-change` / `--model-change`) | riusa sempre; fallback a conversione se il file è pre-feat-007 |
+| `markdown_mode="reconvert"` (`--ingestion-change`) | riconverte sempre |
+
+Nota: il riuso verifica anche l'hash del documento salvato (file manomesso → riconversione). I file indicizzati prima della feature vengono aggiornati retroattivamente al primo `add_file`/reindex.
+
 ## Scelte
 
 | Library | Formati | Profilo | GPU |

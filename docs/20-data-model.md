@@ -56,6 +56,7 @@ File: `<workspace>/.knowledge-space/state.json`
           "mtime": 1783699858.842,
           "added": "2026-07-13T20:04:44",
           "active": true,
+          "doc_path": ".knowledge-space/documents/8f1c2d3e-4a5b-6c7d-8e9f-0a1b2c3d4e5f.md",
           "chunks": [
             { "index": 0, "active": true, "chunk_id": "test_kb1::8f1c2d3e-...::0", "content_hash": "a1b2c3d4..." },
             { "index": 1, "active": true, "chunk_id": "test_kb1::8f1c2d3e-...::1", "content_hash": "e5f6a7b8..." }
@@ -74,7 +75,7 @@ File: `<workspace>/.knowledge-space/state.json`
 }
 ```
 
-Campi aggiuntivi per GraphRAG e indicizzazione incrementale: `file_id`, `chunk_id`, `content_hash`, `embedding_model`, `chunking_method`, `ingestion_library`. `graph.retriever` è il default workspace-level (override per-base in `[graph].retriever` TOML). I chunk non sono editabili — Chroma è fonte di verità.
+Campi aggiuntivi per GraphRAG e indicizzazione incrementale: `file_id`, `chunk_id`, `content_hash`, `doc_path` (Markdown salvato, feat-007), `embedding_model`, `chunking_method`, `ingestion_library`. `graph.retriever` è il default workspace-level (override per-base in `[graph].retriever` TOML). I chunk non sono editabili — Chroma è fonte di verità.
 
 ### Schema JSON dell'indice globale
 

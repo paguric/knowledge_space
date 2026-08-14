@@ -297,6 +297,13 @@ class KnowledgeBaseManager:
     def _chunks_dir(self, base_name: str, file_id: str) -> Path:
         return self._base_dot_dir(base_name) / "chunks" / file_id
 
+    def _documents_dir(self, base_name: str) -> Path:
+        """Cartella dei Markdown salvati dopo l'ingestione (feat-007)."""
+        return self._base_dot_dir(base_name) / "documents"
+
+    def _doc_path(self, base_name: str, file_id: str) -> Path:
+        return self._documents_dir(base_name) / f"{file_id}.md"
+
     def _chunk_path(self, base_name: str, file_id: str, index: int) -> Path:
         return self._chunks_dir(base_name, file_id) / f"{file_id}_chunk_{index}.md"
 
@@ -606,7 +613,13 @@ class KnowledgeBaseManager:
     # Pipeline principale: add_file
     # ..................................................................... #
 
-    def add_file(self, base_name: str, source_path: Path) -> FileEntry:
+    def add_file(
+        self,
+        base_name: str,
+        source_path: Path,
+        *,
+        markdown_mode: str = "auto",
+    ) -> FileEntry:
         """Esegue la pipeline completa su un file: ingestion → chunking →
         embedding → upsert Chroma. Persiste chunk su disco e stato su
         ``config.json``.
@@ -617,13 +630,31 @@ class KnowledgeBaseManager:
 
         Genera ``file_id`` alla prima indicizzazione (UUID4, stabile).
 
+        Il Markdown prodotto dalla conversione (feat-007) viene salvato in
+        ``.knowledge-space/documents/{file_id}.md`` e riusato nei reindex che
+        non richiedono riconversione. La fonte del Markdown dipende da
+        ``markdown_mode``:
+
+        - ``"auto"`` (default): usa il Markdown salvato se il sorgente è
+          invariato (stesso ``mtime``), altrimenti riconverte con docling.
+        - ``"reuse"`` (``--chunking-change`` / ``--model-change``): rilegge
+          il Markdown salvato senza riconvertire (fallback: riconversione se
+          il file non ha ancora un ``doc_path``).
+        - ``"reconvert"`` (``--ingestion-change``): riconverte sempre il
+          sorgente.
+
         Solleva :class:`ChunkPersistError` (wrap
         :class:`ChunkTooLongError`) se un chunk eccede il ``max_context_tokens``
         del modello di embedding.
         """
+        if markdown_mode not in ("auto", "reuse", "reconvert"):
+            raise ValueError(f"markdown_mode non valido: {markdown_mode}")
         kb = self._load_base_by_name(base_name)
         src = Path(source_path)
-        logger.info("Pipeline ingestion per file %s nella base %s", src.name, base_name)
+        logger.info(
+            "Pipeline ingestion per file %s nella base %s (markdown_mode=%s)",
+            src.name, base_name, markdown_mode,
+        )
         if not src.is_file():
             raise FileNotFoundError(f"File sorgente non trovato: {src}")
 
@@ -634,13 +665,26 @@ class KnowledgeBaseManager:
         key = src.name
         existing = kb.files.get(key)
 
-        # 1. Ingestion
-        ingestion = self._select_ingestion(config, src)
-        markdown = ingestion.convert(src)
+        # 1. Ingestion: Markdown da docling o dal documento salvato (feat-007).
+        saved_md = self._load_saved_markdown(kb, existing, src, markdown_mode)
+        if saved_md is not None:
+            markdown, md_reused = saved_md, True
+        else:
+            ingestion = self._select_ingestion(config, src)
+            markdown = ingestion.convert(src)
+            md_reused = False
         new_md_hash = _sha256(markdown)
 
         # Short-circuit: file già indicizzato e contenuto invariato → no-op.
+        # Feat-007: se la base è pre-feature (doc_path mancante), salva il
+        # Markdown retroattivamente per i prossimi reindex.
         if existing is not None and existing.content_hash == new_md_hash:
+            if not existing.doc_path:
+                file_id = existing.file_id or uuid.uuid4().hex
+                self._save_markdown(base_name, file_id, markdown)
+                existing.file_id = file_id
+                existing.doc_path = f".knowledge-space/documents/{file_id}.md"
+                self._save()
             return existing
 
         # 2. Chunking (embedder serve solo per strategie semantic)
@@ -668,6 +712,10 @@ class KnowledgeBaseManager:
         else:
             file_id = uuid.uuid4().hex
 
+        # 4-bis. Salva il Markdown prodotto (feat-007), se non riusato.
+        if not md_reused:
+            self._save_markdown(base_name, file_id, markdown)
+
         # 5. Persistenza chunk su disco + Chroma upsert (diff incrementale)
         self._persist_chunks(base_name, file_id, src.name, raw_chunks, new_chunk_hashes, existing, config=config)
 
@@ -679,6 +727,7 @@ class KnowledgeBaseManager:
                 file_id=file_id,
                 name=src.name,
                 content_hash=new_md_hash,
+                doc_path=f".knowledge-space/documents/{file_id}.md",
                 active=True,
                 chunks=[
                     ChunkRef(index=i, active=True, content_hash=new_chunk_hashes[i])
@@ -691,6 +740,7 @@ class KnowledgeBaseManager:
             existing.file_id = file_id
             existing.name = src.name
             existing.content_hash = new_md_hash
+            existing.doc_path = f".knowledge-space/documents/{file_id}.md"
             existing.chunks = [
                 ChunkRef(index=i, active=True, content_hash=new_chunk_hashes[i])
                 for i in range(len(raw_chunks))
@@ -704,6 +754,50 @@ class KnowledgeBaseManager:
         self._save()
         logger.info("File %s indicizzato: %d chunk", src.name, len(existing.chunks))
         return existing
+
+    def _load_saved_markdown(
+        self,
+        kb: KnowledgeBase,
+        existing: Optional[FileEntry],
+        src: Path,
+        markdown_mode: str,
+    ) -> Optional[str]:
+        """Restituisce il Markdown salvato (feat-007) se riusabile, altrimenti
+        ``None`` (il chiamante riconverte).
+
+        ``"auto"``: riusa solo se il sorgente è invariato (stesso ``mtime``)
+        e l'hash del documento salvato coincide con ``content_hash``.
+        ``"reuse"``: riusa senza controllare il ``mtime`` (reindex
+        ``--chunking-change`` / ``--model-change``).
+        ``"reconvert"``: non riusa mai.
+        """
+        if markdown_mode == "reconvert":
+            return None
+        if existing is None or not existing.doc_path or not existing.content_hash:
+            return None
+        if markdown_mode == "auto" and src.stat().st_mtime != existing.mtime:
+            return None
+        doc = kb.path / existing.doc_path
+        if not doc.is_file():
+            return None
+        try:
+            markdown = doc.read_text(encoding="utf-8")
+        except OSError:
+            return None
+        if _sha256(markdown) != existing.content_hash:
+            # Documento salvato manomesso/corrotto → riconverti.
+            return None
+        logger.info("Markdown riusato da %s (senza riconversione)", doc)
+        return markdown
+
+    def _save_markdown(self, base_name: str, file_id: str, markdown: str) -> Path:
+        """Salva il Markdown prodotto dall'ingestione (feat-007)."""
+        doc_dir = self._documents_dir(base_name)
+        doc_dir.mkdir(parents=True, exist_ok=True)
+        doc = self._doc_path(base_name, file_id)
+        doc.write_text(markdown, encoding="utf-8")
+        logger.info("Markdown salvato: %s", doc)
+        return doc
 
     # ..................................................................... #
     # Persistenza chunk su disco + Chroma upsert diff
@@ -828,6 +922,10 @@ class KnowledgeBaseManager:
                 for p in chunks_dir.iterdir():
                     p.unlink()
                 chunks_dir.rmdir()
+            # Cancella documento Markdown salvato (feat-007)
+            doc = kb.path / entry.doc_path if entry.doc_path else self._doc_path(base_name, file_id)
+            if doc.is_file():
+                doc.unlink()
         del kb.files[source_name]
         self._save()
         logger.info("File rimosso: %s", source_name)

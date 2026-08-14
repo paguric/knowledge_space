@@ -99,6 +99,14 @@ class TestHelp:
         assert "add" in result.output
         assert "info" in result.output
 
+    def test_reindex_help(self):
+        """Feat-007: reindex espone i flag di trigger."""
+        result = runner.invoke(app, ["reindex", "--help"])
+        assert result.exit_code == 0
+        assert "--chunking-change" in result.output
+        assert "--model-change" in result.output
+        assert "--ingestion-change" in result.output
+
     def test_version(self):
         result = runner.invoke(app, ["version"])
         assert result.exit_code == 0
