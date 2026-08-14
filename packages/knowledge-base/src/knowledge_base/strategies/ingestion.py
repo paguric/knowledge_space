@@ -32,14 +32,16 @@ logger = logging.getLogger(__name__)
 
 class UnsupportedFormatError(ValueError):
     """Sollevata quando l'estensione del file non è supportata dalla
-    strategia di ingestion scelta per la base."""
+    strategia di ingestion scelta per la base. Il messaggio include il
+    nome della library configurata (feat-011)."""
 
-    def __init__(self, source_path: Path, supported: List[str]) -> None:
+    def __init__(self, source_path: Path, supported: List[str], library: str) -> None:
         self.source_path = source_path
         self.supported = supported
+        self.library = library
         ext = source_path.suffix.lower()
         super().__init__(
-            f"Formato '{ext}' non supportato dalla strategia. "
+            f"Formato '{ext}' non supportato da {library or 'library configurata'}. "
             f"Estensioni ammesse: {', '.join(supported) or '(nessuna)'}. "
             f"File: {source_path}"
         )
@@ -82,7 +84,9 @@ class BaseIngestion:
         source_path = Path(source_path)
         ext = source_path.suffix.lower()
         if ext not in self.supported_extensions:
-            raise UnsupportedFormatError(source_path, self.supported_extensions)
+            raise UnsupportedFormatError(
+                source_path, self.supported_extensions, self.library
+            )
         return self._convert(source_path)
 
     def _convert(self, source_path: Path) -> str:

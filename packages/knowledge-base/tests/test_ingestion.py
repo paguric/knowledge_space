@@ -363,6 +363,16 @@ class TestPyMuPDF4LLMIngestion:
         with pytest.raises(UnsupportedFormatError, match="\\.pptx"):
             PyMuPDF4LLMIngestion().convert(f)
 
+    def test_error_message_includes_library_name(self, tmp_path):
+        """Feat-011: il messaggio nomina la library configurata."""
+        f = tmp_path / "file.docx"
+        f.write_bytes(b"PK")
+        with pytest.raises(
+            UnsupportedFormatError,
+            match="non supportato da pymupdf4llm.*\\.pdf",
+        ):
+            PyMuPDF4LLMIngestion().convert(f)
+
 
 # --------------------------------------------------------------------------- #
 # MarkItDownIngestion — mock del modulo (non installato)

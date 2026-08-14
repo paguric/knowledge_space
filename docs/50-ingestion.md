@@ -36,7 +36,7 @@ Nota: il riuso verifica anche l'hash del documento salvato (file manomesso → r
 
 | Aspetto | Scelta |
 |---------|--------|
-| Insieme formati | **Chiuso**: formato non in lista → errore esplicito |
+| Insieme formati | **Chiuso**: formato non in lista → `UnsupportedFormatError` esplicito con nome library (es. `Formato '.docx' non supportato da pymupdf4llm. Estensioni ammesse: .pdf.`) |
 | Fallback MD/TXT | Se la library configurata non supporta `.md`/`.txt`, si usa automaticamente `identity` (lettura diretta) |
 | GPU | `use_gpu` globale (default `false`), ogni libreria decide se usarla |
 

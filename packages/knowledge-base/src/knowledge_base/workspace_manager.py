@@ -301,7 +301,7 @@ class WorkspaceManager:
                 base_manager.add_file(base_name, file_path)
                 logger.info("File indicizzato: %s/%s", base_name, file_path.name)
             except Exception as exc:
-                logger.warning(
+                logger.error(
                     "Errore nell'indicizzazione di %s/%s: %s",
                     base_name,
                     file_path.name,
@@ -465,7 +465,7 @@ class WorkspaceManager:
                 base_manager.add_file(base_name, file_path)
                 logger.info("File indicizzato: %s/%s", base_name, file_path.name)
             except Exception as exc:
-                logger.warning(
+                logger.error(
                     "Errore nell'indicizzazione di %s/%s: %s",
                     base_name,
                     file_path.name,
