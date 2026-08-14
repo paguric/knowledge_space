@@ -539,7 +539,7 @@ class WorkspaceWatcher:
         watcher_ref = self
 
         class _Handler(FileSystemEventHandler):
-            """Handler che intercetta creazioni, cancellazioni e spostamenti.
+            """Handler che intercetta creazioni, modifiche, cancellazioni e spostamenti.
 
             Ogni evento resetta il timer di debounce; la sincronizzazione
             viene eseguita solo dopo che gli eventi si sono calmati per
@@ -551,6 +551,13 @@ class WorkspaceWatcher:
                 if ".knowledge-space" in src:
                     return
                 logger.info("Evento FS on_created: %s", src)
+                watcher_ref._schedule_sync()
+
+            def on_modified(self_inner, event):  # type: ignore[override]
+                src = getattr(event, "src_path", "")
+                if ".knowledge-space" in src:
+                    return
+                logger.info("Evento FS on_modified: %s", src)
                 watcher_ref._schedule_sync()
 
             def on_deleted(self_inner, event):  # type: ignore[override]

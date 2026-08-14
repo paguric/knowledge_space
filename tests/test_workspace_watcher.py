@@ -49,6 +49,11 @@ class FakeObserver:
         if self.handler:
             self.handler.on_created(event)
 
+    def dispatch_modified(self, event=None):
+        """Simula un evento on_modified invocando il handler registrato."""
+        if self.handler:
+            self.handler.on_modified(event)
+
     def dispatch_deleted(self, event=None):
         """Simula un evento on_deleted invocando il handler registrato."""
         if self.handler:
@@ -165,6 +170,58 @@ class TestWorkspaceWatcher:
 
         # La sync deve aver scoperto kb_new
         assert "kb_new" in ws.bases
+        watcher.stop()
+
+    def test_on_modified_triggers_sync(self, tmp_path):
+        """Bug 023: un evento on_modified triggera sync() come on_created.
+
+        Caso reale: file modificato e salvato sullo stesso path — il watcher
+        deve accorgersene (mancava l'handler on_modified).
+        """
+        mgr = _make_manager(tmp_path)
+        ws_path = tmp_path / "ws"
+        ws_path.mkdir()
+        mgr.add(ws_path)
+        ws = mgr.load(ws_path)
+
+        # Cartella base creata mentre il watcher era spento
+        (ws_path / "kb_modified").mkdir()
+
+        watcher = mgr.start_watching(
+            ws, observer_factory=FakeObserver, debounce_seconds=0.0
+        )
+        fake = watcher._observer
+        watcher.start()
+
+        # Simula evento on_modified
+        fake.dispatch_modified(None)
+        time.sleep(0.05)
+
+        assert "kb_modified" in ws.bases
+        watcher.stop()
+
+    def test_on_modified_ignora_knowledge_space(self, tmp_path):
+        """Bug 023: on_modified ignora eventi dentro .knowledge-space."""
+        mgr = _make_manager(tmp_path)
+        ws_path = tmp_path / "ws"
+        ws_path.mkdir()
+        mgr.add(ws_path)
+        ws = mgr.load(ws_path)
+
+        watcher = mgr.start_watching(
+            ws, observer_factory=FakeObserver, debounce_seconds=0.0
+        )
+        fake = watcher._observer
+        watcher.start()
+
+        from types import SimpleNamespace
+
+        # Evento su path interno: non deve generare sync (nessuna base scoperta)
+        event = SimpleNamespace(src_path=str(ws_path / ".knowledge-space" / "state.json"))
+        fake.dispatch_modified(event)
+        time.sleep(0.05)
+
+        assert ws.bases == {}
         watcher.stop()
 
     def test_on_deleted_triggers_sync(self, tmp_path):
