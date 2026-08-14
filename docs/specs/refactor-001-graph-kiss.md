@@ -55,6 +55,7 @@ enabled = false               # interruttore (defaults.toml workspace; base.toml
 on_chunk_change = "lazy"      # "eager" | "lazy" — propagazione trigger 1
 top_k = 5                     # default risultati graph search
 extraction_model = None       # LLM per l'estrazione entità, via llm_factory (es. "lm-studio/auto"); None → no-op con warning
+embedding_model = "BAAI/bge-m3"  # modello embedding del grafo (multilingua, grande)
 ```
 
 **Via dalla config:** `retriever`, `schema_mode`, `resolver`, `schema_model`, `vector_index`, `fulltext_index`, `retrieval_query`, `return_properties`, `chunk_embedding_property`, `params` (costanti nel codice o non più esistenti). **Non nel TOML:** connessione Neo4j (`graph.json` o env `NEO4J_URI`/`NEO4J_AUTH`), nomi indici (costanti, creati una volta per workspace).
@@ -71,6 +72,16 @@ extraction_model = None       # LLM per l'estrazione entità, via llm_factory (e
 - `remove_base(base_name)` — `delete_file_nodes` per ogni file.
 - Se `graph.enabled == false` o nessun LLM → no-op con warning (l'estrazione entità richiede LLM).
 - `bootstrap.py`: cablare `graph_store_factory` in AppContext.
+
+### 7-bis. Embedding del grafo (opzione 2: ricalcolo su mismatch)
+
+**Un solo modello embedding per workspace**, il più grande e multilingua possibile: default `BAAI/bge-m3` (configurabile in `[graph] embedding_model`). Motivo: un unico spazio vettoriale per l'indice `chunk-embeddings` e per l'embedder della query del retriever.
+
+- `KSChunkLoader` riceve l'embedder del grafo e il modello atteso.
+- Base con `embedding_model` == modello del grafo → **riciclo** embedding da Chroma (zero ricalcolo).
+- Base con modello diverso → **ricalcolo** embedding col modello del grafo durante build/sync (opzione 2: nessuna base esclusa). Il ricalcolo è una tantum per chunk; Chroma non viene toccato (il grafo ha i propri embedding sui nodi `:Chunk`).
+- Retriever: embedder della query = sempre il modello del grafo.
+- Trigger 3 (cambio modello del grafo) → `update_chunk_embeddings` property-only sui chunk già nel grafo; i chunk ricalcolati alla prossima sync.
 
 ### 8. CLI `ks graph` — `src/knowledge_space/cli/graph.py` (da feat-017, riallineato)
 
@@ -103,6 +114,7 @@ In `packages/mcp-server/src/mcp_server/server.py`: `graph_status(workspace)`, `g
 | `graph/writer.py` | Rimuovere `write_nodes_multi_label`, `update_properties`; aggiungere `MENTIONS` |
 | `graph/resolver.py` | Solo `ExactMatchResolver`; via spaCy, noop, factory |
 | `graph/retriever.py` | Solo `HybridCypherRetriever` + `active_base_names`; via factory e altri 5 |
+| `graph/chunk_loader.py` | Embedder del grafo: riciclo da Chroma se stesso modello, ricalcolo se diverso |
 | `graph/store.py` | Query derivazione schema (labels/relationshipTypes/properties) |
 | `graph_manager.py` | **Nuovo**: GraphManager |
 | `graph_search_service.py` | **Nuovo**: ricerca con filtro attivi |
