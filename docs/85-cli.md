@@ -59,6 +59,7 @@ Interfaccia a riga di comando (Typer) per gestire workspace, domini, basi, file,
 | `base add <path> --sync` | Aggiunge base e indicizza i file automaticamente |
 | `base list` | Elenca basi |
 | `base remove <name>` | Rimuove base |
+| `base remove <name> -r` | Rimuove base + sotto-basi (foglie prima) |
 | `base info <name>` | Config effettiva, modello, n. file/chunk |
 | `base activate/deactivate <name>` | Attiva/disattiva |
 
