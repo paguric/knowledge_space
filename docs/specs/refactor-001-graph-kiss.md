@@ -108,7 +108,7 @@ Hook in `workspace_manager.sync_and_ingest()`: se `graph.enabled` per la base â†
 
 ### 11. Tool MCP (da feat-019)
 
-In `packages/mcp-server/src/mcp_server/server.py`: `graph_status(workspace)`, `graph_search(workspace, query, base=None, top_k=5)` (GraphSearchService), `graph_sync(workspace, base=None)`. Gating `graph.enabled`; dipendenze `neo4j` lazy.
+In `packages/mcp-server/src/mcp_server/server.py`: `graph_status()`, `graph_search(query, base=None, top_k=5)` (GraphSearchService), `graph_sync(base=None)`. **Sempre sul workspace attivo** (via `_get_active_workspace()`), come `base_list`/`domain_list`/`search`: il workspace NON Ã¨ un parametro dei tool. Gating `graph.enabled`; dipendenze `neo4j` lazy.
 
 ## File da toccare (riepilogo)
 
