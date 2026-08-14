@@ -61,6 +61,23 @@ uv tool install --editable --force --refresh .
 in memoria il codice già caricato e lo ricarica solo al restart. Se hai
 modifiche locali non committate, `git pull` può fallire (stash prima).
 
+**Se hai avviato il server a mano** (`ks serve`, senza systemd): il
+processo resta col vecchio codice in memoria finché non lo fermi.
+Dopo `git pull` + `uv sync`, termina il processo e rilancia:
+
+```bash
+# in foreground: Ctrl+C nella finestra del server
+# in background: trova e termina il processo
+pkill -f "ks serve"
+# oppure, se lanciato con uv run: pkill -f "uv run ks serve"
+
+# poi rilancia
+ks serve
+```
+
+**Nota Windows:** i file Python in uso sono bloccati: chiudi prima il
+server, poi fai `git pull`.
+
 ## Database a grafo (opzionale, per il modulo Graph)
 
 Il modulo Graph (grafo della conoscenza, `ks graph`) richiede un'istanza
