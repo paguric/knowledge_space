@@ -22,6 +22,7 @@ from knowledge_base.strategies.ingestion import (
     DoclingIngestion,
     IdentityIngestion,
     MarkItDownIngestion,
+    MissingLibraryError,
     PyMuPDF4LLMIngestion,
     UnsupportedFormatError,
 )
@@ -100,6 +101,84 @@ class TestIdentityIngestion:
 # --------------------------------------------------------------------------- #
 
 
+def _install_fake_docling_modules() -> None:
+    """Inietta in sys.modules moduli docling finti (docling non installato:
+    è un extra opzionale). Le classi replicano i pochi attributi usati da
+    DoclingIngestion._convert."""
+    import types
+
+    for name in (
+        "docling",
+        "docling.document_converter",
+        "docling.datamodel",
+        "docling.datamodel.base_models",
+        "docling.datamodel.pipeline_options",
+    ):
+        sys.modules.setdefault(name, types.ModuleType(name))
+
+    bm = sys.modules["docling.datamodel.base_models"]
+    if not hasattr(bm, "InputFormat"):
+        class InputFormat:
+            PDF = "pdf"
+            DOCX = "docx"
+            PPTX = "pptx"
+            HTML = "html"
+            XHTML = "xhtml"
+
+        bm.InputFormat = InputFormat
+
+    po = sys.modules["docling.datamodel.pipeline_options"]
+    if not hasattr(po, "PdfPipelineOptions"):
+        from enum import Enum
+
+        class AcceleratorDevice(Enum):
+            CUDA = "cuda"
+            AUTO = "auto"
+
+        class AcceleratorOptions:
+            def __init__(self, **kwargs):
+                self.device = kwargs.get("device")
+
+        class TableFormerMode(Enum):
+            ACCURATE = "accurate"
+            FAST = "fast"
+
+        class TableStructureOptions:
+            def __init__(self, **kwargs):
+                self.mode = kwargs.get("mode")
+
+        class PdfPipelineOptions:
+            def __init__(self, **kwargs):
+                self.do_ocr = kwargs.get("do_ocr")
+                self.do_table_structure = kwargs.get("do_table_structure")
+                self.table_structure_options = kwargs.get("table_structure_options")
+                self.generate_page_images = kwargs.get("generate_page_images")
+                self.generate_picture_images = kwargs.get("generate_picture_images")
+                self.accelerator_options = kwargs.get("accelerator_options")
+
+        po.AcceleratorDevice = AcceleratorDevice
+        po.AcceleratorOptions = AcceleratorOptions
+        po.TableFormerMode = TableFormerMode
+        po.TableStructureOptions = TableStructureOptions
+        po.PdfPipelineOptions = PdfPipelineOptions
+
+    dc = sys.modules["docling.document_converter"]
+    if not hasattr(dc, "DocumentConverter"):
+        dc.DocumentConverter = MagicMock()  # sostituito dal patch nei test
+    if not hasattr(dc, "PdfFormatOption"):
+        class PdfFormatOption:
+            def __init__(self, **kwargs):
+                self.pipeline_options = kwargs.get("pipeline_options")
+
+        dc.PdfFormatOption = PdfFormatOption
+
+
+@pytest.fixture
+def fake_docling_modules() -> None:
+    """Fixture: moduli docling finti per i test senza docling installato."""
+    _install_fake_docling_modules()
+
+
 def _make_fake_docling_converter(markdown: str = "# Doc\n\nBody"):
     """Costruisce un mock di DocumentConverter che restituisce markdown."""
     fake_doc = MagicMock()
@@ -111,6 +190,7 @@ def _make_fake_docling_converter(markdown: str = "# Doc\n\nBody"):
     return fake_converter
 
 
+@pytest.mark.usefixtures("fake_docling_modules")
 class TestDoclingIngestion:
     def test_convert_returns_markdown(self, tmp_path):
         pdf = tmp_path / "paper.pdf"
@@ -358,6 +438,7 @@ class TestMarkItDownIngestion:
 # --------------------------------------------------------------------------- #
 
 
+@pytest.mark.usefixtures("fake_docling_modules")
 class TestCaseInsensitiveExtensions:
     def test_docling_uppercase_pdf(self, tmp_path):
         pdf = tmp_path / "PAPER.PDF"
@@ -373,3 +454,36 @@ class TestCaseInsensitiveExtensions:
         fake_mod.to_markdown.return_value = "ok"
         with patch.dict(sys.modules, {"pymupdf4llm": fake_mod}):
             assert PyMuPDF4LLMIngestion().convert(pdf) == "ok"
+
+# --------------------------------------------------------------------------- #
+# Librerie opzionali mancanti → MissingLibraryError
+# --------------------------------------------------------------------------- #
+
+
+class TestMissingLibrary:
+    """Feat: docling/pymupdf4llm sono extra opzionali — al primo utilizzo
+    senza la libreria installata l'errore indica il comando di installazione."""
+
+    _DOCLING_KEYS = [
+        "docling",
+        "docling.document_converter",
+        "docling.datamodel",
+        "docling.datamodel.base_models",
+        "docling.datamodel.pipeline_options",
+    ]
+
+    def test_docling_mancante(self, tmp_path):
+        pdf = tmp_path / "paper.pdf"
+        pdf.write_bytes(b"%PDF")
+        with patch.dict(sys.modules, {k: None for k in self._DOCLING_KEYS}):
+            with pytest.raises(MissingLibraryError, match="uv sync --extra docling"):
+                DoclingIngestion().convert(pdf)
+
+    def test_pymupdf4llm_mancante(self, tmp_path):
+        pdf = tmp_path / "book.pdf"
+        pdf.write_bytes(b"%PDF")
+        with patch.dict(sys.modules, {"pymupdf4llm": None}):
+            with pytest.raises(
+                MissingLibraryError, match="uv sync --extra pymupdf4llm"
+            ):
+                PyMuPDF4LLMIngestion().convert(pdf)

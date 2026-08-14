@@ -75,7 +75,7 @@ def _make_workspace(tmp_path, *, defaults=None, base_toml=None, base_name="kb1")
 
 def test_base_config_hardcoded_defaults():
     cfg = BaseConfig()
-    assert cfg.ingestion.library == "docling"
+    assert cfg.ingestion.library == "markitdown"
     assert cfg.chunking.method == "recursive"
     assert cfg.chunking.chunk_size == 800
     assert cfg.chunking.chunk_overlap == 120
@@ -126,7 +126,7 @@ def test_cascade_defaults_missing_warns_and_falls_back(tmp_path, caplog):
     with caplog.at_level(logging.WARNING):
         cfg = loader.load("kb1")
 
-    assert cfg.ingestion.library == "docling"  # hardcoded
+    assert cfg.ingestion.library == "markitdown"  # hardcoded
     assert cfg.chunking.chunk_size == 250  # dalla base
     assert any("defaults.toml" in r.message for r in caplog.records)
 
@@ -372,7 +372,7 @@ def test_block_reports_all_simultaneous_changes():
             cfg,
             registered_embedding_model="altro-modello",
             registered_chunking_method="fixed_size",
-            registered_ingestion_library="markitdown",
+            registered_ingestion_library="docling",
             collection_non_empty=True,
         )
     err = exc_info.value
@@ -392,7 +392,7 @@ def test_from_toml_empty_dict_returns_hardcoded_defaults():
     """``from_toml({})`` (file con soli commenti → dict vuoto) non solleva."""
     cfg = BaseConfig.from_toml({})
     assert cfg == BaseConfig()
-    assert cfg.ingestion.library == "docling"
+    assert cfg.ingestion.library == "markitdown"
     assert cfg.chunking.chunk_size == 800
     assert cfg.embedding.model == "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
@@ -491,7 +491,7 @@ def test_defaults_toml_template_is_valid_toml():
     import tomllib
 
     data = tomllib.loads(DEFAULTS_TOML_TEMPLATE)
-    assert data["ingestion"]["library"] == "docling"
+    assert data["ingestion"]["library"] == "markitdown"
     assert data["chunking"]["method"] == "recursive"
     assert data["chunking"]["chunk_size"] == 800
     assert data["chunking"]["chunk_overlap"] == 120

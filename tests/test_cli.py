@@ -1166,7 +1166,7 @@ class TestConfig:
         # Valori default
         assert '"recursive"' in help_text
         assert '800' in help_text
-        assert '"docling"' in help_text
+        assert '"markitdown"' in help_text
 
     def test_all_valid_keys_returns_expected_keys(self):
         """_all_valid_keys() restituisce tutte le chiavi dotted."""

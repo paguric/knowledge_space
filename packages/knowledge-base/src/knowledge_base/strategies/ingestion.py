@@ -4,9 +4,10 @@ Ogni strategia incapsula una libreria di conversione e ne espone i parametri
 configurabili via TOML (``[ingestion].params``). I parametri sono passati al
 costruttore e memorizzati nell'istanza; :meth:`convert` riceve solo il path.
 
-Le librerie pesanti (docling, pymupdf4llm, markitdown) sono importate
-lazy dentro :meth:`convert`, in modo che il modulo sia importabile anche
-senza tutte le dipendenze installate (il registry si popola comunque).
+Le librerie pesanti (docling, pymupdf4llm) sono importate lazy dentro
+:meth:`convert` e sono **opzionali** (extra uv ``docling``/``pymupdf4llm``):
+se non installate, al primo utilizzo sollevano un errore chiaro con il
+comando di installazione. ``markitdown`` è dipendenza hard (default).
 
 Parametro globale ``use_gpu`` (default ``false``): letto da ``params``.
 Docling lo usa per OCR/table model (CUDA); PyMuPDF4LLM e markitdown non
@@ -41,6 +42,20 @@ class UnsupportedFormatError(ValueError):
             f"Formato '{ext}' non supportato dalla strategia. "
             f"Estensioni ammesse: {', '.join(supported) or '(nessuna)'}. "
             f"File: {source_path}"
+        )
+
+
+class MissingLibraryError(RuntimeError):
+    """Sollevata quando una libreria di conversione opzionale non è
+    installata. Il messaggio include il comando di installazione."""
+
+    def __init__(self, library: str, extra: str) -> None:
+        self.library = library
+        self.extra = extra
+        super().__init__(
+            f"Libreria '{library}' non installata. "
+            f"Installa con: uv sync --extra {extra} "
+            f"(oppure: uv tool install --extra {extra} .)"
         )
 
 
@@ -123,15 +138,18 @@ class DoclingIngestion(BaseIngestion):
     supported_extensions = [".pdf", ".docx", ".pptx", ".html", ".xhtml"]
 
     def _convert(self, source_path: Path) -> str:
-        from docling.document_converter import DocumentConverter, PdfFormatOption
-        from docling.datamodel.base_models import InputFormat
-        from docling.datamodel.pipeline_options import (
-            AcceleratorDevice,
-            AcceleratorOptions,
-            PdfPipelineOptions,
-            TableFormerMode,
-            TableStructureOptions,
-        )
+        try:
+            from docling.document_converter import DocumentConverter, PdfFormatOption
+            from docling.datamodel.base_models import InputFormat
+            from docling.datamodel.pipeline_options import (
+                AcceleratorDevice,
+                AcceleratorOptions,
+                PdfPipelineOptions,
+                TableFormerMode,
+                TableStructureOptions,
+            )
+        except ImportError as exc:
+            raise MissingLibraryError("docling", "docling") from exc
 
         use_gpu = bool(self.params.get("use_gpu", False))
         do_ocr = bool(self.params.get("do_ocr", False))
@@ -192,7 +210,10 @@ class PyMuPDF4LLMIngestion(BaseIngestion):
     supported_extensions = [".pdf"]
 
     def _convert(self, source_path: Path) -> str:
-        import pymupdf4llm
+        try:
+            import pymupdf4llm
+        except ImportError as exc:
+            raise MissingLibraryError("pymupdf4llm", "pymupdf4llm") from exc
 
         if self.params.get("use_gpu", False):
             logger.debug(

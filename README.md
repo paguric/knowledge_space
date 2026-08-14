@@ -20,6 +20,18 @@ uv sync
 uv tool install -e .
 ```
 
+**Librerie di conversione opzionali** (lazy install, al primo utilizzo):
+docling e pymupdf4llm non vengono installate di default (markitdown è la
+libreria di default ed è sempre installata). Per abilitarle:
+
+```bash
+uv sync --extra docling --extra pymupdf4llm
+uv tool install --refresh --extra docling --extra pymupdf4llm .
+```
+
+Se una libreria manca, `ks file add` solleva un errore con il comando
+esatto da eseguire.
+
 ## Database a grafo (opzionale, per il modulo Graph)
 
 Il modulo Graph (grafo della conoscenza, `ks graph`) richiede un'istanza
@@ -346,7 +358,7 @@ Esempio `base.toml`:
 
 ```toml
 [ingestion]
-library = "docling"
+library = "markitdown"
 
 [chunking]
 method = "recursive"

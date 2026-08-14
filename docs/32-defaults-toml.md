@@ -8,7 +8,7 @@ Configurazione predefinita per tutte le basi del workspace. Vedi [30-configurati
 # Default per tutte le basi del workspace
 
 [ingestion]
-library = "docling"
+library = "markitdown"
 params.use_gpu = false       # true per accelerare con GPU (docling, embedding)
 
 [chunking]

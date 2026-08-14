@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 class IngestionConfig(BaseModel):
     """Sezione ``[ingestion]`` del TOML."""
 
-    library: str = "docling"
+    library: str = "markitdown"
     params: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -493,7 +493,7 @@ DEFAULTS_TOML_TEMPLATE: str = """\
 # Sovrascrivibile per-base in <base>/.knowledge-space/base.toml
 
 [ingestion]
-library = "docling"
+library = "markitdown"
 # params = {}
 
 [chunking]

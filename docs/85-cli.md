@@ -101,7 +101,7 @@ Interfaccia a riga di comando (Typer) per gestire workspace, domini, basi, file,
 
 | Comando | Descrizione |
 |---------|-------------|
-| `reindex <base>` | Pipeline completa (docling se il sorgente è cambiato, Markdown salvato altrimenti) |
+| `reindex <base>` | Pipeline completa (conversione se il sorgente è cambiato, Markdown salvato altrimenti) |
 | `reindex --all` | Tutte le basi |
 | `reindex <base> --chunking-change` | Riusa il Markdown salvato, ri-chunka senza riconvertire |
 | `reindex <base> --model-change` | Riusa il Markdown salvato, ri-embedda senza riconvertire |
@@ -150,4 +150,4 @@ Interfaccia a riga di comando (Typer) per gestire workspace, domini, basi, file,
 ### Autocompletamento per `config set`
 
 - **`key`**: suggerisce percorsi dotted validi (`chunking.` → `chunking.chunk_size`, ...)
-- **`value`**: suggerisce valori ammissibili (`ingestion.library` → `docling`, `pymupdf4llm`, `markitdown`)
+- **`value`**: suggerisce valori ammissibili (`ingestion.library` → `markitdown`, `docling`, `pymupdf4llm`)

@@ -23,12 +23,16 @@ Nota: il riuso verifica anche l'hash del documento salvato (file manomesso → r
 
 ## Scelte
 
-| Library | Formati | Profilo | GPU |
-|---------|---------|---------|-----|
-| `docling` | PDF, DOCX, PPTX, HTML | ricercatore | Sì |
-| `pymupdf4llm` | PDF | consulente | No |
-| `markitdown` | PPTX, DOCX, PDF, HTML, TXT | studente | No |
-| `identity` | MD, TXT | tutti | No |
+| Library | Formati | Profilo | GPU | Installazione |
+|---------|---------|---------|-----|---------------|
+| `markitdown` (**default**) | PDF, DOCX, PPTX, XLSX, HTML, TXT, CSV, JSON, XML, MD | studente | No | hard (sempre installata) |
+| `docling` | PDF, DOCX, PPTX, HTML | ricercatore | Sì | opzionale: `uv sync --extra docling` |
+| `pymupdf4llm` | PDF | consulente | No | opzionale: `uv sync --extra pymupdf4llm` |
+| `identity` | MD, TXT | tutti | No | hard |
+
+**Lazy install:** `docling` e `pymupdf4llm` sono **extra opzionali** — non vengono installate con il programma. Al primo utilizzo della strategia senza la libreria, l'errore indica il comando esatto: `Libreria 'docling' non installata. Installa con: uv sync --extra docling`.
+
+**MarkItDown** (Microsoft, MIT) è la libreria di default: leggera, multi-formato, senza dipendenze pesanti. Per documenti complessi (paper, layout, tabelle, OCR) si installa docling e si imposta `[ingestion] library = "docling"`.
 
 | Aspetto | Scelta |
 |---------|--------|
@@ -73,6 +77,7 @@ Ogni strategy si registra nel registry globale (`knowledge_base.strategies.inges
 **Docling** (IBM/DS4SD, MIT): PDF, DOCX, PPTX, HTML, xHTML, immagini, ASCIIDOC. Focus su document understanding profondo, layout model, tabelle, OCR. Dipendenze pesanti (torch, modelli CV opzionali). Lenta senza GPU, OK con GPU.
 
 ```toml
+# Docling (extra opzionale: uv sync --extra docling)
 [ingestion]
 library = "docling"
 params.use_gpu = false
