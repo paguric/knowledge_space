@@ -15,8 +15,12 @@ from typing import Any, Callable, Optional
 
 from knowledge_base.base_config import BaseConfigLoader
 from knowledge_base.domain_manager import DomainManager
-from knowledge_base.knowledge_base_manager import KnowledgeBaseManager
-from knowledge_base.models import GraphConfigData, Workspace
+from knowledge_base.graph_manager import GraphManager
+from knowledge_base.knowledge_base_manager import (
+    KnowledgeBaseManager,
+    chroma_collection_name,
+)
+from knowledge_base.models import Workspace
 from knowledge_base.persistence import GlobalIndex, WorkspaceConfig
 from knowledge_base.strategies import EmbeddingStrategy, LLMStrategy
 from knowledge_base.strategies.embedding import embedding_registry
@@ -39,12 +43,26 @@ def _default_embedder_factory(model_name: str) -> EmbeddingStrategy:
     return cls()
 
 
+def _default_graph_store_factory(
+    uri: Optional[str] = None,
+    user: Optional[str] = None,
+    password: Optional[str] = None,
+    database: str = "neo4j",
+) -> Any:
+    """Store del grafo di default: backend neo4j (refactor-001)."""
+    from knowledge_base.graph.store import graph_store_factory
+
+    return graph_store_factory(
+        "neo4j", uri=uri, user=user, password=password, database=database
+    )
+
+
 def build_app_context(
     *,
     runtime_paths: Optional[RuntimePaths] = None,
     embedder_factory: Optional[Callable[[str], EmbeddingStrategy]] = None,
     llm_factory: Optional[Callable[[str], LLMStrategy]] = None,
-    graph_store_factory: Optional[Callable[[GraphConfigData], Any]] = None,
+    graph_store_factory: Optional[Callable[..., Any]] = None,
 ) -> AppContext:
     """Costruisce un ``AppContext`` con tutte le dipendenze.
 
@@ -55,7 +73,8 @@ def build_app_context(
         runtime_paths: Path XDG. Se ``None``, usa :meth:`RuntimePaths.default`.
         embedder_factory: Factory per embedding. Se ``None``, usa il registry.
         llm_factory: Factory per LLM. Se ``None``, usa ``llm_factory`` di Step 6-bis.
-        graph_store_factory: Factory per il grafo Neo4j (Fase 1C). Default ``None``.
+        graph_store_factory: Factory per lo store del grafo (refactor-001).
+            Default: backend neo4j via ``graph_store_factory``.
 
     Returns:
         ``AppContext`` completamente cablato.
@@ -118,6 +137,34 @@ def build_app_context(
     # 8. LLM factory
     _llm = llm_factory or _default_llm_factory
 
+    # 9. Graph store factory + GraphManager factory (refactor-001).
+    _graph_store = graph_store_factory or _default_graph_store_factory
+
+    def _graph_manager_factory(workspace: Workspace) -> GraphManager:
+        config_loader_fn = _base_config_loader_factory(workspace.path)
+
+        def _config_loader(base_name: str):
+            return config_loader_fn.load(base_name)
+
+        base_manager = _base_manager_factory(workspace)
+
+        def _chroma_getter(base_name: str):
+            return base_manager._chroma_client().get_collection(
+                name=chroma_collection_name(base_name)
+            )
+
+        return GraphManager(
+            workspace=workspace,
+            config_loader=_config_loader,
+            graph_store_factory=_graph_store,
+            llm_factory=_llm,
+            embedder_factory=_embedder,
+            chroma_getter=_chroma_getter,
+        )
+
+    # L'hook grafo nel watcher usa la stessa factory.
+    workspace_manager._graph_manager_factory = _graph_manager_factory
+
     return AppContext(
         runtime_paths=runtime_paths,
         global_index=global_index,
@@ -127,5 +174,6 @@ def build_app_context(
         base_manager_factory=_base_manager_factory,
         embedder_factory=_embedder,
         llm_factory=_llm,
-        graph_store_factory=graph_store_factory,
+        graph_store_factory=_graph_store,
+        graph_manager_factory=_graph_manager_factory,
     )

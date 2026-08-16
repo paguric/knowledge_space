@@ -94,30 +94,20 @@ class TestAppContextDataclass:
             "embedder_factory",
             "llm_factory",
             "graph_store_factory",
+            "graph_manager_factory",
         }
         assert expected == fields
 
-    def test_graph_store_factory_default_none(self):
-        """graph_store_factory ha default None."""
+    def test_graph_store_factory_default_callable(self):
+        """graph_store_factory di default è callable (backend neo4j)."""
         rp = _make_runtime_paths(Path("/tmp"))
-        gi = GlobalIndex(path=rp.workspaces_index)
-
-        def _config_path_for(ws_path: Path) -> Path:
-            return rp.workspace_state_file(ws_path)
-
-        ctx = AppContext(
+        ctx = build_app_context(
             runtime_paths=rp,
-            global_index=gi,
-            workspace_manager=WorkspaceManager(
-                global_index=gi, config_path_for=_config_path_for
-            ),
-            domain_manager=DomainManager(config_path_for=_config_path_for),
-            base_config_loader_factory=lambda p: BaseConfigLoader(workspace_path=p),
-            base_manager_factory=lambda ws: None,  # type: ignore[arg-type]
             embedder_factory=_make_mock_embedder,
             llm_factory=_make_mock_llm,
         )
-        assert ctx.graph_store_factory is None
+        assert callable(ctx.graph_store_factory)
+        assert callable(ctx.graph_manager_factory)
 
 
 # --------------------------------------------------------------------------- #
@@ -145,7 +135,8 @@ class TestBuildContext:
         assert callable(ctx.base_manager_factory)
         assert callable(ctx.embedder_factory)
         assert callable(ctx.llm_factory)
-        assert ctx.graph_store_factory is None
+        assert callable(ctx.graph_store_factory)
+        assert callable(ctx.graph_manager_factory)
 
     def test_ensure_dirs_called(self, tmp_path):
         """build_app_context crea le directory XDG."""

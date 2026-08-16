@@ -82,22 +82,16 @@ class PostRetrievalConfig(BaseModel):
 
 
 class GraphConfig(BaseModel):
-    """Sezione ``[graph]`` del TOML per-base (Fase 1C)."""
+    """Sezione ``[graph]`` del TOML per-base (refactor-001)."""
 
     enabled: bool = False
     on_chunk_change: str = "lazy"  # "eager" | "lazy"
-    retriever: str = "hybrid_cypher"
-    schema_mode: str = "FREE"  # "FREE" | "EXTRACTED" | "manuale"
-    resolver: str = "exact"  # "exact" | "semantic" | "none"
-    extraction_model: Optional[str] = None
-    schema_model: Optional[str] = None
     top_k: int = 5
-    vector_index: str = "chunk-embeddings"
-    fulltext_index: str = "chunk-text"
-    retrieval_query: str = ""
-    return_properties: List[str] = Field(default_factory=lambda: ["chunk_id", "text"])
-    chunk_embedding_property: str = "embedding"
-    params: Dict[str, Any] = Field(default_factory=dict)
+    extraction_model: Optional[str] = None  # None = grafo INATTIVO (serve un LLM)
+    # Stesso default delle basi (riciclo embedding sempre attivo).
+    embedding_model: str = (
+        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -351,10 +345,8 @@ class BaseConfig(BaseModel):
         if "graph" in data:
             section = data["graph"]
             known = {
-                "enabled", "on_chunk_change", "retriever", "schema",
-                "resolver", "extraction_model", "schema_model", "top_k",
-                "vector_index", "fulltext_index", "retrieval_query",
-                "return_properties", "chunk_embedding_property", "params",
+                "enabled", "on_chunk_change", "top_k",
+                "extraction_model", "embedding_model",
             }
             for key in section:
                 if key not in known:
@@ -363,23 +355,8 @@ class BaseConfig(BaseModel):
                     )
             kwargs = {}
             for k, v in section.items():
-                if k not in known:
-                    continue
-                # TOML usa "schema", il modello Pydantic "schema_mode"
-                if k == "schema":
-                    kwargs["schema_mode"] = v
-                else:
+                if k in known:
                     kwargs[k] = v
-            if "params" in kwargs and not isinstance(kwargs["params"], dict):
-                logger.warning("[graph].params non è un dict, ignorato")
-                del kwargs["params"]
-            if "return_properties" in kwargs and not isinstance(
-                kwargs["return_properties"], list
-            ):
-                logger.warning(
-                    "[graph].return_properties non è una lista, ignorato"
-                )
-                del kwargs["return_properties"]
             try:
                 graph = GraphConfig(**kwargs)
             except ValidationError as exc:
@@ -522,8 +499,9 @@ method = "identity"
 [graph]
 enabled = false
 on_chunk_change = "lazy"
-retriever = "hybrid_cypher"
-resolver = "exact"
+top_k = 5
+# extraction_model = "lm-studio/auto"   # LLM per l'estrazione entità (None = grafo inattivo)
+# embedding_model = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 """
 
 BASE_TOML_TEMPLATE: str = """\

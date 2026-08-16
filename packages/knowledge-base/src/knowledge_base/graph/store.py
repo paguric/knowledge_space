@@ -64,6 +64,10 @@ class GraphStore(Protocol):
         """Verifica che il backend sia raggiungibile."""
         ...
 
+    def schema_info(self) -> Dict[str, Any]:
+        """Deriva lo schema dal DB (labels, tipi relazione, proprietà)."""
+        ...
+
 
 # --------------------------------------------------------------------------- #
 # Neo4j implementation
@@ -161,6 +165,27 @@ class Neo4jGraphStore:
             logger.warning("Verifica connessione Neo4j fallita: %s", exc)
             return False
 
+    def schema_info(self) -> Dict[str, Any]:
+        """Deriva lo schema dal DB: labels, tipi relazione, proprietà.
+
+        Refactor-001: nessuno schema persistente — si interroga il DB.
+        """
+        labels = [r.get("label") for r in self.execute_query("CALL db.labels()")]
+        rel_types = [
+            r.get("relationshipType")
+            for r in self.execute_query("CALL db.relationshipTypes()")
+        ]
+        try:
+            node_props = self.execute_query("CALL db.schema.nodeTypeProperties()")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Derivazione proprietà non disponibile: %s", exc)
+            node_props = []
+        return {
+            "labels": labels,
+            "relationship_types": rel_types,
+            "node_properties": [dict(r) for r in node_props],
+        }
+
 
 # --------------------------------------------------------------------------- #
 # Mock per test
@@ -179,6 +204,11 @@ class MockGraphStore:
         self.write_queries: List[tuple[str, Dict[str, Any] | None]] = []
         self._query_results: List[List[Dict[str, Any]]] = []
         self._result_index = 0
+        self.schema_data: Dict[str, Any] = {
+            "labels": ["Document", "Chunk", "Entity"],
+            "relationship_types": ["HAS_CHUNK", "MENTIONS", "RELATED_TO"],
+            "node_properties": [],
+        }
 
     def set_query_results(self, results: List[List[Dict[str, Any]]]) -> None:
         """Configura i risultati da restituire per query successive."""
@@ -215,6 +245,10 @@ class MockGraphStore:
 
     def verify_connectivity(self) -> bool:
         return self.connected
+
+    def schema_info(self) -> Dict[str, Any]:
+        """Restituisce ``schema_data`` (configurabile nei test)."""
+        return dict(self.schema_data)
 
 
 # --------------------------------------------------------------------------- #

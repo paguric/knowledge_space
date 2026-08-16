@@ -254,6 +254,7 @@ def serve_command(
                     state_home=rp.state_home,
                     host=host,
                     port=port,
+                    graph_manager_factory=ctx.graph_manager_factory,
                 )
             )
         else:
@@ -262,6 +263,7 @@ def serve_command(
                     ctx.workspace_manager,
                     _config_path_for,
                     state_home=rp.state_home,
+                    graph_manager_factory=ctx.graph_manager_factory,
                 )
             )
     except KeyboardInterrupt:

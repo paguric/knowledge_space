@@ -50,23 +50,27 @@ class TextChunks(BaseModel):
 
 
 class KSChunkLoader:
-    """Carica chunk da disco e embedding da Chroma.
+    """Carica chunk da disco + embedding (Chroma riciclati o ricalcolati).
 
-    Legge i chunk da ``<base>/.knowledge-space/chunks/<file_id>/`` e
-    recupera gli embedding dalla collection Chroma della base.
-
-    Args:
-        chunks_dir: path base dei chunk (``<base>/.knowledge-space/chunks``).
-        chroma_collection: collection Chroma (opzionale, per embedding).
+    Embedding (refactor-001, 7-bis):
+    - ``recompute=False`` → riciclati da Chroma (base indicizzata con lo
+      stesso modello del grafo);
+    - ``recompute=True`` → ricalcolati dal testo con l'``embedder`` del
+      grafo (base con modello diverso: ricalcolo una tantum, Chroma non
+      toccato).
     """
 
     def __init__(
         self,
         chunks_dir: Path,
         chroma_collection: Any = None,
+        embedder: Any = None,
+        recompute: bool = False,
     ) -> None:
         self._chunks_dir = Path(chunks_dir)
         self._collection = chroma_collection
+        self._embedder = embedder
+        self._recompute = recompute
 
     def load_file(
         self,
@@ -103,8 +107,8 @@ class KSChunkLoader:
             text = chunk_path.read_text(encoding="utf-8")
             chunk_id = f"{base_name}::{file_id}::{index}"
 
-            # Recupera embedding da Chroma se disponibile
-            embedding = self._get_embedding(base_name, file_id, index)
+            # Embedding: da Chroma (riciclo) o ricalcolato col modello grafo
+            embedding = self._get_embedding(base_name, file_id, index, text)
 
             chunks.append(TextChunk(
                 chunk_id=chunk_id,
@@ -177,7 +181,7 @@ class KSChunkLoader:
             content_hash = chunk_data.get("content_hash")
             chunk_id = f"{base_name}::{file_id}::{index}"
 
-            embedding = self._get_embedding(base_name, file_id, index)
+            embedding = self._get_embedding(base_name, file_id, index, text)
 
             chunks.append(TextChunk(
                 chunk_id=chunk_id,
@@ -212,8 +216,26 @@ class KSChunkLoader:
         base_name: str,
         file_id: str,
         chunk_index: int,
+        text: str = "",
     ) -> Optional[List[float]]:
-        """Recupera l'embedding da Chroma per un chunk specifico."""
+        """Embedding di un chunk: ricalcolo col modello grafo se richiesto,
+        altrimenti riciclo da Chroma."""
+        if self._recompute:
+            if self._embedder is None:
+                logger.warning(
+                    "Ricalcolo embedding richiesto ma nessun embedder "
+                    "del grafo iniettato: chunk %s senza embedding",
+                    f"{base_name}::{file_id}::{chunk_index}",
+                )
+                return None
+            try:
+                return list(self._embedder.embed([text])[0])
+            except Exception as exc:
+                logger.warning(
+                    "Ricalcolo embedding fallito per %s: %s", chunk_index, exc
+                )
+                return None
+
         if self._collection is None:
             return None
 

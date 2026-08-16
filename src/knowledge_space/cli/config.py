@@ -157,9 +157,6 @@ _VALUE_CHOICES: Dict[str, List[str]] = {
         "llm", "llm_chain_extract", "selective_context",
     ],
     "graph.on_chunk_change": ["lazy", "eager"],
-    "graph.retriever": ["hybrid_cypher"],
-    "graph.schema_mode": ["llm"],
-    "graph.resolver": ["exact", "embedding"],
 }
 
 # Chiavi booleane: autocomplete true/false
@@ -476,10 +473,8 @@ def show(
             "graph": {
                 "enabled": config.graph.enabled,
                 "on_chunk_change": config.graph.on_chunk_change,
-                "retriever": config.graph.retriever,
-                "schema_mode": config.graph.schema_mode,
-                "resolver": config.graph.resolver,
                 "extraction_model": config.graph.extraction_model,
+                "embedding_model": config.graph.embedding_model,
                 "top_k": config.graph.top_k,
             },
         }

@@ -112,10 +112,11 @@ Interfaccia a riga di comando (Typer) per gestire workspace, domini, basi, file,
 
 | Comando | Descrizione |
 |---------|-------------|
-| `graph init` | Crea indici Neo4j |
-| `graph sync` | Propaga cambiamenti pending |
-| `graph re-extract-schema` | Forza re-estrazione schema |
-| `graph status` | Stato grafo |
+| `graph init [-w]` | Costruzione completa del grafo (build) |
+| `graph sync [-w] [--base <nome>]` | Propagazione incrementale (chunk nuovi/modificati) |
+| `graph status [-w]` | Connessione + conteggi dal DB |
+| `graph schema [-w]` | Schema derivato dal DB (nessuno schema persistente) |
+| `graph search [-w] <query>` | Ricerca ibrida con filtro attivi |
 
 **Config:**
 

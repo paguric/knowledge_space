@@ -33,6 +33,7 @@ def _make_server(
     config_path_for: ConfigPathFor,
     *,
     state_home: Path,
+    graph_manager_factory: Any = None,
 ) -> Server:
     """Costruisce il server MCP con tutti i tool registrati.
 
@@ -40,6 +41,8 @@ def _make_server(
         workspace_manager: manager CRUD workspace.
         config_path_for: factory per il path di config.json.
         state_home: directory di stato dell'applicazione.
+        graph_manager_factory: factory ``(Workspace) -> GraphManager``
+            (refactor-001, opzionale).
 
     Returns:
         Server MCP configurato.
@@ -79,6 +82,38 @@ def _make_server(
                     "base_name": {
                         "type": "string",
                         "description": "Nome della base. Se omesso cerca in tutte.",
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": "Numero massimo di risultati (default 5).",
+                    },
+                },
+                "required": ["query"],
+            },
+        ),
+        types.Tool(
+            name="graph_status",
+            description=(
+                "Stato del grafo di conoscenza del workspace attivo "
+                "(connessione Neo4j, basi, chunk, entità, relazioni)."
+            ),
+            inputSchema={"type": "object", "properties": {}, "required": []},
+        ),
+        types.Tool(
+            name="graph_search",
+            description=(
+                "Ricerca sul grafo di conoscenza del workspace attivo "
+                "(rispetta domini/basi/file/chunk attivi come la ricerca "
+                "vettoriale)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Query di ricerca."},
+                    "base": {
+                        "type": "string",
+                        "description": "Nome base (opzionale, non usato: "
+                        "il filtro attivi è automatico).",
                     },
                     "top_k": {
                         "type": "integer",
@@ -224,6 +259,48 @@ def _make_server(
                 return "Nessun risultato trovato."
             return "\n".join(results[:top_k])
 
+        elif name == "graph_status":
+            ws = _get_active_workspace()
+            if graph_manager_factory is None:
+                return "Grafo non disponibile (graph_manager_factory non configurata)."
+            graph_manager = graph_manager_factory(ws)
+            info = graph_manager.status()
+            if not info.get("connected"):
+                return "Neo4j non raggiungibile."
+            if "error" in info:
+                return f"Errore lettura conteggi: {info['error']}"
+            bases = ", ".join(info.get("bases", [])) or "(nessuna)"
+            return (
+                f"Connessione: OK\n"
+                f"Basi: {bases}\n"
+                f"Documenti: {info.get('document', 0)}\n"
+                f"Chunk: {info.get('chunk', 0)}\n"
+                f"Entità: {info.get('entity', 0)}\n"
+                f"Relazioni: {info.get('relations', 0)}"
+            )
+
+        elif name == "graph_search":
+            ws = _get_active_workspace()
+            if graph_manager_factory is None:
+                return "Grafo non disponibile (graph_manager_factory non configurata)."
+            from knowledge_base.graph_search_service import GraphSearchService
+
+            query = args["query"]
+            top_k = args.get("top_k", 5)
+            graph_manager = graph_manager_factory(ws)
+            service = GraphSearchService(graph_manager)
+            results = service.search(ws, query, top_k=top_k)
+            if not results:
+                return "Nessun risultato trovato."
+            lines = []
+            for r in results:
+                entities = ", ".join(r.metadata.get("entities", []))
+                lines.append(
+                    f"[{r.score:.4f}] {r.chunk_id} — {r.text[:200]}"
+                    + (f" (entità: {entities})" if entities else "")
+                )
+            return "\n".join(lines)
+
         else:
             raise ValueError(f"Tool sconosciuto: {name}")
 
@@ -240,6 +317,7 @@ async def run_stdio(
     config_path_for: ConfigPathFor,
     *,
     state_home: Path,
+    graph_manager_factory: Any = None,
 ) -> None:
     """Avvia il server MCP su trasporto stdio.
 
@@ -247,6 +325,7 @@ async def run_stdio(
         workspace_manager: manager CRUD workspace.
         config_path_for: factory per il path di config.json.
         state_home: directory di stato dell'applicazione.
+        graph_manager_factory: factory GraphManager (refactor-001).
     """
     import mcp.server.stdio as stdio_mod
 
@@ -254,6 +333,7 @@ async def run_stdio(
         workspace_manager,
         config_path_for,
         state_home=state_home,
+        graph_manager_factory=graph_manager_factory,
     )
     logger.info("Avvio server MCP su stdio")
 
@@ -278,6 +358,7 @@ async def run_sse(
     host: str = "127.0.0.1",
     port: int = 8456,
     mount_path: str = "knowledge-space",
+    graph_manager_factory: Any = None,
 ) -> None:
     """Avvia il server MCP su trasporto Streamable HTTP.
 
@@ -292,6 +373,7 @@ async def run_sse(
         host: indirizzo di bind.
         port: porta di ascolto.
         mount_path: prefisso URL sotto cui montare l'app MCP.
+        graph_manager_factory: factory GraphManager (refactor-001).
     """
     import uvicorn
 
@@ -299,6 +381,7 @@ async def run_sse(
         workspace_manager,
         config_path_for,
         state_home=state_home,
+        graph_manager_factory=graph_manager_factory,
     )
     logger.info(
         "Avvio server MCP su %s:%s/%s/mcp", host, port, mount_path

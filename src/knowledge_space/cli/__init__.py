@@ -19,6 +19,7 @@ from knowledge_space.cli.file import app as file_app
 from knowledge_space.cli.chunk import app as chunk_app
 from knowledge_space.cli.config import app as config_app
 from knowledge_space.cli.models_cmd import app as models_app
+from knowledge_space.cli.graph import app as graph_app
 
 app = typer.Typer(
     name="knowledge-space",
@@ -34,6 +35,7 @@ app.add_typer(file_app, name="file", help="Gestione file indicizzati.")
 app.add_typer(chunk_app, name="chunk", help="Gestione chunk.")
 app.add_typer(config_app, name="config", help="Gestione configurazione.")
 app.add_typer(models_app, name="models", help="Gestione modelli di embedding.")
+app.add_typer(graph_app, name="graph", help="Grafo di conoscenza (Neo4j).")
 
 # Registra i comandi singoli direttamente
 from knowledge_space.cli.tree import tree_command  # noqa: E402

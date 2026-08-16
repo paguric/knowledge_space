@@ -1,203 +1,102 @@
-# Pipeline GraphRAG da chunk/embeddings esistenti
+# 40 — Grafo di conoscenza (Neo4j)
 
-> **Stato:** libreria implementata (graph/), integrazione in corso (feat-016..019) | **Step:** 8-bis | **Fase:** 1C | **Aggiornato:** 28 luglio 2026
+## Modello
 
-## Panoramica
+**Un grafo per workspace** (mai per-base): i chunk di tutte le basi stanno
+nello stesso database Neo4j; `base_name` è una proprietà dei nodi `Chunk`.
 
-Costruzione del grafo della conoscenza su Neo4j riprendendo la pipeline `neo4j-graphrag` dal **Lexical Graph Builder**, senza rifare data loading, splitting ed embedding (già calcolati in KS). Un grafo per workspace, propagazione incrementale su cambiamenti (content change, move/rename, cambio modello/strategia), retrieval configurabile per-base.
+Nodi e relazioni (label fisse, semantica nelle proprietà):
 
-## Scelte
+```
+(:Document {file_id, file_name, base_name})
+(:Chunk    {chunk_id, base_name, file_id, file_name, index, text, embedding, content_hash})
+(:Entity   {name, label})                    # label semantica: "Persona", "Organizzazione", "Legge"...
 
-| Aspetto | Scelta |
-|---------|--------|
-| Grafo Neo4j | Uno per workspace |
-| Resume da | Lexical graph + estrazione entità + risoluzione |
-| Schema | Caricato da `schema.json` se esiste; estratto solo la prima volta |
-| Resolver default | `SpaCySemanticMatchResolver` (semantic), fallback exact |
-| Propagazione content change | `eager` (default) o `lazy` |
-| Propagazione move/rename | Property-only (no re-estrazione) |
-| Propagazione cambio modello | Property-only: update embedding su nodi Chunk |
-| Propagazione cambio chunking/ingestion | Full re-estrazione LLM |
-| Retrieval | Configurabile per-base: `vector`, `vector_cypher`, `hybrid`, `hybrid_cypher`, `text2cypher`, `tools` |
-
-## Dettagli
-
-### Layout filesystem
-
-Path rilevanti per GraphRAG (layout completo in [30-configuration.md](30-configuration.md)):
-
-- **Chunk su disco**: `<base>/.knowledge-space/chunks/<file_id>/<file_id>_chunk_<i>.md` — prodotto derivato, non editabile.
-- **Schema del grafo**: `<workspace>/.knowledge-space/graph/schema.json`
-- **Stato del grafo**: `<workspace>/.knowledge-space/graph/graph.json`
-
-La **configurazione del comportamento** (schema, `on_chunk_change`, `resolver`) è in `[graph]` del `BaseConfig` per-base.
-
-### Modello dati (estensioni)
-
-Vedi [20-data-model.md](20-data-model.md). Riassunto:
-
-- `ChunkRef`: aggiunge `chunk_id` (deterministico `base::file_id::i`), `content_hash` (sha1). Campi `edited`/`edited_mtime` rimossi.
-- `FileEntry`: aggiunge `file_id` (UUID4 stabile).
-- `KnowledgeBase`: aggiunge `embedding_model`, `chunking_method`, `ingestion_library` (per blocco cambio config).
-- `GraphConfigData`: `bolt_uri`, `database`, `schema_ref`, `embedding_model`, `retriever` (default workspace).
-- Metadata Chroma: `source`, `chunk_index`, `base_name`, `file_name`, `file_id`, `file_mtime`, `content_hash`.
-
-### Pipeline di resume
-
-Assembla un `neo4j_graphrag.experimental.pipeline.Pipeline`:
-
-1. **`KSChunkLoader`** (custom, §4) — produce `TextChunks` con embedding da Chroma + `DocumentInfo`.
-2. **Schema** (§6-bis): se `schema.json` esiste → `GraphSchema.from_file`; altrimenti manuale/EXTRACTED/FREE + `save(...)`.
-3. **`LLMEntityRelationExtractor(llm=..., create_lexical_graph=True)`** — crea il lexical graph autonomamente (NO `LexicalGraphBuilder` separato, §6).
-4. **`Neo4jWriter(driver, neo4j_database=...)`** — `MERGE` idempotente su `__entity__tmp_internal_id` e chunk id.
-5. **Entity resolver** (§7): `SpaCySemanticMatchResolver` (default) con `filter_query = "WHERE NOT entity:Resolved"`.
-
-```python
-await pipeline.run_async(file_path=..., document_metadata={"base_name":..., "file_mtime":...})
+(Document)-[:HAS_CHUNK]->(Chunk)
+(Chunk)-[:MENTIONS]->(Entity)                # relazione strutturale
+(Entity)-[:RELATED_TO {type}]->(Entity)
 ```
 
-### `KSChunkLoader` (§4)
+`chunk_id` coincide con quello di Chroma: `{base_name}::{file_id}::{index}`.
 
-Sostituisce data loader + text splitter + chunk embedder. Legge chunk da disco, recupera embedding da Chroma, propaga `chunk_id` deterministico. Salta chunk/file/basi inattivi.
+Nessuno schema persistente (`schema.json` eliminato): lo schema si deriva
+dal DB a richiesta (`ks graph schema`: `db.labels()`,
+`db.relationshipTypes()`, `db.schema.nodeTypeProperties()`).
 
-Espone `upsert_chunks(base, file_id, changed_chunks)` per propagazione incrementale:
-1. Ricalcola embedding solo per i chunk cambiati.
-2. `collection.upsert(...)` preservando metadata esistenti.
-3. Ricalcola `content_hash`.
-
-### Propagazione al grafo (§5)
-
-**Eager cascade** su content change (trigger 1):
-
-1. `KnowledgeBaseManager` re-ingest + re-chunk + `KSChunkLoader.upsert_chunks` → Chroma aggiornato.
-2. Cascade `on_chunk_change = "eager"`: pipeline §3 solo sui chunk cambiati, `filter_query` mirato.
-3. Marcatore `:Resolved` sulle entità nuove/mergeate.
-
-**Lazy**: solo Chroma update; grafo si riallinea al prossimo `ks graph sync`.
-
-| Trigger | Propagazione al grafo |
-|---|---|
-| 1 — content change | eager: re-estrazione LLM mirata |
-| 2 — move/rename | property-only: update `file_name`/`path` |
-| 3 — cambio modello | property-only: update `embedding` |
-| 4 — cambio chunking | full: delete + re-inserimento completo |
-| 5 — cambio ingestion | full: come trigger 4 |
-
-### Evitare il lexical graph due volte (§6)
-
-`LLMEntityRelationExtractor` con `create_lexical_graph=True` crea autonomamente nodi Document/Chunk e relazioni. **Non eseguire** `LexicalGraphBuilder` separato prima dell'estrattore.
-
-### Schema del grafo (§6-bis)
-
-| Stato file | `[graph].schema` | Azione |
-|---|---|---|
-| Esiste | qualsiasi | `GraphSchema.from_file(...)` — no LLM |
-| Mancante | `"manuale"` | `SchemaBuilder` dal TOML + `save(...)` |
-| Mancante | `"EXTRACTED"` | `SchemaFromTextExtractor` (una tantum) + `save(...)` |
-| Mancante | `"FREE"` | niente schema, niente file |
-
-Forzare re-estrazione: `ks graph re-extract-schema <workspace>`.
-
-### Entity resolution (§7)
-
-| Resolver | Tecnica | Extra | Quando |
-|---|---|---|---|
-| `SpaCySemanticMatchResolver` | embeddings spaCy + cosine | `[nlp]` | **Default**: buon compromesso |
-| `FuzzyMatchResolver` | Levenshtein (RapidFuzz) | `[fuzzy-matching]` | Match ortografico, typo |
-| `SinglePropertyExactMatchResolver` | match esatto `name` + `label` | nessuno | Più veloce, conservativo |
-
-Configurazione via `[graph].resolver`:
+## Configurazione `[graph]` (TOML, cascata per-base)
 
 ```toml
 [graph]
-resolver = "semantic"   # default
-# resolver = "exact"    # no extra
-# resolver = "fuzzy"    # extra [fuzzy-matching]
-# resolver = "none"     # no resolution
+enabled = false               # interruttore
+on_chunk_change = "lazy"      # "eager" | "lazy" — propagazione trigger 1
+top_k = 5                     # default risultati graph search
+extraction_model = "lm-studio/auto"   # LLM per l'estrazione entità (pattern doc 75)
+embedding_model = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 ```
 
-Fallback automatico a `exact` se extra `[nlp]` non installato (con warning).
+- `extraction_model = None` → **grafo INATTIVO**: l'estrazione entità
+  richiede un LLM, senza modello non c'è nulla da estrarre (nessun
+  fallback rule-based). Ogni comando è un no-op con warning.
+- `embedding_model` ha lo **stesso default delle basi**: nel caso comune
+  il riciclo degli embedding da Chroma è sempre attivo. Base con modello
+  diverso → ricalcolo col modello del grafo (una tantum, Chroma intatto).
 
-### Grafo Neo4j uno per workspace (§8)
+Connessione Neo4j: **fuori dal TOML** — env `NEO4J_URI` / `NEO4J_USER` /
+`NEO4J_PASSWORD` / `NEO4J_DATABASE`; al primo `build_graph` la connessione
+viene salvata in `<workspace>/.knowledge-space/graph/graph.json` e riusata.
 
-- Un solo DB Neo4j per workspace.
-- `graph.json` registra `bolt_uri`, `database`, `schema_ref`, `embedding_model`.
-- Ogni entità/chunk ha `base_name` come property.
-- `[graph]` nel `BaseConfig` per-base gestisce: schema, resolver, `on_chunk_change`, `chunk_embedding_property`. Parametri di connessione a livello workspace.
+## Pipeline
 
-### Blocco cambio config (§9)
+`KSChunkLoader` (testo chunk da disco + embedding da Chroma o ricalcolati)
+→ `EntityRelationExtractor` (LLM, per-chunk, JSON con riferimenti **per
+nome**) → `Neo4jWriter` (MERGE idempotente: Document/Chunk/HAS_CHUNK,
+Entity/MENTIONS/RELATED_TO) → `ExactMatchResolver` (dedup di sicurezza su
+`(nome normalizzato, label)`).
 
-Al caricamento di `BaseConfig`, KS confronta i valori configurati con quelli in `state.json`. Se differiscono **e** collection non vuota → errore:
+Niente `neo4j-graphrag` per la costruzione (solo driver `neo4j`, import
+lazy): i chunk sono già prodotti dalla Fase 1A.
 
+## Propagazione (hook nel watcher)
+
+`WorkspaceManager.sync_and_ingest()` al termine propaga al grafo:
+
+- basi rimosse → `remove_base` (Document/Chunk cancellati);
+- poi `sync_base` per le basi con grafo attivo: diff per `content_hash`
+  dei chunk — solo i cambiati vengono cancellati e ri-estratti;
+- dopo ogni delete → `delete_orphan_entities` (Entity senza più MENTIONS).
+
+Errori **non fatali**: Neo4j giù → WARNING nel log, riallineamento alla
+sync successiva.
+
+## Ricerca
+
+Un solo retriever: `HybridCypherRetriever` (vector + full-text + traversal
+MENTIONS, indici `chunk-embeddings` e `chunk-text`).
+
+`GraphSearchService` applica l'**invariante attivi** come la ricerca
+vettoriale: pre-retrieval `active_base_names` (via `is_base_searchable`,
+domini e basi attivi), post-retrieval `filter_active_chunks` (file/chunk
+attivi). Usato da `ks graph search` e dal tool MCP `graph_search`.
+
+## Comandi
+
+```bash
+ks config set graph.enabled true          # + extraction_model (TOML)
+ks graph init -w ~/ws                     # build completo
+ks graph sync -w ~/ws [--base <nome>]     # propagazione incrementale
+ks graph status -w ~/ws                   # connessione + conteggi dal DB
+ks graph schema -w ~/ws                   # schema derivato dal DB
+ks graph search -w ~/ws "domanda"         # ricerca con filtro attivi
 ```
-ks reindex <base> --model-change       # trigger 3
-ks reindex <base> --chunking-change    # trigger 4
-ks reindex <base> --ingestion-change   # trigger 5
-```
 
-### Retrieval: metodo configurabile (§14)
+## Tool MCP
 
-La pipeline separa **costruzione** del grafo dalla **ricerca**. L'app istanzia il retriever specificato in `[graph].retriever` per-base (fallback: `GraphConfigData.retriever` workspace-level, default `"hybrid_cypher"`).
+Solo lettura (coerente con il vincolo MCP read-only):
 
-| Valore TOML | Classe neo4j-graphrag | Vector idx | Full-text idx | LLM | Note |
-|---|---|:---:|:---:|:---:|---|
-| `vector` | `VectorRetriever` | sì | no | no | Similarità pura ANN |
-| `vector_cypher` | `VectorCypherRetriever` | sì | no | no | Vector + traversal Cypher |
-| `hybrid` | `HybridRetriever` | sì | sì | no | Vector + BM25 |
-| `hybrid_cypher` | `HybridCypherRetriever` | sì | sì | no | **Default**. Hybrid + retrieval_query |
-| `text2cypher` | `Text2CypherRetriever` | no | no | sì | LLM → Cypher, richiede `schema.json` |
-| `tools` | `ToolsRetriever` | dipende | dipende | sì | LLM seleziona tool |
-
-**Parametri in `[graph]` (TOML per-base):**
-
-| Campo | Default | Usato da |
-|---|---|---|
-| `retriever` | `"hybrid_cypher"` | tutti |
-| `top_k` | `5` | vettoriali/hybrid |
-| `vector_index` | `"chunk-embeddings"` | `vector*`/`hybrid*` |
-| `fulltext_index` | `"chunk-text"` | `hybrid*` |
-| `retrieval_query` | vedi defaults.toml | `*_cypher` |
-| `return_properties` | `["chunk_id", "text"]` | `vector` |
-
-**Factory:** `RetrieverFactory.build(base_config, graph_config, driver, embedder, llm)`.
-
-**Indici Neo4j:** vector index (`create_vector_index`) + full-text index (`create_fulltext_index`) per retriever `hybrid*`. Creazione una tantum per workspace (idempotente).
-
-### Fasi di implementazione
-
-- **F0** — Prerequisiti: chunk in `<base>/.knowledge-space/chunks/<file_id>/`, `file_id` UUID, metadata Chroma completi, watcher ignora `.knowledge-space/`.
-- **F1** — Pacchetto e dipendenze: `neo4j-graphrag` + `neo4j` + extra `[nlp]`, modulo `knowledge_base/graph/`, `graph.json`.
-- **F2** — `KSChunkLoader`: implementazione + `upsert_chunks`.
-- **F3** — Pipeline GraphRAG: assemblaggio, schema, `Neo4jWriter` idempotente, runner.
-- **F4** — Entity resolution: `SpaCySemanticMatchResolver`, marcatore `:Resolved`, fallback automatico.
-- **F5** — Propagazione al grafo: eager/lazy, delete file, move/rename.
-- **F6** — Blocco cambio config.
-- **F7** — Test di integrazione.
-- **F8** — Documentazione.
-
-### Rischi e limiti noti
-
-- Resolver semantico non è magico: near miss teorici possibili.
-- Re-estrazione su content change costa una chiamata LLM per chunk cambiato (mitigato da `content_hash`).
-- Race conditions watcher: Chroma safe per singolo processo; per più processi serve sincronizzazione.
-- Neo4j non embedded: serve istanza in esecuzione.
-- Re-estrazione schema non migra entità vecchie.
-
-### Test
-
-| Test | Cosa verifica |
-|------|---------------|
-| Unit `KSChunkLoader` | TextChunks ordinate, embedding coerenti |
-| Unit `upsert_chunks` | Chunks cambiati → upsert, content_hash aggiornato |
-| Integrazione Neo4j | End-to-end, idempotenza, dedup resolver |
-| Eager cascade | Content change → entità ri-estratte solo sui chunk cambiati |
-| Blocco config | Cambio model/method/library → errore atteso |
-| Fallback resolver | `[nlp]` mancante → warning + fallback a exact |
-| Schema reload | Secondo run con `schema.json` → no LLM |
-| Move/rename | `chunk_id` immutato, property aggiornate |
+- `graph_status()` — stato del grafo del workspace attivo;
+- `graph_search(query, top_k)` — ricerca con filtro attivi.
 
 ## Dipendenze
 
-| Dipende da | Usato da |
-|------------|----------|
-| Step 7 (KnowledgeBaseManager), Step 6-bis (LLMStrategy) | Step 13 (CLI `ks graph`), Step 15 (REST query GraphRAG) |
+`neo4j` non è tra le dipendenze del progetto: import lazy con messaggio
+chiaro al primo uso (`pip install neo4j` / `uv add neo4j`).

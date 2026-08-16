@@ -73,43 +73,6 @@ class Neo4jWriter:
             raise
         return len(nodes)
 
-    def write_nodes_multi_label(
-        self,
-        nodes: List[Dict[str, Any]],
-        label_key: str = "label",
-        merge_key: str = "name",
-    ) -> int:
-        """Scrive nodi con etichette dinamiche (da proprietà).
-
-        Ogni nodo deve avere ``label_key`` che indica l'etichetta Cypher.
-        Usa query individuali (non UNWIND) perché le label non possono
-        essere parametrizzate in Cypher.
-
-        Args:
-            nodes: lista di dict con almeno ``label_key`` e ``merge_key``.
-            label_key: chiave che contiene l'etichetta.
-            merge_key: proprietà per il MERGE.
-
-        Returns:
-            Numero di nodi scritti.
-        """
-        count = 0
-        for node in nodes:
-            label = node.get(label_key, "Unknown")
-            props = {k: v for k, v in node.items() if k != label_key}
-            query = f"""
-            MERGE (n:{label} {{ {merge_key}: $merge_val }})
-            SET n += $props
-            """
-            try:
-                self._store.execute_write(
-                    query, {"merge_val": node.get(merge_key), "props": props}
-                )
-                count += 1
-            except Exception as exc:
-                logger.error("Errore scrittura nodo %s: %s", node, exc)
-        return count
-
     # ..................................................................... #
     # Archi
     # ..................................................................... #
@@ -123,18 +86,10 @@ class Neo4jWriter:
         source_key: str = "name",
         target_key: str = "name",
     ) -> int:
-        """Scrive batch di archi con MERGE.
+        """Scrive batch di archi con MERGE (idempotente).
 
-        Args:
-            edges: lista di dict con ``source_name``, ``target_name`` e proprietà.
-            source_label: etichetta nodo sorgente.
-            target_label: etichetta nodo target.
-            edge_type: tipo di relazione Cypher.
-            source_key: proprietà di merge sul nodo sorgente.
-            target_key: proprietà di merge sul nodo target.
-
-        Returns:
-            Numero di archi scritti.
+        Gli archi riferiscono i nodi per ``source_key``/``target_key``
+        (per nome tra Entity; per file_id tra Document e Chunk).
         """
         if not edges:
             return 0
@@ -153,6 +108,60 @@ class Neo4jWriter:
             logger.error("Errore scrittura archi %s: %s", edge_type, exc)
             raise
         return len(edges)
+
+    # ..................................................................... #
+    # Menzioni e cleanup entità orfane (refactor-001)
+    # ..................................................................... #
+
+    def write_mentions(self, chunk_id: str, entity_names: List[str]) -> int:
+        """Crea ``(c:Chunk)-[:MENTIONS]->(e:Entity)`` per ogni entità
+        estratta dal chunk (relazione strutturale, MERGE idempotente).
+
+        Le entità devono già esistere (``write_nodes`` con label Entity).
+        """
+        if not entity_names:
+            return 0
+        query = """
+        UNWIND $names AS name
+        MATCH (c:Chunk {chunk_id: $chunk_id})
+        MATCH (e:Entity {name: name})
+        MERGE (c)-[:MENTIONS]->(e)
+        """
+        try:
+            self._store.execute_write(
+                query, {"names": entity_names, "chunk_id": chunk_id}
+            )
+            logger.debug(
+                "Scritte %d MENTIONS per chunk %s", len(entity_names), chunk_id
+            )
+        except Exception as exc:
+            logger.error("Errore scrittura MENTIONS: %s", exc)
+            raise
+        return len(entity_names)
+
+    def delete_orphan_entities(self) -> int:
+        """Cancella le Entity senza più alcun MENTIONS in entrata.
+
+        Da eseguire dopo ogni delete (chunk/file/base): le entità
+        menzionate solo da ciò che è stato rimosso sparirebbero
+        altrimenti mai dal DB.
+        """
+        query = """
+        MATCH (e:Entity)
+        WHERE NOT (e)<-[:MENTIONS]-()
+        WITH collect(e) AS orphans
+        FOREACH (x IN orphans | DELETE x)
+        RETURN size(orphans) AS deleted
+        """
+        try:
+            result = self._store.execute_query(query)
+            deleted = result[0].get("deleted", 0) if result else 0
+            if deleted:
+                logger.info("Entità orfane eliminate: %d", deleted)
+            return deleted
+        except Exception as exc:
+            logger.error("Errore eliminazione entità orfane: %s", exc)
+            raise
 
     # ..................................................................... #
     # Cancellazione
@@ -208,33 +217,6 @@ class Neo4jWriter:
     # ..................................................................... #
     # Aggiornamento proprietà
     # ..................................................................... #
-
-    def update_properties(
-        self,
-        label: str,
-        match_key: str,
-        match_value: Any,
-        properties: Dict[str, Any],
-    ) -> None:
-        """Aggiorna proprietà di un nodo identificato da match_key.
-
-        Args:
-            label: etichetta Cypher del nodo.
-            match_key: proprietà per identificare il nodo.
-            match_value: valore della proprietà match_key.
-            properties: proprietà da aggiornare.
-        """
-        query = f"""
-        MATCH (n:{label} {{ {match_key}: $match_val }})
-        SET n += $props
-        """
-        try:
-            self._store.execute_write(
-                query, {"match_val": match_value, "props": properties}
-            )
-        except Exception as exc:
-            logger.error("Errore aggiornamento proprietà: %s", exc)
-            raise
 
     def update_chunk_file_name(self, file_id: str, new_file_name: str) -> None:
         """Aggiorna ``file_name`` su tutti i Chunk e Document di un file.
@@ -301,7 +283,7 @@ class Neo4jWriter:
             dimensions: dimensionalità del vettore.
         """
         query = f"""
-        CREATE VECTOR INDEX {index_name} IF NOT EXISTS
+        CREATE VECTOR INDEX `{index_name}` IF NOT EXISTS
         FOR (n:{label})
         ON (n.{property_name})
         OPTIONS {{
@@ -334,7 +316,7 @@ class Neo4jWriter:
         props = properties or ["text"]
         props_str = ", ".join(f"n.{p}" for p in props)
         query = f"""
-        CREATE FULLTEXT INDEX {index_name} IF NOT EXISTS
+        CREATE FULLTEXT INDEX `{index_name}` IF NOT EXISTS
         FOR (n:{label})
         ON EACH [{props_str}]
         """

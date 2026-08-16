@@ -90,18 +90,18 @@ class Workspace(BaseModel):
 
 
 class GraphConfigData(BaseModel):
-    """Configurazione del grafo di conoscenza per un workspace (Fase 1C).
+    """Configurazione grafo registrata per workspace (refactor-001).
 
-    Definita qui come placeholder con valori di default -utile per la
-    migrazione retroattiva dei ``state.json`` esistenti (Step 7 bullet
-    migrazione) e per il blocco cambio config. Implementazione concreta
-    in Fase 1C (vedi ``docs/40-graph.md``)."""
+    Rispecchia ``[graph]`` del TOML; placeholder per la migrazione
+    retroattiva degli ``state.json`` esistenti. La connessione Neo4j
+    vive in ``graph.json`` (gestito dal GraphManager), non qui."""
 
     enabled: bool = False
     on_chunk_change: str = "lazy"  # "eager" | "lazy"
-    retriever: str = "none"        # "none" | "text2cypher" | "hybrid"
     extraction_model: Optional[str] = None
-    schema_model: Optional[str] = None
+    embedding_model: str = (
+        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    )
 
 
 class GlobalIndexData(BaseModel):

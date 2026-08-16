@@ -1,62 +1,55 @@
-"""Test per il modulo graph (Step 8-bis — Pipeline GraphRAG, Fase 1C).
+"""Test per il componente grafo (refactor-001).
 
-Test mock per GraphStore, extraction, resolution, writer, chunk_loader
-e retriever. Test integrazione con Neo4j opzionali (marker ``@pytest.mark.neo4j``).
+Copre: store (+schema derivato), estrazione per-name, resolver unico,
+writer (mentions/orfane), chunk loader (riciclo/ricalcolo), retriever
+unico con filtro attivi, GraphManager (build/sync/remove/status/search,
+gating) e GraphSearchService (filtro domini/basi/file/chunk attivi).
+
+Tutto mock: nessun Neo4j reale, nessun download di modelli.
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import pytest
 
+from knowledge_base.base_config import BaseConfig, GraphConfig
 from knowledge_base.graph.store import (
     MockGraphStore,
     Neo4jGraphStore,
     graph_store_factory,
 )
-from knowledge_base.graph.schema import (
-    EdgeSchema,
-    GraphSchema,
-    NodeSchema,
-    PropertySchema,
-)
+from knowledge_base.graph.schema import derive_schema_info, format_schema
 from knowledge_base.graph.extraction import (
     EntityRelationExtractor,
     ExtractedEdge,
     ExtractedNode,
     GraphExtractionResult,
 )
-from knowledge_base.graph.resolver import (
-    ExactMatchResolver,
-    SpaCySemanticMatchResolver,
-    resolver_factory,
-)
+from knowledge_base.graph.resolver import ExactMatchResolver
 from knowledge_base.graph.writer import Neo4jWriter
 from knowledge_base.graph.chunk_loader import KSChunkLoader, TextChunk, TextChunks
 from knowledge_base.graph.retriever import (
     GraphSearchResult,
     HybridCypherRetriever,
-    HybridRetriever,
-    RetrieverFactory,
-    Text2CypherRetriever,
-    ToolsRetriever,
-    VectorCypherRetriever,
-    VectorRetriever,
 )
-from knowledge_base.strategies.llm import MockEchoLLM, MockFixedLLM
+from knowledge_base.graph_manager import GraphManager
+from knowledge_base.graph_search_service import GraphSearchService
+from knowledge_base.models import ChunkRef, FileEntry, KnowledgeBase, Workspace
+from knowledge_base.strategies.llm import MockFixedLLM
 from knowledge_base.strategies import EmbeddingMetadata
 
 
 # --------------------------------------------------------------------------- #
-# Stub embedder per test
+# Stub embedder
 # --------------------------------------------------------------------------- #
 
 
 class StubEmbedder:
-    """Embedder fittizio: restituisce vettori deterministici."""
+    """Embedder fittizio: vettori deterministici di dimensione 4."""
 
     name = "stub"
     metadata = EmbeddingMetadata(
@@ -69,48 +62,33 @@ class StubEmbedder:
     )
 
     def embed(self, texts: List[str]) -> List[List[float]]:
-        """Restituisce vettori di dimensione 4 basati sulla lunghezza del testo."""
         return [[float(len(t)), 0.0, 0.0, 1.0] for t in texts]
 
 
 # --------------------------------------------------------------------------- #
-# Test GraphStore
+# Test store
 # --------------------------------------------------------------------------- #
 
 
 class TestGraphStoreFactory:
-    """Test per la factory di GraphStore."""
-
     def test_factory_mock(self):
-        store = graph_store_factory(backend="mock")
+        store = graph_store_factory("mock")
         assert isinstance(store, MockGraphStore)
-        assert not store.is_connected()
 
-    def test_factory_neo4j(self):
-        store = graph_store_factory(
-            backend="neo4j",
-            uri="bolt://localhost:7687",
-            user="neo4j",
-            password="test",
-        )
+    def test_factory_neo4j(self, monkeypatch):
+        monkeypatch.setenv("NEO4J_URI", "bolt://x:1")
+        store = graph_store_factory("neo4j", uri="bolt://y:2", user="u", password="p")
         assert isinstance(store, Neo4jGraphStore)
-        assert not store.is_connected()
+        assert store._uri == "bolt://y:2"
 
     def test_factory_unknown_backend(self):
-        with pytest.raises(ValueError, match="non supportato"):
-            graph_store_factory(backend="unknown")
-
-    def test_factory_default_backend(self):
-        store = graph_store_factory()
-        assert isinstance(store, Neo4jGraphStore)
+        with pytest.raises(ValueError):
+            graph_store_factory("unknown")
 
 
 class TestMockGraphStore:
-    """Test per MockGraphStore."""
-
     def test_connect_disconnect(self):
         store = MockGraphStore()
-        assert not store.is_connected()
         store.connect()
         assert store.is_connected()
         store.close()
@@ -118,18 +96,15 @@ class TestMockGraphStore:
 
     def test_execute_query_records(self):
         store = MockGraphStore()
-        store.connect()
-        store.set_query_results([[{"n": 1}, {"n": 2}]])
-        result = store.execute_query("MATCH (n) RETURN n")
-        assert len(result) == 2
-        assert result[0]["n"] == 1
-        assert len(store.executed_queries) == 1
+        store.set_query_results([[{"a": 1}]])
+        result = store.execute_query("MATCH (n) RETURN n", {"x": 1})
+        assert result == [{"a": 1}]
+        assert store.executed_queries[0][0] == "MATCH (n) RETURN n"
 
     def test_execute_write_records(self):
         store = MockGraphStore()
-        store.connect()
-        store.execute_write("CREATE (n:Test {name: 'x'})")
-        assert len(store.write_queries) == 1
+        store.execute_write("CREATE (n)", {"a": 1})
+        assert store.write_queries[0][0] == "CREATE (n)"
 
     def test_verify_connectivity(self):
         store = MockGraphStore()
@@ -137,131 +112,87 @@ class TestMockGraphStore:
         store.connect()
         assert store.verify_connectivity()
 
+    def test_schema_info(self):
+        store = MockGraphStore()
+        info = store.schema_info()
+        assert "Entity" in info["labels"]
+        assert "MENTIONS" in info["relationship_types"]
+
 
 # --------------------------------------------------------------------------- #
-# Test GraphSchema
+# Test schema derivato dal DB
 # --------------------------------------------------------------------------- #
 
 
-class TestGraphSchema:
-    """Test per GraphSchema."""
+class TestDerivedSchema:
+    def test_derive_schema_info(self):
+        store = MockGraphStore()
+        info = derive_schema_info(store)
+        assert info["labels"] == ["Document", "Chunk", "Entity"]
 
-    def test_default_schema(self):
-        schema = GraphSchema()
-        assert schema.schema_type == "FREE"
-        assert schema.nodes == []
-        assert schema.edges == []
-
-    def test_free_schema(self):
-        schema = GraphSchema.free()
-        assert schema.schema_type == "FREE"
-
-    def test_default_lexical_schema(self):
-        schema = GraphSchema.default_lexical()
-        assert schema.schema_type == "manuale"
-        assert "Document" in schema.get_node_labels()
-        assert "Chunk" in schema.get_node_labels()
-        assert "FROM_DOCUMENT" in schema.get_edge_types()
-        assert "NEXT_CHUNK" in schema.get_edge_types()
-
-    def test_save_and_load(self, tmp_path):
-        schema = GraphSchema(
-            nodes=[
-                NodeSchema(label="Person", properties=[
-                    PropertySchema(name="name", type="string", required=True)
-                ])
+    def test_format_schema(self):
+        store = MockGraphStore()
+        store.schema_data = {
+            "labels": ["Chunk", "Entity"],
+            "relationship_types": ["MENTIONS"],
+            "node_properties": [
+                {"nodeLabels": ["Chunk"], "propertyName": "text"}
             ],
-            edges=[
-                EdgeSchema(type="KNOWS", source_label="Person", target_label="Person")
-            ],
-            schema_type="manuale",
-        )
-        path = tmp_path / "schema.json"
-        schema.save(path)
-
-        loaded = GraphSchema.from_file(path)
-        assert loaded.schema_type == "manuale"
-        assert len(loaded.nodes) == 1
-        assert loaded.nodes[0].label == "Person"
-        assert len(loaded.edges) == 1
-        assert loaded.edges[0].type == "KNOWS"
-
-    def test_from_file_not_found(self, tmp_path):
-        with pytest.raises(FileNotFoundError):
-            GraphSchema.from_file(tmp_path / "nonexistent.json")
-
-    def test_from_file_invalid_json(self, tmp_path):
-        path = tmp_path / "bad.json"
-        path.write_text("not json")
-        with pytest.raises(json.JSONDecodeError):
-            GraphSchema.from_file(path)
-
-    def test_get_node_schema(self):
-        schema = GraphSchema.default_lexical()
-        chunk = schema.get_node_schema("Chunk")
-        assert chunk is not None
-        assert chunk.label == "Chunk"
-        assert schema.get_node_schema("NonExistent") is None
-
-    def test_get_edge_schema(self):
-        schema = GraphSchema.default_lexical()
-        edge = schema.get_edge_schema("FROM_DOCUMENT")
-        assert edge is not None
-        assert edge.type == "FROM_DOCUMENT"
+        }
+        text = format_schema(store)
+        assert "Schema del grafo (derivato dal DB)" in text
+        assert "Chunk: text" in text
+        assert "MENTIONS" in text
 
 
 # --------------------------------------------------------------------------- #
-# Test EntityRelationExtractor
+# Test estrazione (riferimenti per nome)
 # --------------------------------------------------------------------------- #
 
 
 class TestEntityRelationExtractor:
-    """Test per EntityRelationExtractor."""
-
     def test_extract_empty_text(self):
-        llm = MockFixedLLM()
-        extractor = EntityRelationExtractor(llm=llm)
+        extractor = EntityRelationExtractor(llm=MockFixedLLM())
         result = extractor.extract("")
         assert result.nodes == []
         assert result.edges == []
 
-    def test_extract_valid_json(self):
+    def test_extract_valid_json_by_name(self):
         llm = MockFixedLLM()
-        # Override generate per restituire JSON valido
-        original_generate = llm.generate
 
         def mock_generate(messages, **kwargs):
             return json.dumps({
                 "nodes": [
-                    {"id": "n1", "label": "Person", "name": "Alice", "properties": {}},
-                    {"id": "n2", "label": "Company", "name": "Acme", "properties": {}},
+                    {"name": "Alice", "label": "Persona", "properties": {}},
+                    {"name": "Acme", "label": "Organizzazione", "properties": {}},
                 ],
                 "edges": [
-                    {"source_id": "n1", "target_id": "n2", "type": "WORKS_AT", "properties": {}},
+                    {"source": "Alice", "target": "Acme", "type": "LAVORA_PER", "properties": {}},
                 ],
             })
 
         llm.generate = mock_generate
         extractor = EntityRelationExtractor(llm=llm)
-        result = extractor.extract("Alice works at Acme.", chunk_id="base::fid::0")
+        result = extractor.extract("Alice works at Acme.", chunk_id="b::f::0")
 
         assert len(result.nodes) == 2
         assert result.nodes[0].name == "Alice"
-        assert result.nodes[0].label == "Person"
-        assert result.nodes[0].chunk_id == "base::fid::0"
+        assert result.nodes[0].label == "Persona"
+        assert result.nodes[0].chunk_id == "b::f::0"
         assert len(result.edges) == 1
-        assert result.edges[0].type == "WORKS_AT"
+        assert result.edges[0].source == "Alice"
+        assert result.edges[0].target == "Acme"
+        assert result.edges[0].type == "LAVORA_PER"
 
     def test_extract_json_with_markdown_fences(self):
         llm = MockFixedLLM()
 
         def mock_generate(messages, **kwargs):
-            return '```json\n{"nodes": [{"id": "n1", "label": "Thing", "name": "X", "properties": {}}], "edges": []}\n```'
+            return '```json\n{"nodes": [{"name": "X", "label": "Concetto"}], "edges": []}\n```'
 
         llm.generate = mock_generate
         extractor = EntityRelationExtractor(llm=llm)
         result = extractor.extract("Some text")
-        assert len(result.nodes) == 1
         assert result.nodes[0].name == "X"
 
     def test_extract_invalid_json_returns_empty(self):
@@ -273,7 +204,6 @@ class TestEntityRelationExtractor:
         llm.generate = mock_generate
         extractor = EntityRelationExtractor(llm=llm)
         result = extractor.extract("Some text")
-        # Should return empty result on invalid JSON
         assert result.nodes == []
         assert result.edges == []
 
@@ -285,7 +215,7 @@ class TestEntityRelationExtractor:
             nonlocal call_count
             call_count += 1
             return json.dumps({
-                "nodes": [{"id": f"n{call_count}", "label": "Thing", "name": f"Entity{call_count}", "properties": {}}],
+                "nodes": [{"name": f"Entity{call_count}", "label": "Concetto"}],
                 "edges": [],
             })
 
@@ -299,727 +229,510 @@ class TestEntityRelationExtractor:
         assert call_count == 2
 
     def test_merge_results(self):
-        r1 = GraphExtractionResult(
-            nodes=[ExtractedNode(id="n1", label="A", name="X")],
-            edges=[],
-        )
+        r1 = GraphExtractionResult(nodes=[ExtractedNode(name="X", label="A")], edges=[])
         r2 = GraphExtractionResult(
-            nodes=[ExtractedNode(id="n2", label="B", name="Y")],
-            edges=[ExtractedEdge(source_id="n1", target_id="n2", type="REL")],
+            nodes=[ExtractedNode(name="Y", label="B")],
+            edges=[ExtractedEdge(source="X", target="Y", type="REL")],
         )
         merged = r1.merge(r2)
         assert len(merged.nodes) == 2
         assert len(merged.edges) == 1
 
-    def test_extract_json_from_text(self):
-        # Test the static _extract_json helper
-        text = 'Some text ```json\n{"nodes": [], "edges": []}\n``` more text'
-        result = EntityRelationExtractor._extract_json(text)
-        assert '"nodes"' in result
-
-    def test_extract_json_object_from_text(self):
-        text = 'Here is the result: {"nodes": [], "edges": []} done.'
-        result = EntityRelationExtractor._extract_json(text)
-        assert result.startswith("{")
-
 
 # --------------------------------------------------------------------------- #
-# Test Entity Resolution
+# Test resolver unico
 # --------------------------------------------------------------------------- #
 
 
 class TestExactMatchResolver:
-    """Test per ExactMatchResolver."""
-
     def test_no_duplicates(self):
         resolver = ExactMatchResolver()
-        entities = [
-            {"id": "n1", "label": "Person", "name": "Alice"},
-            {"id": "n2", "label": "Person", "name": "Bob"},
+        nodes = [
+            {"name": "Alice", "label": "Persona"},
+            {"name": "Acme", "label": "Organizzazione"},
         ]
-        result = resolver.resolve(entities)
-        assert result["n1"] == "n1"
-        assert result["n2"] == "n2"
+        deduped, edges = resolver.resolve(nodes, [])
+        assert len(deduped) == 2
 
-    def test_exact_duplicate(self):
+    def test_exact_duplicate_merged(self):
         resolver = ExactMatchResolver()
-        entities = [
-            {"id": "n1", "label": "Person", "name": "Alice"},
-            {"id": "n2", "label": "Person", "name": "Alice"},
+        nodes = [
+            {"name": "Alice", "label": "Persona"},
+            {"name": "alice", "label": "Persona"},
         ]
-        result = resolver.resolve(entities)
-        assert result["n1"] == result["n2"]  # Same canonical
-
-    def test_case_insensitive(self):
-        resolver = ExactMatchResolver()
-        entities = [
-            {"id": "n1", "label": "Person", "name": "Alice"},
-            {"id": "n2", "label": "Person", "name": "alice"},
-        ]
-        result = resolver.resolve(entities)
-        assert result["n1"] == result["n2"]
+        edges = [{"source": "alice", "target": "Alice", "type": "X"}]
+        deduped, remapped = resolver.resolve(nodes, edges)
+        assert len(deduped) == 1
+        assert deduped[0]["name"] == "Alice"
+        # L'arco è rimappato al canonical
+        assert remapped[0]["source"] == "Alice"
+        assert remapped[0]["target"] == "Alice"
 
     def test_different_labels_not_merged(self):
         resolver = ExactMatchResolver()
-        entities = [
-            {"id": "n1", "label": "Person", "name": "Neo4j"},
-            {"id": "n2", "label": "Company", "name": "Neo4j"},
+        nodes = [
+            {"name": "Roma", "label": "Luogo"},
+            {"name": "Roma", "label": "Squadra"},
         ]
-        result = resolver.resolve(entities)
-        assert result["n1"] != result["n2"]
+        deduped, _ = resolver.resolve(nodes, [])
+        assert len(deduped) == 2
 
-    def test_empty_entities(self):
+    def test_empty(self):
         resolver = ExactMatchResolver()
-        result = resolver.resolve([])
-        assert result == {}
-
-
-class TestSpaCySemanticMatchResolver:
-    """Test per SpaCySemanticMatchResolver (mock)."""
-
-    def test_resolve_basic(self):
-        # SpaCySemanticMatchResolver may not be available, test fallback
-        try:
-            resolver = SpaCySemanticMatchResolver()
-            entities = [
-                {"id": "n1", "label": "Person", "name": "Alice"},
-                {"id": "n2", "label": "Person", "name": "Alice Smith"},
-            ]
-            result = resolver.resolve(entities)
-            assert "n1" in result
-            assert "n2" in result
-        except ImportError:
-            pytest.skip("spaCy non disponibile")
-
-
-class TestResolverFactory:
-    """Test per la factory dei resolver."""
-
-    def test_factory_exact(self):
-        resolver = resolver_factory("exact")
-        assert isinstance(resolver, ExactMatchResolver)
-
-    def test_factory_none(self):
-        resolver = resolver_factory("none")
-        result = resolver.resolve([{"id": "n1", "label": "X", "name": "Y"}])
-        assert result["n1"] == "n1"
-
-    def test_factory_unknown(self):
-        with pytest.raises(ValueError, match="non supportato"):
-            resolver_factory("unknown")
-
-    def test_factory_semantic_fallback(self):
-        # Se spaCy non è disponibile, dovrebbe fare fallback a exact
-        try:
-            resolver = resolver_factory("semantic")
-            assert isinstance(resolver, (ExactMatchResolver, SpaCySemanticMatchResolver))
-        except ImportError:
-            pytest.skip("spaCy non disponibile")
+        deduped, edges = resolver.resolve([], [])
+        assert deduped == []
+        assert edges == []
 
 
 # --------------------------------------------------------------------------- #
-# Test Neo4jWriter
+# Test writer
 # --------------------------------------------------------------------------- #
 
 
 class TestNeo4jWriter:
-    """Test per Neo4jWriter con MockGraphStore."""
-
     def test_write_nodes(self):
         store = MockGraphStore()
-        store.connect()
         writer = Neo4jWriter(store)
-
-        nodes = [
-            {"name": "Alice", "age": 30},
-            {"name": "Bob", "age": 25},
-        ]
-        count = writer.write_nodes(nodes, label="Person")
-        assert count == 2
-        assert len(store.write_queries) == 1
-        assert "UNWIND" in store.write_queries[0][0]
-        assert "Person" in store.write_queries[0][0]
-
-    def test_write_nodes_empty(self):
-        store = MockGraphStore()
-        store.connect()
-        writer = Neo4jWriter(store)
-        count = writer.write_nodes([], label="Person")
-        assert count == 0
-        assert len(store.write_queries) == 0
+        n = writer.write_nodes([{"name": "Alice", "label": "Persona"}], "Entity")
+        assert n == 1
+        assert "MERGE" in store.write_queries[0][0]
 
     def test_write_edges(self):
         store = MockGraphStore()
-        store.connect()
         writer = Neo4jWriter(store)
-
-        edges = [
-            {"source_name": "Alice", "target_name": "Acme", "properties": {"since": 2020}},
-        ]
-        count = writer.write_edges(
-            edges,
-            source_label="Person",
-            target_label="Company",
-            edge_type="WORKS_AT",
+        n = writer.write_edges(
+            [{"source_name": "A", "target_name": "B", "properties": {}}],
+            "Entity", "Entity", "RELATED_TO",
         )
-        assert count == 1
-        assert len(store.write_queries) == 1
-        assert "WORKS_AT" in store.write_queries[0][0]
+        assert n == 1
+
+    def test_write_mentions(self):
+        store = MockGraphStore()
+        writer = Neo4jWriter(store)
+        n = writer.write_mentions("b::f::0", ["Alice", "Acme"])
+        assert n == 2
+        query = store.write_queries[0][0]
+        assert "MENTIONS" in query
+
+    def test_write_mentions_empty(self):
+        store = MockGraphStore()
+        writer = Neo4jWriter(store)
+        assert writer.write_mentions("c", []) == 0
+        assert store.write_queries == []
+
+    def test_delete_orphan_entities(self):
+        store = MockGraphStore()
+        store.set_query_results([[{"deleted": 3}]])
+        writer = Neo4jWriter(store)
+        n = writer.delete_orphan_entities()
+        assert n == 3
+        assert "WHERE NOT (e)<-[:MENTIONS]-()" in store.executed_queries[0][0]
 
     def test_delete_chunks(self):
         store = MockGraphStore()
-        store.connect()
         writer = Neo4jWriter(store)
-
-        count = writer.delete_chunks(["base::fid::0", "base::fid::1"])
-        assert count == 2
-        assert len(store.write_queries) == 1
+        assert writer.delete_chunks(["a", "b"]) == 2
         assert "DETACH DELETE" in store.write_queries[0][0]
-
-    def test_delete_chunks_empty(self):
-        store = MockGraphStore()
-        store.connect()
-        writer = Neo4jWriter(store)
-        count = writer.delete_chunks([])
-        assert count == 0
 
     def test_delete_file_nodes(self):
         store = MockGraphStore()
-        store.connect()
         writer = Neo4jWriter(store)
-        writer.delete_file_nodes("abc-123")
-        assert len(store.write_queries) == 1
+        writer.delete_file_nodes("fid")
+        assert "file_id" in store.write_queries[0][0]
 
     def test_update_chunk_file_name(self):
         store = MockGraphStore()
-        store.connect()
         writer = Neo4jWriter(store)
-        writer.update_chunk_file_name("file-id", "new_name.md")
-        assert len(store.write_queries) == 1
+        writer.update_chunk_file_name("fid", "nuovo.pdf")
         assert "file_name" in store.write_queries[0][0]
 
     def test_update_chunk_embeddings(self):
         store = MockGraphStore()
-        store.connect()
         writer = Neo4jWriter(store)
-        writer.update_chunk_embeddings([
-            {"chunk_id": "base::fid::0", "embedding": [0.1, 0.2]},
-            {"chunk_id": "base::fid::1", "embedding": [0.3, 0.4]},
-        ])
-        assert len(store.write_queries) == 1
+        writer.update_chunk_embeddings([{"chunk_id": "c", "embedding": [1.0]}])
+        assert "embedding" in store.write_queries[0][0]
 
-    def test_update_chunk_embeddings_empty(self):
+    def test_create_indexes(self):
         store = MockGraphStore()
-        store.connect()
         writer = Neo4jWriter(store)
-        writer.update_chunk_embeddings([])
-        assert len(store.write_queries) == 0
-
-    def test_create_vector_index(self):
-        store = MockGraphStore()
-        store.connect()
-        writer = Neo4jWriter(store)
-        writer.create_vector_index(index_name="test-idx", dimensions=768)
-        assert len(store.write_queries) == 1
+        writer.create_vector_index(dimensions=4)
+        writer.create_fulltext_index()
         assert "VECTOR INDEX" in store.write_queries[0][0]
-
-    def test_create_fulltext_index(self):
-        store = MockGraphStore()
-        store.connect()
-        writer = Neo4jWriter(store)
-        writer.create_fulltext_index(index_name="test-ft", label="Chunk")
-        assert len(store.write_queries) == 1
-        assert "FULLTEXT INDEX" in store.write_queries[0][0]
-
-    def test_update_properties(self):
-        store = MockGraphStore()
-        store.connect()
-        writer = Neo4jWriter(store)
-        writer.update_properties("Person", "name", "Alice", {"age": 31})
-        assert len(store.write_queries) == 1
+        assert "FULLTEXT INDEX" in store.write_queries[1][0]
 
 
 # --------------------------------------------------------------------------- #
-# Test KSChunkLoader
+# Test chunk loader
 # --------------------------------------------------------------------------- #
+
+
+def _write_chunk(chunks_dir: Path, file_id: str, index: int, text: str) -> None:
+    d = chunks_dir / file_id
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{file_id}_chunk_{index}.md").write_text(text, encoding="utf-8")
 
 
 class TestKSChunkLoader:
-    """Test per KSChunkLoader."""
-
     def test_load_file_empty_dir(self, tmp_path):
-        chunks_dir = tmp_path / "chunks"
-        chunks_dir.mkdir()
-        loader = KSChunkLoader(chunks_dir=chunks_dir)
-        result = loader.load_file("nonexistent-id", base_name="test")
+        loader = KSChunkLoader(tmp_path / "chunks")
+        result = loader.load_file("missing", "kb1", "doc.md")
         assert result.chunks == []
 
     def test_load_file_with_chunks(self, tmp_path):
-        # Crea chunk su disco
         chunks_dir = tmp_path / "chunks"
-        file_id = "abc123"
-        chunk_dir = chunks_dir / file_id
-        chunk_dir.mkdir(parents=True)
-
-        (chunk_dir / f"{file_id}_chunk_0.md").write_text("First chunk")
-        (chunk_dir / f"{file_id}_chunk_1.md").write_text("Second chunk")
-        (chunk_dir / f"{file_id}_chunk_2.md").write_text("Third chunk")
-
-        loader = KSChunkLoader(chunks_dir=chunks_dir)
-        result = loader.load_file(file_id, base_name="mybase", file_name="doc.md")
-
-        assert len(result.chunks) == 3
-        assert result.chunks[0].text == "First chunk"
-        assert result.chunks[0].chunk_id == "mybase::abc123::0"
-        assert result.chunks[0].chunk_index == 0
-        assert result.chunks[1].text == "Second chunk"
-        assert result.chunks[1].chunk_id == "mybase::abc123::1"
-        assert result.chunks[2].text == "Third chunk"
-        assert result.document_info["file_id"] == file_id
-        assert result.document_info["base_name"] == "mybase"
+        _write_chunk(chunks_dir, "fid", 0, "primo chunk")
+        _write_chunk(chunks_dir, "fid", 1, "secondo chunk")
+        loader = KSChunkLoader(chunks_dir)
+        result = loader.load_file("fid", "kb1", "doc.md")
+        assert len(result.chunks) == 2
+        assert result.chunks[0].chunk_id == "kb1::fid::0"
+        assert result.chunks[0].text == "primo chunk"
 
     def test_load_file_ordering(self, tmp_path):
-        """Verifica che i chunk siano ordinati per indice."""
         chunks_dir = tmp_path / "chunks"
-        file_id = "xyz"
-        chunk_dir = chunks_dir / file_id
-        chunk_dir.mkdir(parents=True)
+        for i in (2, 0, 1):
+            _write_chunk(chunks_dir, "fid", i, f"c{i}")
+        loader = KSChunkLoader(chunks_dir)
+        result = loader.load_file("fid", "kb1", "doc.md")
+        assert [c.chunk_index for c in result.chunks] == [0, 1, 2]
 
-        # Crea fuori ordine
-        (chunk_dir / f"{file_id}_chunk_2.md").write_text("C")
-        (chunk_dir / f"{file_id}_chunk_0.md").write_text("A")
-        (chunk_dir / f"{file_id}_chunk_1.md").write_text("B")
-
-        loader = KSChunkLoader(chunks_dir=chunks_dir)
-        result = loader.load_file(file_id, base_name="base")
-
-        assert result.chunks[0].text == "A"
-        assert result.chunks[1].text == "B"
-        assert result.chunks[2].text == "C"
-
-    def test_load_file_with_embedding_collection(self, tmp_path):
-        """Test caricamento con embedding da collection mockata."""
+    def test_recycle_embedding_from_chroma(self, tmp_path):
         chunks_dir = tmp_path / "chunks"
-        file_id = "fid1"
-        chunk_dir = chunks_dir / file_id
-        chunk_dir.mkdir(parents=True)
-        (chunk_dir / f"{file_id}_chunk_0.md").write_text("Hello")
+        _write_chunk(chunks_dir, "fid", 0, "testo")
 
-        # Mock collection
-        class MockCollection:
-            def get(self, ids, include=None):
-                return {"embeddings": [[0.1, 0.2, 0.3]]}
+        class FakeCollection:
+            def get(self, ids, include):
+                return {"embeddings": [[0.5, 0.5, 0.5, 0.5]]}
 
-        loader = KSChunkLoader(chunks_dir=chunks_dir, chroma_collection=MockCollection())
-        result = loader.load_file(file_id, base_name="base")
-        assert result.chunks[0].embedding == [0.1, 0.2, 0.3]
+        loader = KSChunkLoader(chunks_dir, chroma_collection=FakeCollection())
+        result = loader.load_file("fid", "kb1", "doc.md")
+        assert result.chunks[0].embedding == [0.5, 0.5, 0.5, 0.5]
 
-    def test_upsert_chunks(self, tmp_path):
+    def test_recompute_embedding_with_graph_embedder(self, tmp_path):
         chunks_dir = tmp_path / "chunks"
-        loader = KSChunkLoader(chunks_dir=chunks_dir)
+        _write_chunk(chunks_dir, "fid", 0, "testo")
+        loader = KSChunkLoader(chunks_dir, embedder=StubEmbedder(), recompute=True)
+        result = loader.load_file("fid", "kb1", "doc.md")
+        assert result.chunks[0].embedding == [5.0, 0.0, 0.0, 1.0]
 
-        changed = [
-            {"index": 0, "text": "Updated chunk 0", "content_hash": "h0"},
-            {"index": 2, "text": "New chunk 2", "content_hash": "h2"},
-        ]
-        result = loader.upsert_chunks("base", "file-id", changed)
-        assert len(result.chunks) == 2
-        assert result.chunks[0].chunk_id == "base::file-id::0"
-        assert result.chunks[0].text == "Updated chunk 0"
-        assert result.chunks[1].chunk_id == "base::file-id::2"
-
-    def test_load_base(self, tmp_path):
-        """Test caricamento di un'intera base."""
+    def test_recompute_without_embedder_warns(self, tmp_path):
         chunks_dir = tmp_path / "chunks"
-
-        # Crea chunk per 2 file
-        for fid in ["f1", "f2"]:
-            d = chunks_dir / fid
-            d.mkdir(parents=True)
-            (d / f"{fid}_chunk_0.md").write_text(f"Chunk 0 of {fid}")
-
-        # Mock FileEntry
-        class MockFileEntry:
-            def __init__(self, fid, active=True):
-                self.file_id = fid
-                self.active = active
-
-        files = {
-            "doc1.md": MockFileEntry("f1"),
-            "doc2.md": MockFileEntry("f2"),
-            "inactive.md": MockFileEntry("f3", active=False),
-        }
-
-        loader = KSChunkLoader(chunks_dir=chunks_dir)
-        result = loader.load_base("mybase", files)
-        assert len(result.chunks) == 2  # f3 is inactive
-
-    def test_text_chunk_model(self):
-        chunk = TextChunk(
-            chunk_id="base::fid::0",
-            text="Hello",
-            base_name="base",
-            file_name="doc.md",
-            file_id="fid",
-            chunk_index=0,
-        )
-        assert chunk.chunk_id == "base::fid::0"
-        assert chunk.text == "Hello"
-
-    def test_text_chunks_model(self):
-        tc = TextChunks(
-            chunks=[TextChunk(chunk_id="c1", text="t1")],
-            document_info={"file_id": "f1"},
-        )
-        assert len(tc.chunks) == 1
-        assert tc.document_info["file_id"] == "f1"
+        _write_chunk(chunks_dir, "fid", 0, "testo")
+        loader = KSChunkLoader(chunks_dir, recompute=True)
+        result = loader.load_file("fid", "kb1", "doc.md")
+        assert result.chunks[0].embedding is None
 
 
 # --------------------------------------------------------------------------- #
-# Test GraphRetriever
+# Test retriever unico
 # --------------------------------------------------------------------------- #
-
-
-class TestVectorRetriever:
-    """Test per VectorRetriever."""
-
-    def test_search(self):
-        store = MockGraphStore()
-        store.connect()
-        store.set_query_results([
-            [
-                {"node.chunk_id": "c1", "node.text": "text1", "score": 0.9},
-                {"node.chunk_id": "c2", "node.text": "text2", "score": 0.8},
-            ]
-        ])
-
-        embedder = StubEmbedder()
-        retriever = VectorRetriever(store=store, embedder=embedder)
-        results = retriever.search("query", top_k=2)
-
-        assert len(results) == 2
-        assert results[0].chunk_id == "c1"
-        assert results[0].score == 0.9
-        assert results[1].chunk_id == "c2"
-
-    def test_name(self):
-        store = MockGraphStore()
-        embedder = StubEmbedder()
-        retriever = VectorRetriever(store=store, embedder=embedder)
-        assert retriever.name == "vector"
-
-
-class TestVectorCypherRetriever:
-    """Test per VectorCypherRetriever."""
-
-    def test_search(self):
-        store = MockGraphStore()
-        store.connect()
-        store.set_query_results([
-            [
-                {"chunk_id": "c1", "text": "text1", "score": 0.9, "entities": ["Neo4j"]},
-            ]
-        ])
-
-        embedder = StubEmbedder()
-        retriever = VectorCypherRetriever(store=store, embedder=embedder)
-        results = retriever.search("query", top_k=1)
-
-        assert len(results) == 1
-        assert results[0].metadata.get("entities") == ["Neo4j"]
-
-    def test_name(self):
-        assert VectorCypherRetriever.__init__.__code__.co_varnames  # Just verify it exists
-        store = MockGraphStore()
-        embedder = StubEmbedder()
-        retriever = VectorCypherRetriever(store=store, embedder=embedder)
-        assert retriever.name == "vector_cypher"
-
-
-class TestHybridRetriever:
-    """Test per HybridRetriever."""
-
-    def test_search(self):
-        store = MockGraphStore()
-        store.connect()
-        store.set_query_results([
-            [{"chunk_id": "c1", "text": "text1", "score": 1.5}],
-        ])
-
-        embedder = StubEmbedder()
-        retriever = HybridRetriever(store=store, embedder=embedder)
-        results = retriever.search("query")
-        assert len(results) == 1
-
-    def test_name(self):
-        store = MockGraphStore()
-        embedder = StubEmbedder()
-        retriever = HybridRetriever(store=store, embedder=embedder)
-        assert retriever.name == "hybrid"
 
 
 class TestHybridCypherRetriever:
-    """Test per HybridCypherRetriever."""
+    def _store_with_results(self, rows):
+        store = MockGraphStore()
+        store.set_query_results([rows])
+        return store
 
     def test_search(self):
-        store = MockGraphStore()
-        store.connect()
-        store.set_query_results([
-            [{"chunk_id": "c1", "text": "text1", "score": 1.5, "entities": ["E1"]}],
+        store = self._store_with_results([
+            {"chunk_id": "kb1::f::0", "text": "testo", "score": 0.9,
+             "entities": ["Alice"]},
         ])
-
-        embedder = StubEmbedder()
-        retriever = HybridCypherRetriever(store=store, embedder=embedder)
-        results = retriever.search("query")
+        retriever = HybridCypherRetriever(store, StubEmbedder())
+        results = retriever.search("query", top_k=3)
         assert len(results) == 1
+        assert results[0].chunk_id == "kb1::f::0"
+        assert results[0].metadata["entities"] == ["Alice"]
 
-    def test_name(self):
+    def test_search_with_active_base_filter(self):
+        store = self._store_with_results([])
+        retriever = HybridCypherRetriever(store, StubEmbedder())
+        retriever.search("q", top_k=3, active_base_names=["kb1", "kb2"])
+        query, params = store.executed_queries[0]
+        assert "WHERE base IN $active_base_names" in query
+        assert params["active_base_names"] == ["kb1", "kb2"]
+
+    def test_search_without_filter(self):
+        store = self._store_with_results([])
+        retriever = HybridCypherRetriever(store, StubEmbedder())
+        retriever.search("q", top_k=3)
+        query, params = store.executed_queries[0]
+        assert "active_base_names" not in query
+        assert "active_base_names" not in params
+
+
+# --------------------------------------------------------------------------- #
+# Helpers per GraphManager
+# --------------------------------------------------------------------------- #
+
+
+def _make_workspace(tmp_path: Path) -> Workspace:
+    ws = Workspace(path=tmp_path / "ws")
+    (ws.path / "kb1").mkdir(parents=True)
+    return ws
+
+
+def _make_entry(file_id: str, name: str, n_chunks: int) -> FileEntry:
+    return FileEntry(
+        mtime=1.0,
+        added="2026-01-01T00:00:00",
+        file_id=file_id,
+        name=name,
+        content_hash="hash-file",
+        chunks=[ChunkRef(index=i, content_hash=f"h{i}") for i in range(n_chunks)],
+    )
+
+
+def _add_base(ws: Workspace, base_name: str, entry: FileEntry, texts: List[str]) -> None:
+    kb = KnowledgeBase(
+        name=base_name,
+        path=ws.path / base_name,
+        embedding_model="stub",
+        files={entry.name: entry},
+    )
+    ws.bases[base_name] = kb
+    chunks_dir = kb.path / ".knowledge-space" / "chunks"
+    for i, text in enumerate(texts):
+        _write_chunk(chunks_dir, entry.file_id, i, text)
+
+
+def _graph_config(**kwargs: Any) -> BaseConfig:
+    g = GraphConfig(enabled=True, extraction_model="mock/llm", embedding_model="stub")
+    for k, v in kwargs.items():
+        setattr(g, k, v)
+    return BaseConfig(graph=g)
+
+
+def _llm_with_nodes(nodes: List[Dict[str, str]], edges: List[Dict[str, str]]):
+    llm = MockFixedLLM()
+
+    def mock_generate(messages, **kwargs):
+        return json.dumps({"nodes": nodes, "edges": edges})
+
+    llm.generate = mock_generate
+    return llm
+
+
+def _make_graph_manager(ws: Workspace, config: BaseConfig, store: MockGraphStore) -> GraphManager:
+    store.connect()
+
+    def config_loader(base_name: str) -> BaseConfig:
+        return config
+
+    return GraphManager(
+        workspace=ws,
+        config_loader=config_loader,
+        graph_store_factory=lambda **kw: store,
+        llm_factory=lambda name: _llm_with_nodes(
+            [{"name": "Alice", "label": "Persona"}],
+            [],
+        ),
+        embedder_factory=lambda name: StubEmbedder(),
+        chroma_getter=None,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Test GraphManager
+# --------------------------------------------------------------------------- #
+
+
+class TestGraphManager:
+    def test_gating_disabled_returns_empty(self, tmp_path):
+        ws = _make_workspace(tmp_path)
+        _add_base(ws, "kb1", _make_entry("fid", "doc.md", 1), ["testo"])
+        config = _graph_config(enabled=False)
         store = MockGraphStore()
-        embedder = StubEmbedder()
-        retriever = HybridCypherRetriever(store=store, embedder=embedder)
-        assert retriever.name == "hybrid_cypher"
+        gm = _make_graph_manager(ws, config, store)
+        counts = gm.build_graph()
+        assert counts == {"chunk": 0, "document": 0, "entity": 0, "relation": 0}
 
-
-class TestText2CypherRetriever:
-    """Test per Text2CypherRetriever."""
-
-    def test_search(self):
+    def test_gating_no_extraction_model(self, tmp_path):
+        ws = _make_workspace(tmp_path)
+        _add_base(ws, "kb1", _make_entry("fid", "doc.md", 1), ["testo"])
+        config = _graph_config(extraction_model=None)
         store = MockGraphStore()
-        store.connect()
-        llm = MockFixedLLM()
+        gm = _make_graph_manager(ws, config, store)
+        counts = gm.build_graph()
+        assert counts["chunk"] == 0
 
-        def mock_generate(messages, **kwargs):
-            return "MATCH (c:Chunk) RETURN c.chunk_id AS chunk_id, c.text AS text, 1.0 AS score LIMIT 5"
+    def test_build_graph(self, tmp_path):
+        ws = _make_workspace(tmp_path)
+        _add_base(ws, "kb1", _make_entry("fid", "doc.md", 2), ["uno", "due"])
+        config = _graph_config()
+        store = MockGraphStore()
+        gm = _make_graph_manager(ws, config, store)
+        counts = gm.build_graph()
+        assert counts["document"] == 1
+        assert counts["chunk"] == 2
+        assert counts["entity"] == 2  # Alice menzionata in 2 chunk
+        # Indici creati
+        queries = " ".join(q for q, _ in store.write_queries)
+        assert "VECTOR INDEX" in queries
+        assert "FULLTEXT INDEX" in queries
+        # MENTIONS scritte
+        assert any("MENTIONS" in q for q, _ in store.write_queries)
+        # HAS_CHUNK scritto
+        assert any("HAS_CHUNK" in q for q, _ in store.write_queries)
 
-        llm.generate = mock_generate
+    def test_build_connection_error(self, tmp_path):
+        ws = _make_workspace(tmp_path)
+        _add_base(ws, "kb1", _make_entry("fid", "doc.md", 1), ["testo"])
+        config = _graph_config()
+        store = MockGraphStore()  # NOT connected
+        gm = _make_graph_manager(ws, config, store)
+        store.close()  # simula Neo4j giù
+        with pytest.raises(ConnectionError):
+            gm.build_graph()
+
+    def test_sync_base_detects_changed_chunks(self, tmp_path):
+        ws = _make_workspace(tmp_path)
+        _add_base(ws, "kb1", _make_entry("fid", "doc.md", 1), ["testo"])
+        config = _graph_config()
+        store = MockGraphStore()
+        gm = _make_graph_manager(ws, config, store)
+        # Chunk presente nel grafo con hash DIVERSO → da ri-estrarre.
+        store.set_query_results(
+            [[{"chunk_id": "kb1::fid::0", "content_hash": "hash-diverso"}]]
+        )
+        counts = gm.sync_base("kb1")
+        assert counts["chunk"] == 1
+        # delete_chunks + riscrittura
+        assert any("DETACH DELETE" in q for q, _ in store.write_queries)
+        # cleanup orfane eseguito
+        assert any("WHERE NOT (e)<-[:MENTIONS]-()" in q for q, _ in store.executed_queries)
+
+    def test_sync_base_unchanged_skips(self, tmp_path):
+        ws = _make_workspace(tmp_path)
+        _add_base(ws, "kb1", _make_entry("fid", "doc.md", 1), ["testo"])
+        config = _graph_config()
+        store = MockGraphStore()
+        gm = _make_graph_manager(ws, config, store)
+        # content_hash coincide → nessun chunk cambiato.
+        store.set_query_results(
+            [[{"chunk_id": "kb1::fid::0", "content_hash": "h0"}]]
+        )
+        counts = gm.sync_base("kb1")
+        assert counts["chunk"] == 0
+
+    def test_remove_base(self, tmp_path):
+        ws = _make_workspace(tmp_path)
+        _add_base(ws, "kb1", _make_entry("fid", "doc.md", 1), ["testo"])
+        config = _graph_config()
+        store = MockGraphStore()
+        gm = _make_graph_manager(ws, config, store)
+        gm.remove_base("kb1")
+        assert any("file_id" in q for q, _ in store.write_queries)
+
+    def test_status(self, tmp_path):
+        ws = _make_workspace(tmp_path)
+        _add_base(ws, "kb1", _make_entry("fid", "doc.md", 1), ["testo"])
+        config = _graph_config()
+        store = MockGraphStore()
+        gm = _make_graph_manager(ws, config, store)
         store.set_query_results([
-            [{"chunk_id": "c1", "text": "text1", "score": 1.0}],
+            [{"c": 1}],  # Document
+            [{"c": 2}],  # Chunk
+            [{"c": 3}],  # Entity
+            [{"c": 4}],  # relazioni
+            [{"b": "kb1"}],  # basi
         ])
+        info = gm.status()
+        assert info["connected"] is True
+        assert info["document"] == 1
+        assert info["chunk"] == 2
+        assert info["entity"] == 3
+        assert info["relations"] == 4
+        assert info["bases"] == ["kb1"]
 
-        retriever = Text2CypherRetriever(store=store, llm=llm)
-        results = retriever.search("What is Neo4j?")
+    def test_search(self, tmp_path):
+        ws = _make_workspace(tmp_path)
+        _add_base(ws, "kb1", _make_entry("fid", "doc.md", 1), ["testo"])
+        config = _graph_config()
+        store = MockGraphStore()
+        gm = _make_graph_manager(ws, config, store)
+        store.set_query_results([
+            [{"chunk_id": "kb1::fid::0", "text": "t", "score": 0.8, "entities": []}]
+        ])
+        results = gm.search("q", top_k=3, active_base_names=["kb1"])
         assert len(results) == 1
-
-    def test_name(self):
-        store = MockGraphStore()
-        llm = MockFixedLLM()
-        retriever = Text2CypherRetriever(store=store, llm=llm)
-        assert retriever.name == "text2cypher"
+        assert results[0].chunk_id == "kb1::fid::0"
 
 
-class TestToolsRetriever:
-    """Test per ToolsRetriever."""
+# --------------------------------------------------------------------------- #
+# Test GraphSearchService (filtro attivi)
+# --------------------------------------------------------------------------- #
 
-    def test_search_returns_empty(self):
-        store = MockGraphStore()
-        llm = MockFixedLLM()
-        retriever = ToolsRetriever(store=store, llm=llm)
-        results = retriever.search("query")
+
+class TestGraphSearchService:
+    def _workspace_with_results(self, tmp_path: Path, active: bool):
+        ws = _make_workspace(tmp_path)
+        entry = _make_entry("fid", "doc.md", 1)
+        entry.chunks[0].active = active
+        entry.active = active
+        kb = KnowledgeBase(
+            name="kb1", path=ws.path / "kb1", embedding_model="stub",
+            files={"doc.md": entry},
+        )
+        kb.active = active
+        ws.bases["kb1"] = kb
+        return ws
+
+    def test_search_filters_inactive_base(self, tmp_path):
+        ws = self._workspace_with_results(tmp_path, active=False)
+
+        class FakeGM:
+            def __init__(self):
+                self.called_with = None
+
+            def search(self, query, top_k=5, active_base_names=None):
+                self.called_with = active_base_names
+                return [
+                    GraphSearchResult("kb1::fid::0", "testo", 0.9,
+                                      metadata={"entities": []})
+                ]
+
+        gm = FakeGM()
+        service = GraphSearchService(gm)
+        results = service.search(ws, "q")
+        # La base inattiva non è searchable → nessun filtro attivo, 0 risultati.
         assert results == []
 
-    def test_name(self):
-        store = MockGraphStore()
-        llm = MockFixedLLM()
-        retriever = ToolsRetriever(store=store, llm=llm)
-        assert retriever.name == "tools"
+    def test_search_keeps_active_base(self, tmp_path):
+        ws = self._workspace_with_results(tmp_path, active=True)
 
+        class FakeGM:
+            def search(self, query, top_k=5, active_base_names=None):
+                assert active_base_names == ["kb1"]
+                return [
+                    GraphSearchResult("kb1::fid::0", "testo", 0.9,
+                                      metadata={"entities": []})
+                ]
 
-class TestGraphSearchResult:
-    """Test per GraphSearchResult."""
+        service = GraphSearchService(FakeGM())
+        results = service.search(ws, "q")
+        assert len(results) == 1
+        assert results[0].chunk_id == "kb1::fid::0"
 
-    def test_repr(self):
-        r = GraphSearchResult(chunk_id="c1", text="hello world", score=0.95)
-        assert "c1" in repr(r)
-        assert "0.9500" in repr(r)
-
-    def test_eq(self):
-        r1 = GraphSearchResult(chunk_id="c1", text="t", score=0.9)
-        r2 = GraphSearchResult(chunk_id="c1", text="t", score=0.9)
-        r3 = GraphSearchResult(chunk_id="c2", text="t", score=0.9)
-        assert r1 == r2
-        assert r1 != r3
-        assert r1 != "not a result"
-
-    def test_hash(self):
-        r1 = GraphSearchResult(chunk_id="c1", text="t", score=0.9)
-        r2 = GraphSearchResult(chunk_id="c1", text="t", score=0.9)
-        assert hash(r1) == hash(r2)
-
-
-class TestRetrieverFactory:
-    """Test per RetrieverFactory."""
-
-    def test_build_vector(self):
-        store = MockGraphStore()
-        embedder = StubEmbedder()
-        retriever = RetrieverFactory.build("vector", store=store, embedder=embedder)
-        assert isinstance(retriever, VectorRetriever)
-
-    def test_build_vector_cypher(self):
-        store = MockGraphStore()
-        embedder = StubEmbedder()
-        retriever = RetrieverFactory.build("vector_cypher", store=store, embedder=embedder)
-        assert isinstance(retriever, VectorCypherRetriever)
-
-    def test_build_hybrid(self):
-        store = MockGraphStore()
-        embedder = StubEmbedder()
-        retriever = RetrieverFactory.build("hybrid", store=store, embedder=embedder)
-        assert isinstance(retriever, HybridRetriever)
-
-    def test_build_hybrid_cypher(self):
-        store = MockGraphStore()
-        embedder = StubEmbedder()
-        retriever = RetrieverFactory.build("hybrid_cypher", store=store, embedder=embedder)
-        assert isinstance(retriever, HybridCypherRetriever)
-
-    def test_build_text2cypher(self):
-        store = MockGraphStore()
-        llm = MockFixedLLM()
-        retriever = RetrieverFactory.build("text2cypher", store=store, llm=llm)
-        assert isinstance(retriever, Text2CypherRetriever)
-
-    def test_build_tools(self):
-        store = MockGraphStore()
-        llm = MockFixedLLM()
-        retriever = RetrieverFactory.build("tools", store=store, llm=llm)
-        assert isinstance(retriever, ToolsRetriever)
-
-    def test_build_unknown(self):
-        store = MockGraphStore()
-        with pytest.raises(ValueError, match="non supportato"):
-            RetrieverFactory.build("unknown", store=store)
-
-    def test_build_vector_requires_embedder(self):
-        store = MockGraphStore()
-        with pytest.raises(ValueError, match="embedder"):
-            RetrieverFactory.build("vector", store=store, embedder=None)
-
-    def test_build_text2cypher_requires_llm(self):
-        store = MockGraphStore()
-        embedder = StubEmbedder()
-        with pytest.raises(ValueError, match="LLM"):
-            RetrieverFactory.build("text2cypher", store=store, embedder=embedder, llm=None)
-
-
-# --------------------------------------------------------------------------- #
-# Test BaseConfig con GraphConfig
-# --------------------------------------------------------------------------- #
-
-
-class TestGraphConfig:
-    """Test per GraphConfig in BaseConfig."""
-
-    def test_default_graph_config(self):
-        from knowledge_base.base_config import BaseConfig, GraphConfig
-
-        config = BaseConfig()
-        assert config.graph.enabled is False
-        assert config.graph.on_chunk_change == "lazy"
-        assert config.graph.retriever == "hybrid_cypher"
-        assert config.graph.schema_mode == "FREE"
-        assert config.graph.resolver == "exact"
-        assert config.graph.extraction_model is None
-
-    def test_graph_config_from_toml(self):
-        from knowledge_base.base_config import BaseConfig
-
-        data = {
-            "graph": {
-                "enabled": True,
-                "on_chunk_change": "eager",
-                "retriever": "hybrid",
-                "schema": "EXTRACTED",
-                "extraction_model": "mock/fixed",
-            }
-        }
-        config = BaseConfig.from_toml(data)
-        assert config.graph.enabled is True
-        assert config.graph.on_chunk_change == "eager"
-        assert config.graph.retriever == "hybrid"
-        assert config.graph.schema_mode == "EXTRACTED"
-        assert config.graph.extraction_model == "mock/fixed"
-
-    def test_graph_config_override(self):
-        from knowledge_base.base_config import BaseConfig
-
-        base = BaseConfig()
-        override_data = {"graph": {"enabled": True, "retriever": "vector"}}
-        override = BaseConfig.from_toml(override_data)
-        merged = base.override(override)
-        assert merged.graph.enabled is True
-        assert merged.graph.retriever == "vector"
-        # Non-overridden fields keep default
-        assert merged.graph.on_chunk_change == "lazy"
-
-    def test_graph_config_unknown_fields_ignored(self, caplog):
-        from knowledge_base.base_config import BaseConfig
-
-        data = {"graph": {"unknown_field": "value", "enabled": True}}
-        config = BaseConfig.from_toml(data)
-        assert config.graph.enabled is True
-
-    def test_graph_config_roundtrip_json(self):
-        from knowledge_base.base_config import GraphConfig
-
-        config = GraphConfig(
-            enabled=True,
-            on_chunk_change="eager",
-            retriever="hybrid",
-            extraction_model="openai/gpt-4o",
+    def test_search_filters_inactive_chunk(self, tmp_path):
+        ws = _make_workspace(tmp_path)
+        entry = _make_entry("fid", "doc.md", 2)
+        entry.chunks[1].active = False
+        kb = KnowledgeBase(
+            name="kb1", path=ws.path / "kb1", embedding_model="stub",
+            files={"doc.md": entry},
         )
-        json_str = config.model_dump_json()
-        loaded = GraphConfig.model_validate_json(json_str)
-        assert loaded.enabled is True
-        assert loaded.retriever == "hybrid"
-        assert loaded.extraction_model == "openai/gpt-4o"
+        ws.bases["kb1"] = kb
 
+        class FakeGM:
+            def search(self, query, top_k=5, active_base_names=None):
+                return [
+                    GraphSearchResult("kb1::fid::0", "attivo", 0.9),
+                    GraphSearchResult("kb1::fid::1", "inattivo", 0.8),
+                ]
 
-# --------------------------------------------------------------------------- #
-# Test integrazione Neo4j (opzionale)
-# --------------------------------------------------------------------------- #
-
-
-@pytest.mark.neo4j
-class TestNeo4jIntegration:
-    """Test di integrazione con Neo4j reale.
-
-    Richiede un'istanza Neo4j in esecuzione. Eseguire con:
-        pytest -m neo4j
-    """
-
-    def test_connectivity(self):
-        store = graph_store_factory(backend="neo4j")
-        try:
-            store.connect()
-            assert store.verify_connectivity()
-        except Exception:
-            pytest.skip("Neo4j non raggiungibile")
-        finally:
-            store.close()
-
-    def test_write_and_query(self):
-        store = graph_store_factory(backend="neo4j")
-        try:
-            store.connect()
-        except Exception:
-            pytest.skip("Neo4j non raggiungibile")
-
-        writer = Neo4jWriter(store)
-        try:
-            # Write
-            writer.write_nodes(
-                [{"name": "TestNode", "test_prop": "hello"}],
-                label="TestLabel",
-            )
-            # Query
-            results = store.execute_query(
-                "MATCH (n:TestLabel {name: $name}) RETURN n.name AS name",
-                {"name": "TestNode"},
-            )
-            assert len(results) == 1
-            assert results[0]["name"] == "TestNode"
-        finally:
-            # Cleanup
-            store.execute_write("MATCH (n:TestLabel) DETACH DELETE n")
-            store.close()
+        service = GraphSearchService(FakeGM())
+        results = service.search(ws, "q")
+        assert len(results) == 1
+        assert results[0].chunk_id == "kb1::fid::0"

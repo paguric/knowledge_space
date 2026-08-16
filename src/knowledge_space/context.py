@@ -60,5 +60,11 @@ class AppContext:
     """Factory che, dato il nome di un modello LLM, restituisce la
     :class:`LLMStrategy` corrispondente."""
 
-    graph_store_factory: Optional[Callable[[GraphConfigData], Any]] = None
-    """Factory per il grafo Neo4j (Fase 1C). ``None`` se non configurato."""
+    graph_store_factory: Optional[Callable[..., Any]] = None
+    """Factory per lo store del grafo (refactor-001): accetta
+    ``uri``/``user``/``password``/``database`` come kwargs e restituisce
+    un ``GraphStore``. ``None`` se non configurato."""
+
+    graph_manager_factory: Optional[Callable[[Workspace], Any]] = None
+    """Factory che, dato un ``Workspace``, restituisce un ``GraphManager``
+    (refactor-001). ``None`` se non configurato."""

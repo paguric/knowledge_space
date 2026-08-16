@@ -85,7 +85,10 @@ class TestToolRegistry:
 
     def test_solo_tool_di_lettura(self, tmp_path):
         names = self._tool_names(tmp_path)
-        assert names == ["base_list", "domain_list", "search"]
+        assert names == [
+            "base_list", "domain_list", "search",
+            "graph_status", "graph_search",
+        ]
 
     def test_niente_tool_di_scrittura(self, tmp_path):
         names = self._tool_names(tmp_path)

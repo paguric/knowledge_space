@@ -60,10 +60,12 @@ class WorkspaceManager:
         global_index: GlobalIndex,
         config_path_for: ConfigPathFor,
         base_manager_factory: Optional[BaseManagerFactory] = None,
+        graph_manager_factory: Optional[Callable[[Any], Any]] = None,
     ) -> None:
         self._index = global_index
         self._config_path_for = config_path_for
         self._base_manager_factory = base_manager_factory
+        self._graph_manager_factory = graph_manager_factory
 
     # ..................................................................... #
     # CRUD
@@ -273,6 +275,21 @@ class WorkspaceManager:
 
         # 3. Persisti i file indicizzati.
         self._save(workspace)
+
+        # 4. Propagazione al grafo (refactor-001): basi rimosse →
+        #    remove_base; poi sync_base per le basi con grafo attivo.
+        #    Errori NON fatali: Neo4j giù → WARNING, riallineamento
+        #    alla prossima sync.
+        if self._graph_manager_factory is not None:
+            try:
+                graph_manager = self._graph_manager_factory(workspace)
+                basi_rimosse = basi_prima - basi_dopo
+                for bname in basi_rimosse:
+                    graph_manager.remove_base(bname)
+                graph_manager.sync_base()
+            except Exception as exc:
+                logger.warning("Propagazione grafo fallita: %s", exc)
+
         return workspace
 
     def _ingest_files_in_base(

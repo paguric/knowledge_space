@@ -1,14 +1,11 @@
-"""Entity and relation extraction from text chunks via LLM.
+"""Estrazione entità e relazioni dai chunk via LLM.
 
 ``EntityRelationExtractor`` usa un LLM per estrarre entità e relazioni
-dai chunk di testo. Produce un ``GraphExtractionResult`` con nodi, archi
-e proprietà.
+da un chunk di testo. Riferimenti **per nome** (nessun id locale):
+nodi ``{name, label}``, archi ``{source, target, type}`` — il resolver
+(ExactMatch) è solo una rete di sicurezza, la dedup vera la fa il prompt.
 
-Il prompt di estrazione è configurabile; il default estrae:
-- Entità con tipo (label), nome e proprietà
-- Relazioni con tipo, source e target
-
-L'LLM è iniettato come ``LLMStrategy`` (lazy import del modulo strategies).
+L'LLM è iniettato come ``LLMStrategy``.
 """
 
 from __future__ import annotations
@@ -29,20 +26,19 @@ logger = logging.getLogger(__name__)
 
 
 class ExtractedNode(BaseModel):
-    """Nodo estratto da un chunk."""
+    """Nodo estratto da un chunk (riferimento per nome)."""
 
-    id: str  # identificatore univoco nell'estrazione (transiente)
-    label: str  # tipo di entità (es. "Person", "Organization")
     name: str  # nome dell'entità
+    label: str  # tipo di entità (es. "Persona", "Organizzazione")
     properties: Dict[str, Any] = Field(default_factory=dict)
     chunk_id: Optional[str] = None  # chunk sorgente
 
 
 class ExtractedEdge(BaseModel):
-    """Arco estratto da un chunk."""
+    """Arco estratto da un chunk (source/target per nome)."""
 
-    source_id: str  # id del nodo sorgente (nell'estrazione)
-    target_id: str  # id del nodo target (nell'estrazione)
+    source: str  # nome del nodo sorgente
+    target: str  # nome del nodo target
     type: str  # tipo di relazione
     properties: Dict[str, Any] = Field(default_factory=dict)
     chunk_id: Optional[str] = None  # chunk sorgente
@@ -63,32 +59,32 @@ class GraphExtractionResult(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
-# Prompt default
+# Prompt (fisso, unico)
 # --------------------------------------------------------------------------- #
 
-_DEFAULT_SYSTEM_PROMPT = """You are an expert at extracting entities and relationships from text.
+_SYSTEM_PROMPT = """You are an expert at extracting entities and relationships from text.
 
 Given a text, extract:
-1. Entities (nodes): people, organizations, locations, concepts, events, etc.
+1. Entities (nodes): people, organizations, locations, concepts, events, documents, laws, etc.
 2. Relationships (edges): connections between entities.
 
 Output a JSON object with this exact structure:
 {
   "nodes": [
-    {"id": "n1", "label": "Person", "name": "John Doe", "properties": {}}
+    {"name": "Mario Rossi", "label": "Persona", "properties": {}}
   ],
   "edges": [
-    {"source_id": "n1", "target_id": "n2", "type": "WORKS_AT", "properties": {}}
+    {"source": "Mario Rossi", "target": "Acme SRL", "type": "LAVORA_PER", "properties": {}}
   ]
 }
 
 Rules:
-- Use meaningful entity labels (Person, Organization, Location, Concept, Event, etc.)
-- Use UPPER_SNAKE_CASE for relationship types
-- Include all relevant properties on nodes and edges
-- IDs are local to this extraction (n1, n2, etc.)
-- If no entities/relationships found, return empty arrays
-- Output ONLY valid JSON, no markdown fences"""
+- Reference nodes BY NAME in edges (source/target are the exact node names).
+- Use the same name for the same entity everywhere (deduplicate in your head before output).
+- Labels are semantic (Italian or English): "Persona", "Organizzazione", "Luogo", "Concetto", "Evento", "Legge", etc.
+- Relationship types in UPPER_SNAKE_CASE.
+- If no entities/relationships found, return empty arrays.
+- Output ONLY valid JSON, no markdown fences."""
 
 _USER_PROMPT_TEMPLATE = """Extract entities and relationships from this text:
 
@@ -116,46 +112,35 @@ class ExtractionError(RuntimeError):
 class EntityRelationExtractor:
     """Estrattore di entità e relazioni da chunk di testo.
 
-    Usa un LLM (iniettato come ``LLMStrategy``) per analizzare il testo
-    e produrre un grafo di entità e relazioni.
-
     Args:
         llm: strategia LLM per l'estrazione.
-        system_prompt: prompt di sistema (opzionale, usa default).
     """
 
-    def __init__(
-        self,
-        llm: Any,  # LLMStrategy — Any per evitare import circolari
-        system_prompt: Optional[str] = None,
-    ) -> None:
+    def __init__(self, llm: Any) -> None:  # LLMStrategy — Any per evitare import circolari
         self._llm = llm
-        self._system_prompt = system_prompt or _DEFAULT_SYSTEM_PROMPT
 
-    def extract(self, text: str, chunk_id: Optional[str] = None) -> GraphExtractionResult:
+    def extract(
+        self,
+        text: str,
+        chunk_id: Optional[str] = None,
+    ) -> GraphExtractionResult:
         """Estrae entità e relazioni da un singolo chunk.
 
-        Args:
-            text: testo del chunk.
-            chunk_id: id del chunk sorgente (opzionale, propagato ai nodi/archi).
-
-        Returns:
-            ``GraphExtractionResult`` con nodi e archi estratti.
-
-        Raises:
-            ExtractionError: se l'LLM non restituisce JSON valido.
+        JSON invalido → warning + risultato vuoto (mai un errore bloccante).
         """
         if not text.strip():
             return GraphExtractionResult()
 
         user_prompt = _USER_PROMPT_TEMPLATE.format(text=text)
         messages = [
-            {"role": "system", "content": self._system_prompt},
+            {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ]
 
         try:
-            raw_response = self._llm.generate(messages, max_tokens=4096, temperature=0.0)
+            raw_response = self._llm.generate(
+                messages, max_tokens=4096, temperature=0.0
+            )
         except Exception as exc:
             raise ExtractionError(f"Errore nella chiamata LLM: {exc}") from exc
 
@@ -165,14 +150,7 @@ class EntityRelationExtractor:
         self,
         chunks: List[Dict[str, Any]],
     ) -> GraphExtractionResult:
-        """Estrae entità e relazioni da una lista di chunk.
-
-        Args:
-            chunks: lista di dict con almeno ``"text"`` e opzionalmente ``"chunk_id"``.
-
-        Returns:
-            ``GraphExtractionResult`` fuso da tutti i chunk.
-        """
+        """Estrae da una lista di chunk (per-chunk, aggregato)."""
         combined = GraphExtractionResult()
         for chunk in chunks:
             text = chunk.get("text", "")
@@ -187,22 +165,19 @@ class EntityRelationExtractor:
         chunk_id: Optional[str] = None,
     ) -> GraphExtractionResult:
         """Parse la risposta JSON dell'LLM in un ``GraphExtractionResult``."""
-        # Tenta di estrarre JSON dalla risposta (potrebbe contenere markdown fences)
         cleaned = self._extract_json(raw)
 
         try:
             data = json.loads(cleaned)
         except json.JSONDecodeError as exc:
             logger.warning("Risposta LLM non è JSON valido: %s", exc)
-            # Fallback: ritorna risultato vuoto
             return GraphExtractionResult()
 
         nodes = []
         for n in data.get("nodes", []):
             nodes.append(ExtractedNode(
-                id=n.get("id", ""),
-                label=n.get("label", "Unknown"),
                 name=n.get("name", ""),
+                label=n.get("label", "Entità"),
                 properties=n.get("properties", {}),
                 chunk_id=chunk_id,
             ))
@@ -210,8 +185,8 @@ class EntityRelationExtractor:
         edges = []
         for e in data.get("edges", []):
             edges.append(ExtractedEdge(
-                source_id=e.get("source_id", ""),
-                target_id=e.get("target_id", ""),
+                source=e.get("source", ""),
+                target=e.get("target", ""),
                 type=e.get("type", "RELATED_TO"),
                 properties=e.get("properties", {}),
                 chunk_id=chunk_id,
@@ -222,15 +197,14 @@ class EntityRelationExtractor:
     @staticmethod
     def _extract_json(text: str) -> str:
         """Estrae JSON da una risposta che potrebbe contenere markdown fences."""
-        # Prova a trovare blocco JSON tra ```json ... ``` o ``` ... ```
+        # Blocco JSON tra ```json ... ``` o ``` ... ```
         match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", text, re.DOTALL)
         if match:
             return match.group(1).strip()
 
-        # Prova a trovare un oggetto JSON { ... }
+        # Oggetto JSON { ... }
         match = re.search(r"\{.*\}", text, re.DOTALL)
         if match:
             return match.group(0)
 
-        # Restituisce il testo così com'è
         return text.strip()
