@@ -287,6 +287,9 @@ class WorkspaceManager:
         if not base_path.is_dir():
             return
 
+        # bug-025: pulizia artefatti di indicizzazioni fallite.
+        base_manager.cleanup_orphan_artifacts(base_name)
+
         files = [
             f
             for f in base_path.iterdir()
@@ -443,6 +446,10 @@ class WorkspaceManager:
         base_path = kb.path
         if not base_path.is_dir():
             return
+
+        # bug-025: pulizia artefatti di indicizzazioni fallite
+        # (prima del check mtime: pulisce anche senza file da ingestire).
+        base_manager.cleanup_orphan_artifacts(base_name)
 
         files_to_ingest: list[Path] = []
         for file_path in base_path.iterdir():

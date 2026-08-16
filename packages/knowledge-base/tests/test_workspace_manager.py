@@ -298,6 +298,29 @@ def test_sync_and_ingest_calls_add_file_for_new_bases(tmp_path):
     assert ("kb1", "doc2.txt") in call_args
 
 
+def test_sync_and_ingest_calls_cleanup_orphan_artifacts(tmp_path):
+    """bug-025: la sync chiama la pulizia orfani per ogni base nuova."""
+    mock_bm = MagicMock()
+    mock_bm.add_file.return_value = MagicMock()
+
+    def factory(ws):
+        return mock_bm
+
+    mgr = _make_manager(tmp_path, base_manager_factory=factory)
+    ws_path = tmp_path / "ws_cleanup"
+    ws_path.mkdir()
+    mgr.add(ws_path)
+    ws = mgr.load(ws_path)
+
+    base_dir = ws_path / "kb1"
+    base_dir.mkdir()
+    (base_dir / "doc1.txt").write_text("contenuto1")
+
+    mgr.sync_and_ingest(ws)
+
+    mock_bm.cleanup_orphan_artifacts.assert_called_once_with("kb1")
+
+
 def test_sync_and_ingest_ingests_nested_bases(tmp_path):
     """sync_and_ingest indica i file nelle basi nidificate nuove."""
     mock_bm = MagicMock()

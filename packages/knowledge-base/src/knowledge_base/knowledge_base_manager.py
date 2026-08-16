@@ -33,7 +33,6 @@ import hashlib
 import logging
 import re
 import shutil
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -755,7 +754,7 @@ class KnowledgeBaseManager:
             kb.chunking_method = config.chunking.method
             kb.ingestion_library = config.ingestion.library
             if not existing.doc_path:
-                file_id = existing.file_id or uuid.uuid4().hex
+                file_id = existing.file_id or _file_id_for(base_name, src.name)
                 self._save_markdown(base_name, file_id, markdown)
                 existing.file_id = file_id
                 existing.doc_path = f".knowledge-space/documents/{file_id}.md"
@@ -784,7 +783,7 @@ class KnowledgeBaseManager:
         if existing is not None and existing.file_id:
             file_id = existing.file_id
         else:
-            file_id = uuid.uuid4().hex
+            file_id = _file_id_for(base_name, src.name)
 
         # 4-bis. Salva il Markdown prodotto (feat-007), se non riusato.
         if not md_reused:
@@ -1044,6 +1043,31 @@ class KnowledgeBaseManager:
         return True
 
     # ..................................................................... #
+    # Pulizia artefatti orfani (bug-025)
+    # ..................................................................... #
+
+    def cleanup_orphan_artifacts(self, base_name: str) -> None:
+        """Rimuove documenti Markdown e cartelle chunk senza ``FileEntry``
+        corrispondente (resti di indicizzazioni fallite)."""
+        kb = self._load_base_by_name(base_name)
+        valid = {e.file_id for e in kb.files.values() if e.file_id}
+        removed = 0
+        docs_dir = self._documents_dir(base_name)
+        if docs_dir.is_dir():
+            for p in docs_dir.iterdir():
+                if p.suffix == ".md" and p.stem not in valid:
+                    p.unlink()
+                    removed += 1
+        chunks_root = self._base_dot_dir(base_name) / "chunks"
+        if chunks_root.is_dir():
+            for d in chunks_root.iterdir():
+                if d.is_dir() and d.name not in valid:
+                    shutil.rmtree(d)
+                    removed += 1
+        if removed:
+            logger.info("Base %s: rimossi %d artefatti orfani", base_name, removed)
+
+    # ..................................................................... #
     # Sync (mtime check)
     # ..................................................................... #
 
@@ -1202,10 +1226,10 @@ class KnowledgeBaseManager:
         # Garantisce la sezione graph a livello workspace (placeholder)
         # (gestita dal WorkspaceConfig stesso in Fase 1C — qui ci limitiamo
         # ai campi base.)
-        for kb in self._workspace.bases.values():
+        for base_name, kb in self._workspace.bases.items():
             for name, entry in kb.files.items():
                 if not entry.file_id:
-                    entry.file_id = uuid.uuid4().hex
+                    entry.file_id = _file_id_for(base_name, name)
                 if not entry.name:
                     entry.name = name
                 # content_hash: se manca e il chunk su disco è presente, lo
@@ -1249,6 +1273,17 @@ class KnowledgeBaseManager:
 
 def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _file_id_for(base_name: str, file_name: str) -> str:
+    """Identità deterministica del file (bug-025): hash del percorso
+    relativo nella base.
+
+    Stabile tra retry falliti (niente orfani: i tentativi riscrivono
+    lo stesso id), invariata quando il contenuto cambia (l'incrementale
+    usa ``content_hash``), cambia solo con un rename.
+    """
+    return _sha256(f"{base_name}/{file_name}")
 
 
 def _now_iso() -> str:

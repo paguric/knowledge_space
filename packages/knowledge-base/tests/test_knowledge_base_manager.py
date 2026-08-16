@@ -282,7 +282,7 @@ class TestAddFilePipeline:
         entry = manager.add_file("kb1", src)
 
         assert entry.file_id is not None
-        assert len(entry.file_id) == 32  # uuid4 hex
+        assert len(entry.file_id) == 64  # sha256 del percorso (bug-025)
         assert entry.name == "doc.md"
         assert entry.content_hash is not None
         assert len(entry.chunks) == 2
@@ -293,6 +293,43 @@ class TestAddFilePipeline:
         assert kb.embedding_model == "stub-embedder"
         assert kb.chunking_method == "stub"
         assert kb.ingestion_library == "stub"
+
+    def test_file_id_is_sha256_of_path(
+        self, manager: KnowledgeBaseManager, workspace: Workspace
+    ):
+        """bug-025: il file_id è l'hash del percorso relativo nella base."""
+        import hashlib
+
+        manager.add(workspace.path / "kb1")
+        src = _write_source(workspace.path / "kb1", "doc.md", "paragrafo 1\n\nparagrafo 2")
+        entry = manager.add_file("kb1", src)
+
+        expected = hashlib.sha256(b"kb1/doc.md").hexdigest()
+        assert entry.file_id == expected
+
+    def test_cleanup_orphan_artifacts(
+        self, manager: KnowledgeBaseManager, workspace: Workspace
+    ):
+        """bug-025: cleanup rimuove md/chunk senza FileEntry, tiene i validi."""
+        manager.add(workspace.path / "kb1")
+        src = _write_source(workspace.path / "kb1", "doc.md", "paragrafo 1\n\nparagrafo 2")
+        entry = manager.add_file("kb1", src)
+
+        dot = workspace.path / "kb1" / ".knowledge-space"
+        docs_dir = dot / "documents"
+        chunks_root = dot / "chunks"
+        orfano = "f" * 64
+        (docs_dir / f"{orfano}.md").write_text("orfano", encoding="utf-8")
+        (chunks_root / orfano).mkdir()
+        (chunks_root / orfano / "x.md").write_text("x", encoding="utf-8")
+
+        manager.cleanup_orphan_artifacts("kb1")
+
+        assert not (docs_dir / f"{orfano}.md").exists()
+        assert not (chunks_root / orfano).exists()
+        # Il file valido non viene toccato.
+        assert (docs_dir / f"{entry.file_id}.md").exists()
+        assert (chunks_root / entry.file_id).is_dir()
 
     def test_add_file_persists_chunks_to_disk(
         self, manager: KnowledgeBaseManager, workspace: Workspace
