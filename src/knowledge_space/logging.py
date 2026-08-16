@@ -11,7 +11,9 @@
   CRITICAL prima di ``sys.exit(1)``.
 - **Silenzio librerie verbose**: imposta level WARNING per
   ``chromadb``, ``sentence_transformers``, ``urllib3``,
-  ``httpx``, ``httpcore``, ``watchdog``.
+  ``httpx``, ``httpcore``, ``watchdog``, ``pdfminer``, ``pypdf``,
+  ``markitdown``, ``docling``, ``openai``, ``anthropic``, ``groq``,
+  ``mcp``, ``asyncio``, ``langchain``.
 
 ``setup_logging()`` è idempotente: chiamate multiple non duplicano
 handler. Usa ``logging.getLogger("knowledge_space")`` come logger
@@ -45,7 +47,8 @@ _FILE_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 # Formato per l'handler di console (più semplice).
 _CONSOLE_FORMAT = "[%(levelname)s] %(name)s: %(message)s"
 
-# Librerie verbose da silenziare.
+# Librerie verbose da silenziare (level WARNING): i loro DEBUG
+# inondano ks.log (es. pdfminer: ~47k righe per un solo PDF).
 _NOISY_LIBRARIES = [
     "chromadb",
     "sentence_transformers",
@@ -53,6 +56,16 @@ _NOISY_LIBRARIES = [
     "httpx",
     "httpcore",
     "watchdog",
+    "pdfminer",
+    "pypdf",
+    "markitdown",
+    "docling",
+    "openai",
+    "anthropic",
+    "groq",
+    "mcp",
+    "asyncio",
+    "langchain",
 ]
 
 # Indicatore per verificare se ``setup_logging`` è già stato chiamato.

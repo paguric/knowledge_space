@@ -296,7 +296,7 @@ class WorkspaceManager:
             logger.info("Base %s: nessun file da indicizzare", base_name)
             return
 
-        logger.info("Base %s: indicizzazione di %d file", base_name, len(files))
+        logger.info("Base %s: avvio indicizzazione di %d file", base_name, len(files))
         for file_path in files:
             try:
                 base_manager.add_file(base_name, file_path)
@@ -466,7 +466,7 @@ class WorkspaceManager:
             return
 
         logger.info(
-            "Base %s: indicizzazione di %d file nuovi/modificati",
+            "Base %s: avvio indicizzazione di %d file nuovi/modificati",
             base_name,
             len(files_to_ingest),
         )
