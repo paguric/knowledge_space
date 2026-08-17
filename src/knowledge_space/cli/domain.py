@@ -147,27 +147,57 @@ def add_base(
         autocompletion=_domain_name_autocomplete,
     ),
     base_name: str = typer.Argument(help="Nome della base."),
+    recursive: bool = typer.Option(
+        False,
+        "--recursive",
+        "-r",
+        help="Includi ricorsivamente tutte le sotto-basi annidate.",
+    ),
     workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Path workspace."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Output dettagliato."),
 ) -> None:
-    """Aggiunge una base a un dominio."""
+    """Aggiunge una base a un dominio; con -r anche le sotto-basi."""
     ctx = get_context(verbose=verbose)
     ws = get_workspace(ctx, workspace)
     domain_name = normalize_base_name(domain_name)
     base_name = _resolve_base_name_for_domain(base_name, ws)
-    logger.info("Aggiunta base %s al dominio %s", base_name, domain_name)
 
-    added = ctx.domain_manager.add_base(ws, domain_name, base_name)
-    if added:
-        logger.info("Base %s aggiunta al dominio %s", base_name, domain_name)
-        typer.echo(f"Base '{base_name}' aggiunta al dominio '{domain_name}'")
+    # Ricorsivo: la base + tutte le chiavi annidate "base/..."
+    # (le sotto-basi sono registrate col path relativo completo).
+    if recursive:
+        targets = [base_name] + sorted(
+            b for b in ws.bases if b.startswith(base_name + "/")
+        )
     else:
+        targets = [base_name]
+
+    added_count = 0
+    already = 0
+    for target in targets:
+        logger.info("Aggiunta base %s al dominio %s", target, domain_name)
+        added = ctx.domain_manager.add_base(ws, domain_name, target)
+        if added:
+            logger.info("Base %s aggiunta al dominio %s", target, domain_name)
+            added_count += 1
+        else:
+            already += 1
+
+    if added_count == 0:
         logger.warning("Errore aggiunta base %s al dominio %s", base_name, domain_name)
         typer.echo(
-            f"Errore: dominio '{domain_name}' non trovato, base inesistente, o già presente.",
+            f"Errore: dominio '{domain_name}' non trovato, base inesistente, "
+            f"o già presente.",
             err=True,
         )
         raise typer.Exit(1)
+
+    if recursive and len(targets) > 1:
+        typer.echo(
+            f"{added_count} basi aggiunte al dominio '{domain_name}'"
+            + (f" ({already} già presenti)" if already else "")
+        )
+    else:
+        typer.echo(f"Base '{base_name}' aggiunta al dominio '{domain_name}'")
 
 
 @app.command("remove-base")

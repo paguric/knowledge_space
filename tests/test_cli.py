@@ -1725,6 +1725,93 @@ class TestDomainNestedBase:
         assert result.exit_code == 0
         assert "rimossa" in result.output.lower()
 
+    def test_domain_add_base_ricorsiva(self, workspace_dir: Path):
+        """-r aggiunge la base e tutte le sotto-basi annidate."""
+        from knowledge_base.models import Domain, KnowledgeBase, WorkspaceConfigData
+        from knowledge_base.persistence import WorkspaceConfig
+
+        bases = {
+            "clienti": KnowledgeBase(path=workspace_dir / "clienti"),
+            "clienti/cliente-a-acme": KnowledgeBase(
+                path=workspace_dir / "clienti" / "cliente-a-acme"
+            ),
+            "clienti/cliente-a-acme/atti": KnowledgeBase(
+                path=workspace_dir / "clienti" / "cliente-a-acme" / "atti"
+            ),
+            "clienti/cliente-a-acme/contratti": KnowledgeBase(
+                path=workspace_dir / "clienti" / "cliente-a-acme" / "contratti"
+            ),
+            "clienti/cliente-b-rossi": KnowledgeBase(
+                path=workspace_dir / "clienti" / "cliente-b-rossi"
+            ),
+        }
+        for kb in bases.values():
+            kb.path.mkdir(parents=True, exist_ok=True)
+        config_path = workspace_dir / ".knowledge-space" / "state.json"
+        WorkspaceConfig(config_path, workspace_dir).save(
+            WorkspaceConfigData(
+                domains=[Domain(name="diritto", active=True, base_names=[])],
+                bases=bases,
+            )
+        )
+
+        result = runner.invoke(
+            app,
+            [
+                "domain", "add-base", "diritto", "clienti/cliente-a-acme",
+                "-r", "-w", str(workspace_dir),
+            ],
+        )
+        assert result.exit_code == 0
+        assert "3 basi aggiunte" in result.output
+
+        state = WorkspaceConfig(config_path, workspace_dir).load()
+        assert set(state.domains[0].base_names) == {
+            "clienti/cliente-a-acme",
+            "clienti/cliente-a-acme/atti",
+            "clienti/cliente-a-acme/contratti",
+        }
+
+    def test_domain_add_base_ricorsiva_solo_sottobasi_nuove(self, workspace_dir: Path):
+        """-r non duplica basi già presenti nel dominio."""
+        from knowledge_base.models import Domain, KnowledgeBase, WorkspaceConfigData
+        from knowledge_base.persistence import WorkspaceConfig
+
+        bases = {
+            "clienti/cliente-a-acme": KnowledgeBase(
+                path=workspace_dir / "clienti" / "cliente-a-acme"
+            ),
+            "clienti/cliente-a-acme/atti": KnowledgeBase(
+                path=workspace_dir / "clienti" / "cliente-a-acme" / "atti"
+            ),
+        }
+        for kb in bases.values():
+            kb.path.mkdir(parents=True, exist_ok=True)
+        config_path = workspace_dir / ".knowledge-space" / "state.json"
+        WorkspaceConfig(config_path, workspace_dir).save(
+            WorkspaceConfigData(
+                domains=[
+                    Domain(
+                        name="diritto",
+                        active=True,
+                        base_names=["clienti/cliente-a-acme"],
+                    )
+                ],
+                bases=bases,
+            )
+        )
+
+        result = runner.invoke(
+            app,
+            [
+                "domain", "add-base", "diritto", "clienti/cliente-a-acme",
+                "-r", "-w", str(workspace_dir),
+            ],
+        )
+        assert result.exit_code == 0
+        assert "1 basi aggiunte" in result.output
+        assert "(1 già presenti)" in result.output
+
 
 class TestListCommandsSync:
     """Feat-023: i comandi di sola lettura fanno sync implicito."""
