@@ -542,12 +542,12 @@ class TestOpenAICompatibleLLM:
             supports_streaming=True,
             supports_json=True,
         )
-        return OpenAICompatibleLLM(
-            metadata=md,
-            base_url="http://localhost:1234/v1",
-            api_key="lm-studio",
-            **kwargs,
-        )
+        params = {
+            "base_url": "http://localhost:1234/v1",
+            "api_key": "lm-studio",
+        }
+        params.update(kwargs)
+        return OpenAICompatibleLLM(metadata=md, **params)
 
     def test_generate_chiama_endpoint_e_ritorna_testo(self, monkeypatch):
         client = _patch_openai(monkeypatch, _FakeOpenAIClient("Ciao!"))
@@ -561,6 +561,28 @@ class TestOpenAICompatibleLLM:
         assert client.last_kwargs["temperature"] == 0.3
         assert client.base_url == "http://localhost:1234/v1"
         assert client.api_key == "lm-studio"
+
+    def test_generate_openrouter_disabilita_reasoning(self, monkeypatch):
+        """Per endpoint OpenRouter il payload include
+        reasoning.enabled=false via extra_body (il router free instrada
+        verso modelli reasoning che altrimenti consumano i token nel
+        reasoning e restituiscono content vuoto)."""
+        client = _patch_openai(monkeypatch, _FakeOpenAIClient("JSON"))
+        llm = self._make(
+            model_name="m", base_url="https://openrouter.ai/api/v1"
+        )
+        out = llm.generate([{"role": "user", "content": "x"}])
+        assert out == "JSON"
+        assert client.last_kwargs.get("extra_body") == {
+            "reasoning": {"enabled": False}
+        }
+
+    def test_generate_senza_openrouter_niente_extra_body(self, monkeypatch):
+        """Endpoint non OpenRouter: nessun campo extra nel payload."""
+        client = _patch_openai(monkeypatch, _FakeOpenAIClient("OK"))
+        llm = self._make(model_name="m")
+        llm.generate([{"role": "user", "content": "x"}])
+        assert client.last_kwargs.get("extra_body") is None
 
     def test_generate_auto_detect_usa_primo_modello(self, monkeypatch):
         client = _patch_openai(

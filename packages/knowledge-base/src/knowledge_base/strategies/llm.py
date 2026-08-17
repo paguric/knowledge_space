@@ -302,7 +302,7 @@ class OpenAICompatibleLLM(BaseLLM):
                 messages=messages,
                 max_tokens=max_tokens,
                 temperature=temperature,
-                **self._extra_body(),
+                extra_body=self._extra_body() or None,
             )
         except Exception as exc:
             raise LLMConnectionError(
@@ -333,7 +333,7 @@ class OpenAICompatibleLLM(BaseLLM):
                 max_tokens=max_tokens,
                 temperature=temperature,
                 stream=True,
-                **self._extra_body(),
+                extra_body=self._extra_body() or None,
             )
         except Exception as exc:
             raise LLMConnectionError(
