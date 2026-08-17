@@ -109,7 +109,7 @@ class Neo4jGraphStore:
                 "Il pacchetto 'neo4j' è necessario per il grafo di "
                 "conoscenza. Installarlo con: uv sync --extra neo4j "
                 "(poi: uv tool install --editable --force --refresh "
-                "--extra neo4j .)"
+                '".[neo4j]" dal root del repo)'
             ) from exc
         self._driver = GraphDatabase.driver(
             self._uri, auth=(self._user, self._password)

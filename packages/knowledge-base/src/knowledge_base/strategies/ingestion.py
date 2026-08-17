@@ -57,7 +57,8 @@ class MissingLibraryError(RuntimeError):
         super().__init__(
             f"Libreria '{library}' non installata. "
             f"Installa con: uv sync --extra {extra} "
-            f"(oppure: uv tool install --extra {extra} .)"
+            f"(poi: uv tool install --editable --force --refresh "
+            f'".[{extra}]" dal root del repo)'
         )
 
 

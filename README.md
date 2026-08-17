@@ -26,7 +26,7 @@ libreria di default ed è sempre installata). Per abilitarle:
 
 ```bash
 uv sync --extra docling --extra pymupdf4llm
-uv tool install --refresh --extra docling --extra pymupdf4llm .
+uv tool install --editable --force --refresh ".[docling,pymupdf4llm]"
 ```
 
 Se una libreria manca, `ks file add` solleva un errore con il comando
@@ -45,7 +45,7 @@ tabelle — serve `use_gpu = true` nel TOML `[ingestion].params`):
 
 ```bash
 uv sync --extra docling
-uv tool install --editable --force --refresh --extra docling .
+uv tool install --editable --force --refresh ".[docling]"
 systemctl --user restart ks-serve
 ```
 
@@ -103,7 +103,7 @@ default):
 
 ```bash
 uv sync --extra neo4j
-uv tool install --editable --force --refresh --extra neo4j .
+uv tool install --editable --force --refresh ".[neo4j]"
 systemctl --user restart ks-serve   # se usi il servizio
 ```
 
