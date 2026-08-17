@@ -313,6 +313,33 @@ class TestDenseRetrieval:
         assert len(results) == 3
         assert all(isinstance(r, RetrievalResult) for r in results)
 
+    def test_search_with_query_embedding_skips_embed(self):
+        """bug-026: con query_embedding fornito non si ri-embeda la query."""
+        from knowledge_base.strategies.retrieval import DenseRetrieval
+
+        docs = {"c1": "testo 1"}
+        collection = MockCollection(docs=docs)
+
+        class CountingEmbedder(MockEmbedder):
+            def __init__(self):
+                super().__init__()
+                self.embed_calls = 0
+
+            def embed(self, texts):
+                self.embed_calls += 1
+                return super().embed(texts)
+
+        embedder = CountingEmbedder()
+        strategy = DenseRetrieval(
+            embedder=embedder,
+            collection_factory=lambda: collection,
+        )
+        results = strategy.search(
+            "test query", top_k=3, query_embedding=[0.1, 0.2, 0.3]
+        )
+        assert len(results) == 1
+        assert embedder.embed_calls == 0
+
     def test_search_respects_top_k(self):
         from knowledge_base.strategies.retrieval import DenseRetrieval
 
@@ -823,6 +850,50 @@ class TestSearchService:
         )
         results = service.search("test query", top_k=2)
         assert len(results) <= 2
+
+    def test_embedder_factory_called_once_per_model(self):
+        """bug-026: l'embedder si costruisce UNA volta per modello,
+        anche cercando in più basi (collection diverse)."""
+        from knowledge_base.search_service import SearchService
+
+        calls = []
+
+        def factory(model_name):
+            calls.append(model_name)
+            return MockEmbedder()
+
+        service = SearchService(embedder_factory=factory)
+        for i in range(3):
+            collection = MockCollection(docs={"c1": f"testo {i}"})
+            service.search(
+                "query",
+                collection_factory=lambda c=collection: c,
+            )
+        assert len(calls) == 1
+
+    def test_query_embedded_once_across_bases(self):
+        """bug-026: il vettore della query si calcola una volta per
+        (modello, query), non per base."""
+        from knowledge_base.search_service import SearchService
+
+        class CountingEmbedder(MockEmbedder):
+            def __init__(self):
+                super().__init__()
+                self.embed_calls = 0
+
+            def embed(self, texts):
+                self.embed_calls += 1
+                return super().embed(texts)
+
+        embedder = CountingEmbedder()
+        service = SearchService(embedder_factory=lambda m: embedder)
+        for i in range(3):
+            collection = MockCollection(docs={"c1": f"testo {i}"})
+            service.search(
+                "stessa query",
+                collection_factory=lambda c=collection: c,
+            )
+        assert embedder.embed_calls == 1
 
     def test_search_with_pre_retrieval(self):
         """Pre-retrieval identity non cambia la query."""

@@ -97,10 +97,13 @@ class DenseRetrieval(BaseRetrieval):
         self.llm = llm
 
     def search(
-        self, query: str, *, top_k: int = 10, **kwargs: Any
+        self, query: str, *, top_k: int = 10, query_embedding: Optional[List[float]] = None, **kwargs: Any
     ) -> List[RetrievalResult]:
         collection = self.collection_factory()
-        query_vector = self._embed_query(query, **kwargs)
+        if query_embedding is not None:
+            query_vector = query_embedding
+        else:
+            query_vector = self._embed_query(query, **kwargs)
 
         results = collection.query(
             query_embeddings=[query_vector],

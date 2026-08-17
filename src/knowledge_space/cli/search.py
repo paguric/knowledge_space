@@ -73,6 +73,16 @@ def search_command(
 
     all_results: list[dict] = []
 
+    # Un solo SearchService per tutte le basi (bug-026): l'embedder e il
+    # vettore della query si caricano/calcolano una volta sola; la
+    # collection si risolve per-chiamata con la base corrente.
+    from knowledge_base.search_service import SearchService
+
+    service = SearchService(
+        llm_factory=ctx.llm_factory,
+        embedder_factory=ctx.embedder_factory,
+    )
+
     for bname, kb in ws.bases.items():
         # --- Filtro pre-retrieval ---
         if not kb.active:
@@ -102,18 +112,12 @@ def search_command(
 
         logger.info("Ricerca in base '%s' (collection=%s)...", bname, collection_name)
 
-        # Costruisci SearchService con collection factory per questa base
-        from knowledge_base.search_service import SearchService
-
-        service = SearchService(
-            llm_factory=ctx.llm_factory,
-            embedder_factory=ctx.embedder_factory,
-            collection_factory=lambda cn=collection_name: chroma_client.get_collection(name=cn),
-        )
-
         try:
             results = service.search(
-                query, config=base_config.to_search_config(), kb=kb
+                query,
+                config=base_config.to_search_config(),
+                kb=kb,
+                collection_factory=lambda cn=collection_name: chroma_client.get_collection(name=cn),
             )
         except Exception as exc:
             logger.error("Ricerca fallita per base %s: %s", bname, exc)

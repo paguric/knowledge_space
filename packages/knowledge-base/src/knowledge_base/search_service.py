@@ -186,6 +186,12 @@ class SearchService:
         self._embedder_factory = embedder_factory
         self._collection_factory = collection_factory
         self._llm_cache: Dict[str, LLMStrategy] = {}
+        # Cache per-modello: evita di ricaricare il modello SentenceTransformer
+        # da disco per ogni base/query (bug-026: ~5s a caricamento su CPU).
+        self._embedder_cache: Dict[str, Any] = {}
+        # Cache del vettore della query per (model_name, query): con più
+        # basi sullo stesso modello la query si embedda una volta sola.
+        self._query_embed_cache: Dict[tuple, List[float]] = {}
 
     def _get_llm(self, model_name: str) -> Optional[LLMStrategy]:
         """Ottieni un LLM dalla factory, con caching."""
@@ -201,12 +207,37 @@ class SearchService:
                 return None
         return self._llm_cache[model_name]
 
+    def _get_embedder(self, model_name: str) -> Optional[Any]:
+        """Ottieni un embedder dalla factory, con caching (bug-026)."""
+        if self._embedder_factory is None:
+            return None
+        if model_name not in self._embedder_cache:
+            try:
+                self._embedder_cache[model_name] = self._embedder_factory(model_name)
+            except Exception:
+                logger.warning("Embedder '%s' non disponibile", model_name)
+                return None
+        return self._embedder_cache[model_name]
+
+    def _get_query_embedding(
+        self, model_name: str, query: str
+    ) -> Optional[List[float]]:
+        """Vettore della query con cache per (modello, query)."""
+        key = (model_name, query)
+        if key not in self._query_embed_cache:
+            embedder = self._get_embedder(model_name)
+            if embedder is None:
+                return None
+            self._query_embed_cache[key] = list(embedder.embed([query])[0])
+        return self._query_embed_cache[key]
+
     def search(
         self,
         query: str,
         config: Optional[SearchConfig] = None,
         top_k: int = 10,
         kb: Any = None,
+        collection_factory: Optional[Any] = None,
     ) -> List[RetrievalResult]:
         """Esegue la pipeline di ricerca completa.
 
@@ -216,6 +247,8 @@ class SearchService:
             top_k: numero massimo di risultati da restituire.
             kb: opzionale :class:`KnowledgeBase` per filtrare chunk/file
                 disattivati prima di restituire i risultati.
+            collection_factory: override per-chiamata della collection
+                (bug-026: un solo SearchService per tutte le basi).
 
         Returns:
             Lista di :class:`RetrievalResult` ordinati per rilevanza.
@@ -235,7 +268,9 @@ class SearchService:
 
         retrieval_top_k = config.retrieval.top_k
         for q in queries:
-            results = self._run_retrieval(q, config.retrieval, retrieval_top_k)
+            results = self._run_retrieval(
+                q, config.retrieval, retrieval_top_k, collection_factory
+            )
             for r in results:
                 if r.chunk_id not in seen_chunk_ids:
                     all_results.append(r)
@@ -307,6 +342,7 @@ class SearchService:
         query: str,
         retrieval_config: RetrievalConfig,
         top_k: int,
+        collection_factory: Optional[Any] = None,
     ) -> List[RetrievalResult]:
         """Esegue la fase di retrieval."""
         method = retrieval_config.method
@@ -322,20 +358,33 @@ class SearchService:
 
         # Inietta dipendenze in base al tipo di strategy
         if method == "dense":
-            strategy = self._build_dense_strategy(retrieval_config, params)
+            strategy = self._build_dense_strategy(retrieval_config, params, collection_factory)
         elif method == "sparse":
             strategy = self._build_sparse_strategy(params)
         elif method == "hybrid":
-            strategy = self._build_hybrid_strategy(retrieval_config, params)
+            strategy = self._build_hybrid_strategy(retrieval_config, params, collection_factory)
         else:
             raise SearchConfigError(f"Metodo di retrieval non supportato: {method}")
 
-        return strategy.search(query, top_k=top_k)
+        # Query embedding condiviso (bug-026): per dense/hybrid si calcola
+        # UNA volta per (modello, query) e si passa alla strategy — niente
+        # re-embed per base. HyDE escluso (il documento ipotetico cambia
+        # per chiamata).
+        query_embedding = None
+        if method in ("dense", "hybrid") and retrieval_config.query_mode != "hyde":
+            model_name = params.get(
+                "model",
+                "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            )
+            query_embedding = self._get_query_embedding(model_name, query)
+
+        return strategy.search(query, top_k=top_k, query_embedding=query_embedding)
 
     def _build_dense_strategy(
         self,
         retrieval_config: RetrievalConfig,
         params: Dict[str, Any],
+        collection_factory: Optional[Any] = None,
     ) -> Any:
         """Costruisce DenseRetrieval con le dipendenze iniettate."""
         from knowledge_base.strategies.retrieval import DenseRetrieval
@@ -343,10 +392,7 @@ class SearchService:
         embedder = None
         if self._embedder_factory:
             model_name = params.pop("model", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
-            try:
-                embedder = self._embedder_factory(model_name)
-            except Exception:
-                logger.warning("Embedder '%s' non disponibile", model_name)
+            embedder = self._get_embedder(model_name)
 
         if embedder is None:
             raise SearchConfigError(
@@ -361,7 +407,7 @@ class SearchService:
 
         return DenseRetrieval(
             embedder=embedder,
-            collection_factory=self._collection_factory,
+            collection_factory=collection_factory or self._collection_factory,
             query_mode=retrieval_config.query_mode,
             llm=llm,
             **params,
@@ -383,6 +429,7 @@ class SearchService:
         self,
         retrieval_config: RetrievalConfig,
         params: Dict[str, Any],
+        collection_factory: Optional[Any] = None,
     ) -> Any:
         """Costruisce HybridRetrieval con le dipendenze iniettate."""
         from knowledge_base.strategies.retrieval import HybridRetrieval
@@ -394,7 +441,7 @@ class SearchService:
         rrf_k = params.pop("rrf_k", 60)
 
         # Costruisci le componenti
-        dense = self._build_dense_strategy(retrieval_config, dict(params))
+        dense = self._build_dense_strategy(retrieval_config, dict(params), collection_factory)
         sparse = self._build_sparse_strategy(dict(params))
 
         return HybridRetrieval(
