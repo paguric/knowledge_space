@@ -416,7 +416,75 @@ default hardcoded
 <base>/.knowledge-space/base.toml
 ```
 
-Esempio `base.toml`:
+Ogni file contiene le sezioni sotto; un campo assente eredita dalla
+cascata. `ks config set <chiave> <valore>` scrive nel file giusto
+(defaults o base) con autocompletamento dei valori ammessi.
+
+### `[ingestion]` — conversione dei file in Markdown
+
+| Chiave | Valori ammessi | Default |
+|---|---|---|---|
+| `library` | `markitdown` · `docling` · `pymupdf4llm` | `markitdown` |
+| `params` | dict libero (dipende dalla libreria) | `{}` |
+
+`docling` e `pymupdf4llm` non sono installate di default (vedi sezione
+Installazione — lazy install).
+
+### `[chunking]` — divisione del Markdown in chunk
+
+| Chiave | Valori ammessi | Default |
+|---|---|---|---|
+| `method` | `recursive` · `semantic` · `sliding` | `recursive` |
+| `chunk_size` | intero (caratteri) | `800` |
+| `chunk_overlap` | intero (caratteri) | `120` |
+| `separator` | stringa (es. `"\n\n"`, `"\n"`, `" "`) | `"\n\n"` |
+| `params` | dict libero | `{}` |
+
+### `[embedding]` — modello di embedding
+
+| Chiave | Valori ammessi | Default |
+|---|---|---|---|
+| `model` | nome dal registry (`ks models list`) | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (118MB, multilingua) |
+| `device` | `cpu` · `cuda` · `mps` (default: auto) | — |
+| `api_base` | URL endpoint remoto (solo modelli API) | — |
+| `params` | dict libero | `{}` |
+
+### `[pre_retrieval]` — espansione delle query (in cascata)
+
+| Chiave | Valori ammessi | Default |
+|---|---|---|---|
+| `stages[].method` | `identity` · `multi_query` · `step_back` · `least_to_most` | `identity` |
+| `stages[].params` | dict libero (es. `model` per gli stadi che usano LLM) | `{}` |
+
+In TOML gli stadi si dichiarano con `[[pre_retrieval.stages]]` ripetuto.
+
+### `[retrieval]` — recupero dei chunk
+
+| Chiave | Valori ammessi | Default |
+|---|---|---|---|
+| `method` | `dense` · `sparse` · `hybrid` | `dense` |
+| `query_mode` | `original` · `hyde` | `original` |
+| `top_k` | intero | `10` |
+| `params` | dict libero (es. `fusion`, `dense_weight`, `rrf_k` per hybrid) | `{}` |
+
+### `[post_retrieval]` — reranking/compression dei risultati
+
+| Chiave | Valori ammessi | Default |
+|---|---|---|---|
+| `method` | `identity` · `relevance` · `mmr` · `cross_encoder` · `llm` · `llm_chain_extract` · `selective_context` | `identity` |
+| `params` | dict libero (es. `threshold`, `model`) | `{}` |
+
+### `[graph]` — grafo di conoscenza (Neo4j)
+
+| Chiave | Valori ammessi | Default |
+|---|---|---|---|
+| `enabled` | `true` · `false` | `false` |
+| `on_chunk_change` | `eager` · `lazy` | `lazy` |
+| `top_k` | intero | `5` |
+| `extraction_model` | `None` · `lm-studio/<modello>` · `openai-compatible/<modello>` (pattern sezione LLM) | `None` (grafo inattivo: l'estrazione richiede un LLM) |
+| `embedding_model` | nome dal registry (`ks models list`) | lo stesso delle basi (riciclo embedding sempre attivo) |
+
+Esempio `defaults.toml` completo:
 
 ```toml
 [ingestion]
@@ -426,16 +494,28 @@ library = "markitdown"
 method = "recursive"
 chunk_size = 1200
 chunk_overlap = 200
+separator = "\n\n"
 
 [embedding]
-model = "bge-m3"
+model = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+device = "cpu"
+
+[[pre_retrieval.stages]]
+method = "identity"
 
 [retrieval]
 method = "dense"
+query_mode = "original"
 top_k = 10
 
 [post_retrieval]
 method = "identity"
+
+[graph]
+enabled = true
+on_chunk_change = "lazy"
+top_k = 5
+extraction_model = "openai-compatible/openrouter/free"
 ```
 
 ## Architettura
