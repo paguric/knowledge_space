@@ -1105,6 +1105,39 @@ class TestConfig:
 
     # --- config set ---
 
+    def test_cwd_wins_over_last_workspace(
+        self, workspace_dir: Path, tmp_path: Path, monkeypatch
+    ):
+        """Dentro un workspace, la risoluzione usa il cwd anche se il
+        last_workspace è un altro (bug config set: scriveva nel
+        workspace sbagliato)."""
+        other = tmp_path / "other_ws"
+        other.mkdir()
+        (other / ".knowledge-space").mkdir()
+
+        assert runner.invoke(app, ["workspace", "add", str(other)]).exit_code == 0
+        assert (
+            runner.invoke(app, ["workspace", "add", str(workspace_dir)]).exit_code
+            == 0
+        )
+        # last_workspace = other
+        assert (
+            runner.invoke(app, ["status", "--workspace", str(other)]).exit_code == 0
+        )
+
+        monkeypatch.chdir(workspace_dir)
+        # config set SENZA --workspace: vince il cwd, non il last_workspace.
+        result = runner.invoke(app, ["config", "set", "graph.top_k", "7"])
+        assert result.exit_code == 0
+
+        # Il valore finisce nel defaults del cwd...
+        defaults_here = workspace_dir / ".knowledge-space" / "defaults.toml"
+        assert "top_k = 7" in defaults_here.read_text(encoding="utf-8")
+        # ...non in quello del last_workspace (workspace add crea il
+        # template lì, quindi si verifica il contenuto, non l'esistenza).
+        defaults_other = other / ".knowledge-space" / "defaults.toml"
+        assert "top_k = 7" not in defaults_other.read_text(encoding="utf-8")
+
     def test_config_set_defaults(self, workspace_dir: Path, monkeypatch):
         """config set defaults modifica defaults.toml."""
         monkeypatch.chdir(workspace_dir)

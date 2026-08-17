@@ -144,8 +144,9 @@ def resolve_workspace_path(
 
     Priorità:
     1. ``workspace_path`` esplicito (flag ``--workspace``)
-    2. ``last_workspace`` dal GlobalIndex
-    3. Cwd-context: cerca ``.knowledge-space/`` dal cwd verso la root
+    2. Cwd-context: cerca ``.knowledge-space/`` dal cwd verso la root
+       (stile git) — essere DENTRO un workspace vince sul last_workspace
+    3. ``last_workspace`` dal GlobalIndex
 
     Args:
         ctx: contesto dell'applicazione.
@@ -164,12 +165,7 @@ def resolve_workspace_path(
             raise typer.Exit(1)
         return p
 
-    # Prova last_workspace
-    last = ctx.workspace_manager.get_last_workspace()
-    if last and last.is_dir():
-        return last
-
-    # Cwd-context (stile git)
+    # Cwd-context (stile git): dentro un workspace → quello vince.
     cwd = Path.cwd()
     current = cwd
     while True:
@@ -180,6 +176,11 @@ def resolve_workspace_path(
         if parent == current:
             break
         current = parent
+
+    # Prova last_workspace
+    last = ctx.workspace_manager.get_last_workspace()
+    if last and last.is_dir():
+        return last
 
     typer.echo(
         "Errore: nessun workspace trovato. "
