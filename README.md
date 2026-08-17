@@ -98,6 +98,18 @@ docker run -d --name neo4j -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/tua-pas
 - Alternative: tarball nativo (neo4j.com), Neo4j Desktop (Windows/macOS),
   AuraDB cloud.
 
+**Driver Python** (installazione opzionale, come docling — non incluso di
+default):
+
+```bash
+uv sync --extra neo4j
+uv tool install --editable --force --refresh --extra neo4j .
+systemctl --user restart ks-serve   # se usi il servizio
+```
+
+Se il driver manca, `ks graph` solleva un errore con il comando esatto da
+eseguire.
+
 La connessione si specifica con variabili d'ambiente (nessuna password nei
 file di configurazione):
 

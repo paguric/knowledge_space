@@ -32,6 +32,11 @@ docling = [
 pymupdf4llm = [
     "pymupdf4llm>=0.2.0",
 ]
+# Driver Neo4j per il modulo grafo (ks graph): installato al primo
+# utilizzo (uv sync --extra neo4j).
+neo4j = [
+    "neo4j>=5.0.0",
+]
 remote = [
     "openai>=1.0.0",
     "cohere>=5.0.0",

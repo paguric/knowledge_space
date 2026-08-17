@@ -106,8 +106,10 @@ class Neo4jGraphStore:
             from neo4j import GraphDatabase
         except ImportError as exc:
             raise ImportError(
-                "Il pacchetto 'neo4j' è necessario per Neo4jGraphStore. "
-                "Installarlo con: pip install neo4j"
+                "Il pacchetto 'neo4j' è necessario per il grafo di "
+                "conoscenza. Installarlo con: uv sync --extra neo4j "
+                "(poi: uv tool install --editable --force --refresh "
+                "--extra neo4j .)"
             ) from exc
         self._driver = GraphDatabase.driver(
             self._uri, auth=(self._user, self._password)
