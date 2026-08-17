@@ -1269,6 +1269,15 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+docling = [
+    { name = "knowledge-base", extra = ["docling"] },
+]
+neo4j = [
+    { name = "knowledge-base", extra = ["neo4j"] },
+]
+pymupdf4llm = [
+    { name = "knowledge-base", extra = ["pymupdf4llm"] },
+]
 remote = [
     { name = "cohere" },
     { name = "openai" },
@@ -1284,6 +1293,9 @@ dev = [
 requires-dist = [
     { name = "cohere", marker = "extra == 'remote'", specifier = ">=5.0.0" },
     { name = "knowledge-base", editable = "packages/knowledge-base" },
+    { name = "knowledge-base", extras = ["docling"], marker = "extra == 'docling'", editable = "packages/knowledge-base" },
+    { name = "knowledge-base", extras = ["neo4j"], marker = "extra == 'neo4j'", editable = "packages/knowledge-base" },
+    { name = "knowledge-base", extras = ["pymupdf4llm"], marker = "extra == 'pymupdf4llm'", editable = "packages/knowledge-base" },
     { name = "mcp", specifier = ">=1.0.0" },
     { name = "mcp-server", editable = "packages/mcp-server" },
     { name = "openai", marker = "extra == 'remote'", specifier = ">=1.0.0" },
@@ -1293,7 +1305,7 @@ requires-dist = [
     { name = "voyageai", marker = "extra == 'remote'", specifier = ">=0.1.0" },
     { name = "watchdog", specifier = ">=6.0.0" },
 ]
-provides-extras = ["remote"]
+provides-extras = ["remote", "docling", "pymupdf4llm", "neo4j"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.1.1" }]
