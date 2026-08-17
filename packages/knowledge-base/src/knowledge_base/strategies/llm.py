@@ -238,8 +238,20 @@ class OpenAICompatibleLLM(BaseLLM):
             self._client = OpenAI(
                 base_url=self._base_url,
                 api_key=self._api_key,
+                # Timeout esplicito: senza, una chiamata appesa (rate
+                # limit/rete) pende per 10 minuti in silenzio.
+                timeout=120.0,
             )
         return self._client
+
+    def _extra_body(self) -> Dict[str, Any]:
+        """Campi extra del payload: per OpenRouter disabilita il
+        reasoning — il router free instrada spesso verso modelli
+        reasoning, che consumano i token nel reasoning e restituiscono
+        ``content`` vuoto (chunk saltati, risposte lentissime)."""
+        if "openrouter.ai" in self._base_url:
+            return {"reasoning": {"enabled": False}}
+        return {}
 
     def _resolve_model(self) -> str:
         """Ritorna il model_name da usare; con ``auto`` rileva il primo
@@ -290,6 +302,7 @@ class OpenAICompatibleLLM(BaseLLM):
                 messages=messages,
                 max_tokens=max_tokens,
                 temperature=temperature,
+                **self._extra_body(),
             )
         except Exception as exc:
             raise LLMConnectionError(
@@ -320,6 +333,7 @@ class OpenAICompatibleLLM(BaseLLM):
                 max_tokens=max_tokens,
                 temperature=temperature,
                 stream=True,
+                **self._extra_body(),
             )
         except Exception as exc:
             raise LLMConnectionError(

@@ -304,7 +304,12 @@ class GraphManager:
         )
 
         # Estrazione entità per-chunk + risoluzione.
-        for chunk in text_chunks.chunks:
+        n_chunks = len(text_chunks.chunks)
+        for i, chunk in enumerate(text_chunks.chunks):
+            logger.info(
+                "Estrazione entità: base %s, chunk %d/%d (%s)",
+                base_name, i + 1, n_chunks, chunk.chunk_id,
+            )
             result = extractor.extract(chunk.text, chunk_id=chunk.chunk_id)
             nodes, edges = self._resolver.resolve(
                 [n.model_dump() for n in result.nodes],
