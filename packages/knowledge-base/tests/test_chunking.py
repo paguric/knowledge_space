@@ -34,9 +34,10 @@ from knowledge_base.strategies.chunking import (
 
 
 class TestChunkingRegistry:
-    def test_all_five_strategies_registered(self):
+    def test_all_six_strategies_registered(self):
         assert set(chunking_registry.list_names()) == {
-            "fixed_size", "recursive", "semantic", "sentence", "markdown",
+            "fixed_size", "recursive", "semantic", "sentence",
+            "paragraph", "markdown",
         }
 
     def test_registry_returns_correct_classes(self):
@@ -367,6 +368,31 @@ class TestSentenceChunking:
     def test_empty_text_returns_empty(self):
         chunks = SentenceChunking().split("")
         assert chunks == []
+
+
+class TestParagraphChunking:
+    def test_paragraph_split(self):
+        from knowledge_base.strategies.chunking import ParagraphChunking
+
+        text = "Primo paragrafo.\n\nSecondo paragrafo.\n\nTerzo."
+        chunks = ParagraphChunking().split(text)
+        assert len(chunks) == 3
+        assert chunks[0]["text"] == "Primo paragrafo."
+        assert chunks[2]["text"] == "Terzo."
+
+    def test_paragraph_registry(self):
+        from knowledge_base.strategies import chunking_registry
+
+        assert chunking_registry.contains("paragraph")
+
+    def test_paragraph_monolithic_oversized_split(self):
+        from knowledge_base.strategies.chunking import ParagraphChunking
+
+        text = "a" * 300 + "\n\n" + "paragrafo corto"
+        chunks = ParagraphChunking(chunk_size=100, chunk_overlap=0).split(text)
+        # Il monolite viene ri-splittato, il corto resta intero.
+        assert len(chunks) >= 3
+        assert "paragrafo corto" in chunks[-1]["text"]
 
     def test_no_trailing_whitespace_in_chunks(self):
         text = "  Sentence one.  Sentence two.  "

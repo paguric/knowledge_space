@@ -434,11 +434,21 @@ Installazione — lazy install).
 
 | Chiave | Valori ammessi | Default |
 |---|---|---|---|
-| `method` | `recursive` · `semantic` · `sliding` | `recursive` |
+| `method` | `fixed_size` · `recursive` · `semantic` · `sentence` · `paragraph` · `markdown` | `recursive` |
 | `chunk_size` | intero (caratteri) | `800` |
 | `chunk_overlap` | intero (caratteri) | `120` |
-| `separator` | stringa (es. `"\n\n"`, `"\n"`, `" "`) | `"\n\n"` |
+| `separator` | stringa (es. "\\n\\n", "\\n", " ") | "\\n\\n" |
 | `params` | dict libero | `{}` |
+
+I metodi:
+
+- `fixed_size` — split a lunghezza fissa (overlap = sliding window)
+- `recursive` — split gerarchico con separatori annidati (testo generico)
+- `semantic` — split per similarità semantica tra frasi (richiede embedding)
+- `sentence` — un chunk per frase (boundary su `.` `?` `!`)
+- `paragraph` — un chunk per paragrafo (riga vuota)
+- `markdown` — Markdown-Content-Aware: split sugli header `#`/`##`/`###`,
+  code block e tabelle mai spezzati a metà (metadata con gli header)
 
 ### `[embedding]` — modello di embedding
 

@@ -14,7 +14,8 @@ Suddivisione del testo Markdown prodotto dall'ingestion in frammenti (chunk) sec
 | `recursive` | Split gerarchico con separatori annidati | No |
 | `semantic` | Split per similarità semantica tra frasi | Sì |
 | `sentence` | Split per confini di frase | No |
-| `markdown` | Split per header Markdown, code block intatti | No |
+| `paragraph` | Split per paragrafo (riga vuota) | No |
+| `markdown` | Markdown-Content-Aware: split per header, code block intatti | No |
 
 ## Dettagli
 
@@ -73,7 +74,21 @@ method = "sentence"
 params.granularity = "sentence"  # "sentence" | "paragraph"
 ```
 
-**`markdown`**: split che rispetta la struttura Markdown. I chunk sono delimitati dagli header; il testo dentro un code block resta intatto. Usa `MarkdownHeaderTextSplitter` di langchain.
+**`paragraph`**: un chunk per paragrafo (blocchi separati da riga vuota).
+I paragrafi oltre `chunk_size` vengono ri-splittati con
+`RecursiveCharacterTextSplitter` (stessa safety-net di `fixed_size`).
+
+```toml
+[chunking]
+method = "paragraph"
+chunk_size = 800
+chunk_overlap = 120
+```
+
+**`markdown`**: Markdown-Content-Aware. I chunk sono delimitati dagli
+header; il testo dentro un code block resta intatto (nessuno split a metà
+di codice, tabelle o liste sotto lo stesso header). Usa
+`MarkdownHeaderTextSplitter` di langchain.
 
 ```toml
 [chunking]

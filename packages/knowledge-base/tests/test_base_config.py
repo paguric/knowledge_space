@@ -230,6 +230,7 @@ def test_registries_populated_at_import():
         "recursive",
         "semantic",
         "sentence",
+        "paragraph",
         "markdown",
     }
     # modelli locali + remoti

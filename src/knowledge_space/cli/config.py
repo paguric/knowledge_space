@@ -146,7 +146,7 @@ def _key_autocomplete(
 # Valori hardcodati per autocomplete (chiave → lista valori)
 _VALUE_CHOICES: Dict[str, List[str]] = {
     "ingestion.library": ["docling", "pymupdf4llm", "markitdown"],
-    "chunking.method": ["recursive", "semantic", "sliding"],
+    "chunking.method": ["fixed_size", "recursive", "semantic", "sentence", "paragraph", "markdown"],
     "chunking.separator": ['"\\n\\n"', '"\\n"', '" "', '"\\r\\n"'],
     "embedding.device": ["cpu", "cuda", "mps"],
     "retrieval.method": ["dense", "sparse", "hybrid"],

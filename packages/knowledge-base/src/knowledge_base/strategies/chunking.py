@@ -332,17 +332,75 @@ class SentenceChunking(BaseChunking):
 
 
 # --------------------------------------------------------------------------- #
+# paragraph — split per riga vuota
+# --------------------------------------------------------------------------- #
+
+
+class ParagraphChunking(BaseChunking):
+    """Chunking per paragrafo: un chunk per blocco separato da riga
+    vuota (``\n\n``).
+
+    Ideale per documenti strutturati in paragrafi brevi (verbali, note,
+    contratti). I paragrafi oltre ``chunk_size`` vengono ri-splittati con
+    ``RecursiveCharacterTextSplitter`` (stessa safety-net di
+    ``fixed_size``).
+    """
+
+    name = "paragraph"
+    params_schema: Dict[str, type] = {
+        "chunk_size": int,
+        "chunk_overlap": int,
+    }
+    requires_embedding = False
+
+    def __init__(
+        self,
+        chunk_size: int = 800,
+        chunk_overlap: int = 120,
+        **params,
+    ) -> None:
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        self.params = params
+
+    def _split(self, text: str) -> List[str]:
+        paragraphs = re.split(r"\n\s*\n", text.strip())
+        pieces = [p.strip() for p in paragraphs if p.strip()]
+
+        # Safety-net: paragrafo monolitico oltre chunk_size → ricorsivo.
+        oversized = [p for p in pieces if len(p) > self.chunk_size]
+        if oversized:
+            from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+            fallback = RecursiveCharacterTextSplitter(
+                chunk_size=self.chunk_size,
+                chunk_overlap=self.chunk_overlap,
+                length_function=len,
+                is_separator_regex=False,
+            )
+            result: List[str] = []
+            for piece in pieces:
+                if len(piece) > self.chunk_size:
+                    result.extend(fallback.split_text(piece))
+                else:
+                    result.append(piece)
+            return result
+        return pieces
+
+
+# --------------------------------------------------------------------------- #
 # markdown — MarkdownHeaderTextSplitter
 # --------------------------------------------------------------------------- #
 
 
 class MarkdownChunking(BaseChunking):
-    """Chunking basato su header Markdown.
+    """Chunking Markdown-Content-Aware basato su header.
 
     Usa ``langchain_text_splitters.MarkdownHeaderTextSplitter``: i chunk
-    sono delimitati dagli header (``#``, ``##``, ``###``). Il testo
-    dentro un code block resta intatto (lo splitter agisce solo sugli
-    header).
+    sono delimitati dagli header (``#``, ``##``, ``###``). Il testo dentro
+    un code block resta intatto (lo splitter agisce solo sugli header):
+    nessuno split a metà di codice, tabelle o liste annidate sotto lo
+    stesso header.
 
     I chunk includono metadata con gli header di provenienza
     (``"header_1"``, ``"header_2"``, ``"header_3"``).
@@ -395,4 +453,5 @@ chunking_registry.register("fixed_size", FixedSizeChunking)
 chunking_registry.register("recursive", RecursiveChunking)
 chunking_registry.register("semantic", SemanticChunking)
 chunking_registry.register("sentence", SentenceChunking)
+chunking_registry.register("paragraph", ParagraphChunking)
 chunking_registry.register("markdown", MarkdownChunking)

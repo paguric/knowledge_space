@@ -1170,7 +1170,7 @@ class TestConfigChangeBlocked:
         def _loader(_b):
             calls["n"] += 1
             cfg = BaseConfig()
-            cfg.chunking.method = "recursive" if calls["n"] == 1 else "sliding"
+            cfg.chunking.method = "recursive" if calls["n"] == 1 else "paragraph"
             return cfg
 
         m = KnowledgeBaseManager(
@@ -1190,7 +1190,7 @@ class TestConfigChangeBlocked:
         # Reindex con flag: contenuto invariato ma config nuova → ri-chunka.
         entry = m.add_file("kb1", src, skip_config_change_block=True)
         assert entry is not None
-        assert workspace.bases["kb1"].chunking_method == "sliding"
+        assert workspace.bases["kb1"].chunking_method == "paragraph"
 
 
 # --------------------------------------------------------------------------- #
