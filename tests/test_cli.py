@@ -1218,6 +1218,28 @@ class TestConfig:
         )
         assert result.exit_code == 1
 
+    def test_config_set_invalid_value_rejected(self, workspace_dir: Path, monkeypatch):
+        """Valore non ammesso per una chiave a scelta discreta → errore
+        e il TOML non viene scritto (es. chunking.method = markdown)."""
+        monkeypatch.chdir(workspace_dir)
+        result = runner.invoke(
+            app,
+            ["config", "set", "chunking.method", "markdown",
+             "--workspace", str(workspace_dir)],
+        )
+        assert result.exit_code == 1
+        assert "non ammesso" in result.output
+        assert "recursive" in result.output  # elenco valori ammessi
+
+        # Il TOML non contiene il valore invalido.
+        defaults = workspace_dir / ".knowledge-space" / "defaults.toml"
+        if defaults.exists():
+            import tomllib
+
+            with open(defaults, "rb") as f:
+                data = tomllib.load(f)
+            assert data.get("chunking", {}).get("method") != "markdown"
+
     def test_config_set_unknown_section(self, workspace_dir: Path, monkeypatch):
         """Sezione sconosciuta → errore."""
         monkeypatch.chdir(workspace_dir)

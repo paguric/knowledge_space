@@ -159,6 +159,20 @@ _VALUE_CHOICES: Dict[str, List[str]] = {
     "graph.on_chunk_change": ["lazy", "eager"],
 }
 
+# Chiavi a scelta discreta: il valore in `ks config set` viene VALIDATO
+# contro la lista sopra (un valore sconosciuto è un errore, il TOML non
+# viene scritto). Escluse le chiavi a valore libero (es. separator).
+_CHOICE_KEYS: set[str] = {
+    "ingestion.library",
+    "chunking.method",
+    "embedding.device",
+    "retrieval.method",
+    "retrieval.query_mode",
+    "pre_retrieval.stages.method",
+    "post_retrieval.method",
+    "graph.on_chunk_change",
+}
+
 # Chiavi booleane: autocomplete true/false
 _BOOL_KEYS: set[str] = {
     "graph.enabled",
@@ -602,6 +616,18 @@ def set(  # noqa: A001 — ombreggia la builtin, ma è il nome CLI voluto
 
     # Valida che la chiave esista nel modello BaseConfig
     _validate_key(key)
+
+    # Valida il valore per le chiavi a scelta discreta: un valore
+    # sconosciuto (es. chunking.method = markdown) finirebbe nel TOML
+    # e silenziosamente non farebbe nulla al reindex.
+    if key in _CHOICE_KEYS and value not in _VALUE_CHOICES[key]:
+        allowed = ", ".join(_VALUE_CHOICES[key])
+        typer.echo(
+            f"Errore: valore '{value}' non ammesso per {key}. "
+            f"Ammessi: {allowed}",
+            err=True,
+        )
+        raise typer.Exit(1)
 
     # 1. Determina il file TOML target e assicurati che esista
     toml_path, label = _resolve_scope(scope, ws, ctx)

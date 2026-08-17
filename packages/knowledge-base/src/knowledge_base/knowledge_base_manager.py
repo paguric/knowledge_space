@@ -746,7 +746,16 @@ class KnowledgeBaseManager:
         # Short-circuit: file già indicizzato e contenuto invariato → no-op.
         # Feat-007: se la base è pre-feature (doc_path mancante), salva il
         # Markdown retroattivamente per i prossimi reindex.
-        if existing is not None and existing.content_hash == new_md_hash:
+        # ECCEZIONE: il reindex esplicito con flag (skip_config_change_block)
+        # NON fa short-circuit: --chunking-change/--model-change/--ingestion-
+        # change su contenuto invariato devono comunque ri-eseguire la
+        # pipeline con la nuova config (altrimenti il reindex non cambia
+        # nulla — bug segnalato dal master).
+        if (
+            existing is not None
+            and existing.content_hash == new_md_hash
+            and not skip_config_change_block
+        ):
             # Registra la config attiva anche qui: il reindex con flag su
             # file invariati (--ingestion-change con markdown identico) deve
             # comunque sbloccare la base aggiornando la config registrata.

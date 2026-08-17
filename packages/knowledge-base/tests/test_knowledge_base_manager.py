@@ -1149,6 +1149,49 @@ class TestConfigChangeBlocked:
         # Il blocco non scatta più: la library registrata è stata aggiornata
         assert workspace.bases["kb1"].ingestion_library == "docling"
 
+    def test_skip_block_bypasses_short_circuit(
+        self, workspace: Workspace, tmp_path: Path
+    ):
+        """Il reindex con flag su contenuto invariato ri-chunka davvero:
+        senza skip_config_change_block lo short-circuit lo rendeva un
+        no-op ('reindex --chunking-change' non cambiava nulla)."""
+        from knowledge_base.base_config import BaseConfig
+
+        chroma_path = tmp_path / "chroma"
+
+        def _config_path_for(ws_path: Path) -> Path:
+            return Path(ws_path) / ".knowledge-space" / "config.json"
+
+        cfg_path = _config_path_for(workspace.path)
+        cfg_path.parent.mkdir(parents=True, exist_ok=True)
+
+        calls = {"n": 0}
+
+        def _loader(_b):
+            calls["n"] += 1
+            cfg = BaseConfig()
+            cfg.chunking.method = "recursive" if calls["n"] == 1 else "sliding"
+            return cfg
+
+        m = KnowledgeBaseManager(
+            workspace=workspace,
+            config_loader=_loader,
+            config_path_for=_config_path_for,
+            chroma_path=chroma_path,
+            ingestion_factory=_stub_ingestion_factory,
+            chunking_factory=_stub_chunking_factory,
+            embedder_factory=_stub_embedder_factory,
+        )
+        m.add(workspace.path / "kb1")
+        src = _write_source(workspace.path / "kb1", "doc.md", "p1\n\np2")
+        m.add_file("kb1", src)
+        assert workspace.bases["kb1"].chunking_method == "recursive"
+
+        # Reindex con flag: contenuto invariato ma config nuova → ri-chunka.
+        entry = m.add_file("kb1", src, skip_config_change_block=True)
+        assert entry is not None
+        assert workspace.bases["kb1"].chunking_method == "sliding"
+
 
 # --------------------------------------------------------------------------- #
 # Migrazione retroattiva state.json
