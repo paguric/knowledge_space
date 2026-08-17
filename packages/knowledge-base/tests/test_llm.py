@@ -521,7 +521,7 @@ def _patch_openai(monkeypatch, client):
     client finto (registrando base_url/api_key)."""
     import openai
 
-    def _factory(base_url=None, api_key=None):
+    def _factory(base_url=None, api_key=None, timeout=None):
         client.base_url = base_url
         client.api_key = api_key
         return client
