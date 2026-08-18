@@ -45,12 +45,12 @@ class EmbeddingStrategy(Protocol):
 
 | Modello | `languages` | `dim` | `max_context_tokens` | Licenza | API | Note |
 |---|---|---|---|---|---|---|
-| `paraphrase-multilingual-MiniLM-L12-v2` | EN, IT, DE, FR, ES, PT | 384 | 512 | Apache 2.0 | No | **Default**: multilingua leggero (118MB) |
+| `paraphrase-multilingual-MiniLM-L12-v2` | EN, IT, DE, FR, ES, PT | 384 | 128 | Apache 2.0 | No | Multilingua leggero (~470MB), input corto |
 | `all-mpnet-base-v2` | EN | 768 | 384 | Apache 2.0 | No | Solo inglese |
 | `all-MiniLM-L6-v2` | EN | 384 | 384 | Apache 2.0 | No | Leggero, solo EN |
 | `gte-large-en-v1.5` | EN | 1024 | 8192 | Apache 2.0 | No | Top EN su MTEB |
 | `bge-large-en-v1.5` | EN | 1024 | 512 | MIT | No | Buona qualità EN, ctx corto |
-| `bge-m3` | multilingua (100+, 🇮🇹) | 1024 | 8192 | MIT | No | SOTA MIRACL; dense+sparse+colbert |
+| `bge-m3` | multilingua (100+, 🇮🇹) | 1024 | 8192 | MIT | No | **Default**: SOTA MIRACL; dense+sparse+colbert (~2,3GB) |
 | `multilingual-e5-small` | multilingua (100+, 🇮🇹) | 384 | 512 | MIT | No | Leggero, ~470 MB |
 | `multilingual-e5-large` | multilingua (100+, 🇮🇹) | 1024 | 512 | MIT | No | Più pesante, migliore qualità |
 | `text-embedding-3-small` | multilingua | 1536 | 8191 | Proprietaria | Sì (OpenAI) | Economico |

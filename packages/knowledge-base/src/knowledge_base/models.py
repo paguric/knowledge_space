@@ -100,7 +100,7 @@ class GraphConfigData(BaseModel):
     on_chunk_change: str = "lazy"  # "eager" | "lazy"
     extraction_model: Optional[str] = None
     embedding_model: str = (
-        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+        "BAAI/bge-m3"
     )
 
 

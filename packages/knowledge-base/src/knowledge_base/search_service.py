@@ -374,7 +374,7 @@ class SearchService:
         if method in ("dense", "hybrid") and retrieval_config.query_mode != "hyde":
             model_name = params.get(
                 "model",
-                "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+                "BAAI/bge-m3",
             )
             query_embedding = self._get_query_embedding(model_name, query)
 
@@ -391,7 +391,7 @@ class SearchService:
 
         embedder = None
         if self._embedder_factory:
-            model_name = params.pop("model", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+            model_name = params.pop("model", "BAAI/bge-m3")
             embedder = self._get_embedder(model_name)
 
         if embedder is None:
@@ -491,7 +491,7 @@ class SearchService:
         if method == "mmr" and "embedder" not in params:
             if self._embedder_factory:
                 model_name = params.pop(
-                    "model", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+                    "model", "BAAI/bge-m3"
                 )
                 try:
                     params["embedder"] = self._embedder_factory(model_name)

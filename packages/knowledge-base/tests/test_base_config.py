@@ -76,10 +76,10 @@ def _make_workspace(tmp_path, *, defaults=None, base_toml=None, base_name="kb1")
 def test_base_config_hardcoded_defaults():
     cfg = BaseConfig()
     assert cfg.ingestion.library == "markitdown"
-    assert cfg.chunking.method == "recursive"
-    assert cfg.chunking.chunk_size == 800
-    assert cfg.chunking.chunk_overlap == 120
-    assert cfg.embedding.model == "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    assert cfg.chunking.method == "fixed_size"
+    assert cfg.chunking.chunk_size == 2048
+    assert cfg.chunking.chunk_overlap == 64
+    assert cfg.embedding.model == "BAAI/bge-m3"
     assert cfg.embedding.device is None
 
 
@@ -198,8 +198,8 @@ def test_invalid_type_warns_and_section_falls_back(tmp_path, caplog):
         cfg = loader.load("kb1")
 
     # l'intera sezione cade ai default hardcoded
-    assert cfg.chunking.chunk_size == 800
-    assert cfg.chunking.method == "recursive"
+    assert cfg.chunking.chunk_size == 2048
+    assert cfg.chunking.method == "fixed_size"
     assert any("invalidi" in r.message for r in caplog.records)
 
 
@@ -275,7 +275,7 @@ def test_chunking_instantiable_from_config():
         chunk_size=cfg.chunking.chunk_size,
         chunk_overlap=cfg.chunking.chunk_overlap,
     )
-    assert chunker.chunk_size == 800
+    assert chunker.chunk_size == 2048
     chunks = chunker.split("paragrafo uno.\n\nparagrafo due.")
     assert len(chunks) >= 1
 
@@ -346,7 +346,7 @@ def test_block_on_chunking_method_change():
         check_config_change_blocked(
             "kb1",
             cfg,
-            registered_chunking_method="fixed_size",
+            registered_chunking_method="recursive",
             collection_non_empty=True,
         )
     assert "--chunking-change" in str(exc_info.value)
@@ -372,7 +372,7 @@ def test_block_reports_all_simultaneous_changes():
             "kb1",
             cfg,
             registered_embedding_model="altro-modello",
-            registered_chunking_method="fixed_size",
+            registered_chunking_method="recursive",
             registered_ingestion_library="docling",
             collection_non_empty=True,
         )
@@ -394,8 +394,8 @@ def test_from_toml_empty_dict_returns_hardcoded_defaults():
     cfg = BaseConfig.from_toml({})
     assert cfg == BaseConfig()
     assert cfg.ingestion.library == "markitdown"
-    assert cfg.chunking.chunk_size == 800
-    assert cfg.embedding.model == "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    assert cfg.chunking.chunk_size == 2048
+    assert cfg.embedding.model == "BAAI/bge-m3"
 
 
 # --------------------------------------------------------------------------- #
@@ -493,10 +493,10 @@ def test_defaults_toml_template_is_valid_toml():
 
     data = tomllib.loads(DEFAULTS_TOML_TEMPLATE)
     assert data["ingestion"]["library"] == "markitdown"
-    assert data["chunking"]["method"] == "recursive"
-    assert data["chunking"]["chunk_size"] == 800
-    assert data["chunking"]["chunk_overlap"] == 120
-    assert data["embedding"]["model"] == "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    assert data["chunking"]["method"] == "fixed_size"
+    assert data["chunking"]["chunk_size"] == 2048
+    assert data["chunking"]["chunk_overlap"] == 64
+    assert data["embedding"]["model"] == "BAAI/bge-m3"
 
 
 # --------------------------------------------------------------------------- #

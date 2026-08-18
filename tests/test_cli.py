@@ -1003,8 +1003,8 @@ class TestConfig:
         )
         state_path = workspace_dir / ".knowledge-space" / "state.json"
         state = json.loads(state_path.read_text(encoding="utf-8"))
-        state["bases"]["my_base"]["embedding_model"] = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-        state["bases"]["my_base"]["chunking_method"] = "recursive"
+        state["bases"]["my_base"]["embedding_model"] = "BAAI/bge-m3"
+        state["bases"]["my_base"]["chunking_method"] = "fixed_size"
         state["bases"]["my_base"]["ingestion_library"] = "markitdown"
         state_path.write_text(json.dumps(state), encoding="utf-8")
 
@@ -1425,8 +1425,8 @@ class TestConfig:
         assert "str" in help_text
         assert "bool" in help_text
         # Valori default
-        assert '"recursive"' in help_text
-        assert '800' in help_text
+        assert '"fixed_size"' in help_text
+        assert '2048' in help_text
         assert '"markitdown"' in help_text
 
     def test_all_valid_keys_returns_expected_keys(self):

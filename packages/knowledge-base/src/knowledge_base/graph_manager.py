@@ -129,7 +129,7 @@ class GraphManager:
         # Fallback: defaults del workspace (prima base disponibile).
         for base_name in self._workspace.bases:
             return self._config_loader(base_name).graph.embedding_model
-        return "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+        return "BAAI/bge-m3"
 
     def _graph_enabled(self) -> List[str]:
         """Nomi delle basi con grafo attivo (enabled + extraction_model)."""

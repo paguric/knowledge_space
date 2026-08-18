@@ -31,7 +31,7 @@ enabled = false               # interruttore
 on_chunk_change = "lazy"      # "eager" | "lazy" — propagazione trigger 1
 top_k = 5                     # default risultati graph search
 extraction_model = "lm-studio/auto"   # LLM per l'estrazione entità (pattern doc 75)
-embedding_model = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+embedding_model = "BAAI/bge-m3"
 ```
 
 - `extraction_model = None` → **grafo INATTIVO**: l'estrazione entità

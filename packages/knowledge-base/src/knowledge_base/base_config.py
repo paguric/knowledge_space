@@ -34,9 +34,9 @@ class IngestionConfig(BaseModel):
 class ChunkingConfig(BaseModel):
     """Sezione ``[chunking]`` del TOML."""
 
-    method: str = "recursive"
-    chunk_size: int = 800
-    chunk_overlap: int = 120
+    method: str = "fixed_size"
+    chunk_size: int = 2048
+    chunk_overlap: int = 64
     separator: str = "\n\n"
     params: Dict[str, Any] = Field(default_factory=dict)
 
@@ -44,7 +44,7 @@ class ChunkingConfig(BaseModel):
 class EmbeddingConfig(BaseModel):
     """Sezione ``[embedding]`` del TOML."""
 
-    model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    model: str = "BAAI/bge-m3"
     device: Optional[str] = None
     api_base: Optional[str] = None
     params: Dict[str, Any] = Field(default_factory=dict)
@@ -90,7 +90,7 @@ class GraphConfig(BaseModel):
     extraction_model: Optional[str] = None  # None = grafo INATTIVO (serve un LLM)
     # Stesso default delle basi (riciclo embedding sempre attivo).
     embedding_model: str = (
-        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+        "BAAI/bge-m3"
     )
 
 
@@ -474,13 +474,13 @@ library = "markitdown"
 # params = {}
 
 [chunking]
-method = "recursive"
-chunk_size = 800
-chunk_overlap = 120
+method = "fixed_size"
+chunk_size = 2048
+chunk_overlap = 64
 separator = "\\n\\n"
 
 [embedding]
-model = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+model = "BAAI/bge-m3"
 # device = "cpu"
 # api_base = ""
 
@@ -501,7 +501,7 @@ enabled = false
 on_chunk_change = "lazy"
 top_k = 5
 # extraction_model = "lm-studio/auto"   # LLM per l'estrazione entità (None = grafo inattivo)
-# embedding_model = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+# embedding_model = "BAAI/bge-m3"
 """
 
 BASE_TOML_TEMPLATE: str = """\

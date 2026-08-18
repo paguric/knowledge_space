@@ -434,9 +434,9 @@ Installazione — lazy install).
 
 | Chiave | Valori ammessi | Default |
 |---|---|---|---|
-| `method` | `fixed_size` · `recursive` · `semantic` · `sentence` · `paragraph` · `markdown` | `recursive` |
-| `chunk_size` | intero (caratteri) | `800` |
-| `chunk_overlap` | intero (caratteri) | `120` |
+| `method` | `fixed_size` · `recursive` · `semantic` · `sentence` · `paragraph` · `markdown` | `fixed_size` |
+| `chunk_size` | intero (caratteri) | `2048` |
+| `chunk_overlap` | intero (caratteri) | `64` |
 | `separator` | stringa (es. "\\n\\n", "\\n", " ") | "\\n\\n" |
 | `params` | dict libero | `{}` |
 
@@ -454,7 +454,7 @@ I metodi:
 
 | Chiave | Valori ammessi | Default |
 |---|---|---|---|
-| `model` | nome dal registry (`ks models list`) | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (118MB, multilingua) |
+| `model` | nome dal registry (`ks models list`) | `BAAI/bge-m3` (8192 token, ~2,3GB, multilingua) |
 | `device` | `cpu` · `cuda` · `mps` (default: auto) | — |
 | `api_base` | URL endpoint remoto (solo modelli API) | — |
 | `params` | dict libero | `{}` |
@@ -501,13 +501,13 @@ Esempio `defaults.toml` completo:
 library = "markitdown"
 
 [chunking]
-method = "recursive"
-chunk_size = 1200
-chunk_overlap = 200
+method = "fixed_size"
+chunk_size = 2048
+chunk_overlap = 64
 separator = "\n\n"
 
 [embedding]
-model = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+model = "BAAI/bge-m3"
 device = "cpu"
 
 [[pre_retrieval.stages]]
