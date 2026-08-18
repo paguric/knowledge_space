@@ -4,10 +4,11 @@ Ogni strategia incapsula una libreria di conversione e ne espone i parametri
 configurabili via TOML (``[ingestion].params``). I parametri sono passati al
 costruttore e memorizzati nell'istanza; :meth:`convert` riceve solo il path.
 
-Le librerie pesanti (docling, pymupdf4llm) sono importate lazy dentro
-:meth:`convert` e sono **opzionali** (extra uv ``docling``/``pymupdf4llm``):
+Le librerie pesanti (docling) sono importate lazy dentro
+:meth:`convert` e sono **opzionali** (extra uv ``docling``):
 se non installate, al primo utilizzo sollevano un errore chiaro con il
-comando di installazione. ``markitdown`` è dipendenza hard (default).
+comando di installazione. ``pymupdf4llm`` è dipendenza hard (default) e
+``markitdown`` resta dipendenza hard come alternativa.
 
 Parametro globale ``use_gpu`` (default ``false``): letto da ``params``.
 Docling lo usa per OCR/table model (CUDA); PyMuPDF4LLM e markitdown non

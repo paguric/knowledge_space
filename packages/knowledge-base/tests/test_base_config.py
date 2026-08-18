@@ -75,7 +75,7 @@ def _make_workspace(tmp_path, *, defaults=None, base_toml=None, base_name="kb1")
 
 def test_base_config_hardcoded_defaults():
     cfg = BaseConfig()
-    assert cfg.ingestion.library == "markitdown"
+    assert cfg.ingestion.library == "pymupdf4llm"
     assert cfg.chunking.method == "fixed_size"
     assert cfg.chunking.chunk_size == 2048
     assert cfg.chunking.chunk_overlap == 64
@@ -126,7 +126,7 @@ def test_cascade_defaults_missing_warns_and_falls_back(tmp_path, caplog):
     with caplog.at_level(logging.WARNING):
         cfg = loader.load("kb1")
 
-    assert cfg.ingestion.library == "markitdown"  # hardcoded
+    assert cfg.ingestion.library == "pymupdf4llm"  # hardcoded
     assert cfg.chunking.chunk_size == 250  # dalla base
     assert any("defaults.toml" in r.message for r in caplog.records)
 
@@ -358,7 +358,7 @@ def test_block_on_ingestion_library_change():
         check_config_change_blocked(
             "kb1",
             cfg,
-            registered_ingestion_library="pymupdf4llm",
+            registered_ingestion_library="markitdown",
             collection_non_empty=True,
         )
     assert "--ingestion-change" in str(exc_info.value)
@@ -393,7 +393,7 @@ def test_from_toml_empty_dict_returns_hardcoded_defaults():
     """``from_toml({})`` (file con soli commenti → dict vuoto) non solleva."""
     cfg = BaseConfig.from_toml({})
     assert cfg == BaseConfig()
-    assert cfg.ingestion.library == "markitdown"
+    assert cfg.ingestion.library == "pymupdf4llm"
     assert cfg.chunking.chunk_size == 2048
     assert cfg.embedding.model == "BAAI/bge-m3"
 
@@ -492,7 +492,7 @@ def test_defaults_toml_template_is_valid_toml():
     import tomllib
 
     data = tomllib.loads(DEFAULTS_TOML_TEMPLATE)
-    assert data["ingestion"]["library"] == "markitdown"
+    assert data["ingestion"]["library"] == "pymupdf4llm"
     assert data["chunking"]["method"] == "fixed_size"
     assert data["chunking"]["chunk_size"] == 2048
     assert data["chunking"]["chunk_overlap"] == 64

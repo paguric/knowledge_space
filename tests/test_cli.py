@@ -1005,7 +1005,7 @@ class TestConfig:
         state = json.loads(state_path.read_text(encoding="utf-8"))
         state["bases"]["my_base"]["embedding_model"] = "BAAI/bge-m3"
         state["bases"]["my_base"]["chunking_method"] = "fixed_size"
-        state["bases"]["my_base"]["ingestion_library"] = "markitdown"
+        state["bases"]["my_base"]["ingestion_library"] = "pymupdf4llm"
         state_path.write_text(json.dumps(state), encoding="utf-8")
 
     def test_config_refresh_nessun_cambiamento(self, workspace_dir: Path, base_dir: Path):
@@ -1427,7 +1427,7 @@ class TestConfig:
         # Valori default
         assert '"fixed_size"' in help_text
         assert '2048' in help_text
-        assert '"markitdown"' in help_text
+        assert '"pymupdf4llm"' in help_text
 
     def test_all_valid_keys_returns_expected_keys(self):
         """_all_valid_keys() restituisce tutte le chiavi dotted."""

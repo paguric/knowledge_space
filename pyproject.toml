@@ -59,7 +59,7 @@ remote = [
 # Inoltro degli extra del package knowledge-base (lazy install):
 # uv sync --extra <nome> dal root del repo.
 docling = ["knowledge-base[docling]"]
-pymupdf4llm = ["knowledge-base[pymupdf4llm]"]
+pymupdf4llm = ["knowledge-base"]
 neo4j = ["knowledge-base[neo4j]"]
 
 [dependency-groups]

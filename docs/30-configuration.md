@@ -76,7 +76,7 @@ default hardcoded
 
 | Sezione | Campo | Esempi | Specifiche |
 |---|---|---|---|
-| `[ingestion]` | `library` | `"markitdown"` (default), `"docling"` (extra), `"pymupdf4llm"` (extra) | [50-ingestion.md](50-ingestion.md) |
+| `[ingestion]` | `library` | `"pymupdf4llm"` (default), `"markitdown"` (hard), `"docling"` (extra) | [50-ingestion.md](50-ingestion.md) |
 | `[chunking]` | `method` | `"fixed_size"`, `"recursive"`, `"semantic"`, `"sentence"`, `"paragraph"`, `"markdown"` | [60-chunking.md](60-chunking.md) |
 | `[embedding]` | `model` | qualsiasi modello HuggingFace o API | [70-embedding.md](70-embedding.md) |
 | `[pre_retrieval]` | `stages[{method, model, params}]` | `"identity"`, `"multi_query"`, `"step_back"`, `"least_to_most"` | [80-retrieval.md](80-retrieval.md), [75-llm.md](75-llm.md) |
@@ -108,7 +108,7 @@ La configurazione dell'applicazione (`RuntimePaths`, `UserSettings`, `AppConfig`
 
 ```toml
 [ingestion]
-library = "markitdown"
+library = "pymupdf4llm"
 params.use_gpu = false
 
 [chunking]

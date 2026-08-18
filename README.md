@@ -21,11 +21,11 @@ uv tool install -e .
 ```
 
 **Librerie di conversione opzionali** (lazy install, al primo utilizzo):
-docling e pymupdf4llm non vengono installate di default (markitdown è la
-libreria di default ed è sempre installata). Per abilitarle:
+`docling` non è installata di default (`pymupdf4llm` è la libreria di
+default ed è sempre installata). Per abilitare docling:
 
 ```bash
-uv sync --extra docling --extra pymupdf4llm
+uv sync --extra docling
 uv tool install --editable --force --refresh ".[docling,pymupdf4llm]"
 ```
 
@@ -424,10 +424,10 @@ cascata. `ks config set <chiave> <valore>` scrive nel file giusto
 
 | Chiave | Valori ammessi | Default |
 |---|---|---|---|
-| `library` | `markitdown` · `docling` · `pymupdf4llm` | `markitdown` |
+| `library` | `markitdown` · `docling` · `pymupdf4llm` | `pymupdf4llm` |
 | `params` | dict libero (dipende dalla libreria) | `{}` |
 
-`docling` e `pymupdf4llm` non sono installate di default (vedi sezione
+`docling` non è installata di default (vedi sezione
 Installazione — lazy install).
 
 ### `[chunking]` — divisione del Markdown in chunk
@@ -498,7 +498,7 @@ Esempio `defaults.toml` completo:
 
 ```toml
 [ingestion]
-library = "markitdown"
+library = "pymupdf4llm"
 
 [chunking]
 method = "fixed_size"

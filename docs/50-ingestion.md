@@ -25,14 +25,14 @@ Nota: il riuso verifica anche l'hash del documento salvato (file manomesso → r
 
 | Library | Formati | Profilo | GPU | Installazione |
 |---------|---------|---------|-----|---------------|
-| `markitdown` (**default**) | PDF, DOCX, PPTX, XLSX, HTML, TXT, CSV, JSON, XML, MD | studente | No | hard (sempre installata) |
+| `pymupdf4llm` (**default**) | PDF | consulente | No | hard (sempre installata) |
 | `docling` | PDF, DOCX, PPTX, HTML | ricercatore | Sì | opzionale: `uv sync --extra docling` |
-| `pymupdf4llm` | PDF | consulente | No | opzionale: `uv sync --extra pymupdf4llm` |
+| `markitdown` | PDF, DOCX, PPTX, XLSX, HTML, TXT, CSV, JSON, XML, MD | studente | No | hard (sempre installata) |
 | `identity` | MD, TXT | tutti | No | hard |
 
-**Lazy install:** `docling` e `pymupdf4llm` sono **extra opzionali** — non vengono installate con il programma. Al primo utilizzo della strategia senza la libreria, l'errore indica il comando esatto: `Libreria 'docling' non installata. Installa con: uv sync --extra docling`.
+**Lazy install:** `docling` è un **extra opzionale** — non viene installata con il programma. Al primo utilizzo della strategia senza la libreria, l'errore indica il comando esatto: `Libreria 'docling' non installata. Installa con: uv sync --extra docling`.
 
-**MarkItDown** (Microsoft, MIT) è la libreria di default: leggera, multi-formato, senza dipendenze pesanti. Per documenti complessi (paper, layout, tabelle, OCR) si installa docling e si imposta `[ingestion] library = "docling"`.
+**PyMuPDF4LLM** (PyMuPDF) è la libreria di default: estrazione fedele del layout (heading, liste, grassetti reali), molto più affidabile di pdfminer sui PDF legali. **MarkItDown** resta installata come alternativa multi-formato. Per documenti complessi con OCR si installa docling e si imposta `[ingestion] library = "docling"`.
 
 | Aspetto | Scelta |
 |---------|--------|
@@ -104,8 +104,8 @@ params.show_progress = false
 
 ```toml
 [ingestion]
-library = "markitdown"
-params.plugins = []
+library = "pymupdf4llm"
+params.write_images = false
 ```
 
 **identity**: lettura diretta per MD/TXT, nessuna libreria, copia del testo.
@@ -116,7 +116,7 @@ params.plugins = []
 |---------|---------|----------------|------|
 | `ricercatore` | `docling` | PDF (paper, legal) | GPU raccomandata per layout complesso |
 | `consulente` | `pymupdf4llm` | PDF (testi, norme) | Veloce, multi-colonna, TOC |
-| `studente` | `markitdown` | PDF semplici, PPTX, MD | Leggero, multi-formato |
+| `studente` | `markitdown` | PDF semplici, PPTX, MD | Leggero, multi-formato (alternativa) |
 | tutti | — (lettura diretta) | MD | Nessuna libreria, copia del testo |
 
 ### Test
