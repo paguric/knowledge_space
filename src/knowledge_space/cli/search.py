@@ -130,7 +130,7 @@ def search_command(
                 "base": bname,
                 "file_name": r.metadata.get("file_name", ""),
                 "score": round(r.score, 4),
-                "text": r.text[:200] if r.text else "",
+                "text": r.text or "",
             })
 
     all_results.sort(key=lambda r: r["score"], reverse=True)
@@ -147,5 +147,5 @@ def search_command(
             typer.echo(f"{i}. [{r['base']}] {r['file_name']} (score={r['score']})")
             typer.echo(f"   {r['chunk_id']}")
             if r["text"]:
-                typer.echo(f"   {r['text']}...")
+                typer.echo(f"   {r['text']}")
             typer.echo()

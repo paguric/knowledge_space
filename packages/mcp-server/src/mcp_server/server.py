@@ -323,7 +323,7 @@ def _make_server(
                     )
                     for r in retrieved:
                         results.append(
-                            f"[{bname}] {r.chunk_id} (score={r.score:.4f}): {r.text[:120]}"
+                            f"[{bname}] {r.chunk_id} (score={r.score:.4f}): {r.text}"
                         )
                 except Exception as exc:
                     results.append(f"[{bname}] errore: {exc}")
@@ -367,7 +367,7 @@ def _make_server(
             for r in results:
                 entities = ", ".join(r.metadata.get("entities", []))
                 lines.append(
-                    f"[{r.score:.4f}] {r.chunk_id} — {r.text[:200]}"
+                    f"[{r.score:.4f}] {r.chunk_id} — {r.text}"
                     + (f" (entità: {entities})" if entities else "")
                 )
             return "\n".join(lines)
