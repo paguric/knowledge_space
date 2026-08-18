@@ -372,7 +372,7 @@ class SearchService:
                 embedding_model=embedding_model,
             )
         elif method == "sparse":
-            strategy = self._build_sparse_strategy(params)
+            strategy = self._build_sparse_strategy(params, collection_factory)
         elif method == "hybrid":
             strategy = self._build_hybrid_strategy(
                 retrieval_config, params, collection_factory,
@@ -429,12 +429,27 @@ class SearchService:
     def _build_sparse_strategy(
         self,
         params: Dict[str, Any],
+        collection_factory: Optional[Any] = None,
     ) -> Any:
-        """Costruisce SparseRetrieval con le dipendenze iniettate."""
+        """Costruisce SparseRetrieval con le dipendenze iniettate.
+
+        Il factory per-chiamata (bug-026) ha precedenza su quello del
+        costruttore; senza nessuno dei due la strategy fallirà con un
+        errore chiaro alla prima ricerca (non con ``NoneType``).
+        """
         from knowledge_base.strategies.retrieval import SparseRetrieval
 
+        factory = (
+            collection_factory
+            if collection_factory is not None
+            else self._collection_factory
+        )
+        if factory is None:
+            raise SearchConfigError(
+                "Retrieval sparse/hybrid richiede una collection_factory."
+            )
         return SparseRetrieval(
-            collection_factory=self._collection_factory,
+            collection_factory=factory,
             **params,
         )
 
@@ -459,7 +474,7 @@ class SearchService:
             retrieval_config, dict(params), collection_factory,
             embedding_model=embedding_model,
         )
-        sparse = self._build_sparse_strategy(dict(params))
+        sparse = self._build_sparse_strategy(dict(params), collection_factory)
 
         return HybridRetrieval(
             dense=dense,

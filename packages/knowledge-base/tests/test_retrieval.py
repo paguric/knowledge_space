@@ -895,6 +895,27 @@ class TestSearchService:
             )
         assert embedder.embed_calls == 1
 
+    def test_hybrid_with_per_call_collection_factory(self):
+        """Regressione: retrieval hybrid con SearchService costruito SENZA
+        collection_factory — il factory per-chiamata deve arrivare anche
+        allo SparseRetrieval (prima: 'NoneType' object is not callable)."""
+        from knowledge_base.search_service import SearchConfig, SearchService
+
+        service = SearchService(embedder_factory=lambda m: MockEmbedder())
+        collection = MockCollection(docs={"c1": "testo uno", "c2": "testo due"})
+        config = SearchConfig(
+            retrieval=type(
+                "R", (), {"method": "hybrid", "params": {}, "query_mode": "original", "top_k": 5}
+            )(),
+        )
+        results = service.search(
+            "testo",
+            config=config,
+            collection_factory=lambda: collection,
+        )
+        assert len(results) > 0
+        assert all(r.metadata.get("fusion_method") == "rrf" for r in results)
+
     def test_search_with_pre_retrieval(self):
         """Pre-retrieval identity non cambia la query."""
         from knowledge_base.search_service import (
