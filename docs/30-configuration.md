@@ -1,6 +1,6 @@
 # Gestione della configurazione
 
-> **Stato:** implementato | **Step:** 3 | **Fase:** 1A | **Aggiornato:** 22 luglio 2026
+> **Stato:** implementato | **Step:** 3 | **Fase:** 1A | **Aggiornato:** 18 agosto 2026
 
 ## Panoramica
 
@@ -39,16 +39,20 @@ Ogni base di conoscenza ha la propria configurazione TOML, con cascata di defaul
 │   ├── appunti.md
 │   └── .knowledge-space/                  # dotfolder, dati e config della base
 │       ├── base.toml                      # configurazione specifica della base
+│       ├── documents/                     # Markdown convertito (feat-007, riuso reindex)
+│       │   └── <file_id>.md
 │       └── chunks/                        # chunk su disco (prodotto derivato)
-│           └── <file_id>/                 # file_id = UUID stabile
+│           └── <file_id>/                 # file_id = sha256 del percorso (deterministico)
 │               ├── <file_id>_chunk_0.md
 │               └── <file_id>_chunk_1.md
 └── .knowledge-space/                      # dotfolder, stato e config del workspace
     ├── state.json                         # stato (Workspace → Domain → Base → File → Chunk)
     ├── defaults.toml                      # default per tutte le basi
+    ├── chroma/                            # collection vettoriali (ChromaDB, fonte di verità)
+    │   ├── chroma.sqlite3
+    │   └── <collection-uuid>/             # una per base (dense) o coppia (hybrid)
     └── graph/                             # stato grafo workspace (uno per workspace)
-        ├── graph.json                     # bolt_uri, database, embedding_model, schema_ref
-        └── schema.json                    # schema del grafo
+        └── graph.json                     # bolt_uri, user, password, database (refactor-001)
 ```
 
 **Regole:**
@@ -82,7 +86,7 @@ default hardcoded
 | `[pre_retrieval]` | `stages[{method, model, params}]` | `"identity"`, `"multi_query"`, `"step_back"`, `"least_to_most"` | [80-retrieval.md](80-retrieval.md), [75-llm.md](75-llm.md) |
 | `[retrieval]` | `method` / `fusion` | `"dense"` / `"sparse"` / `"hybrid"`; `"rrf"` / `"weighted_sum"` | [80-retrieval.md](80-retrieval.md) |
 | `[post_retrieval]` | `reranker` / `compressor` | `"identity"`, `"cross_encoder"`, `"llm"` | [80-retrieval.md](80-retrieval.md) |
-| `[graph]` | `schema`/`resolver`/`on_chunk_change`/`retriever` | `"manuale"`/`"EXTRACTED"`/`"FREE"`, `"semantic"`/`"exact"`/`"fuzzy"`, `"eager"`/`"lazy"` | [40-graph.md](40-graph.md) |
+| `[graph]` | `enabled` / `on_chunk_change` / `extraction_model` / `embedding_model` / `top_k` | `"eager"`/`"lazy"`, LLM per l'estrazione entità (None = grafo inattivo) | [40-graph.md](40-graph.md) |
 
 ### Regole di modifica
 
@@ -109,47 +113,36 @@ La configurazione dell'applicazione (`RuntimePaths`, `UserSettings`, `AppConfig`
 ```toml
 [ingestion]
 library = "pymupdf4llm"
-params.use_gpu = false
+# params = {}
 
 [chunking]
-method = "recursive"
-chunk_size = 800
-chunk_overlap = 120
+method = "fixed_size"
+chunk_size = 2048
+chunk_overlap = 64
 separator = "\n\n"
 
 [embedding]
 model = "BAAI/bge-m3"
-
-[graph]
-schema = "manuale"
-resolver = "semantic"
-on_chunk_change = "eager"
-chunk_embedding_property = "embedding"
-node_types = ["Person", "Organization", "Concept"]
-relationship_types = ["WORKS_FOR", "RELATED_TO"]
-patterns = [["Person", "WORKS_FOR", "Organization"], ["Concept", "RELATED_TO", "Concept"]]
-retriever = "hybrid_cypher"
-top_k = 5
-vector_index = "chunk-embeddings"
-fulltext_index = "chunk-text"
-retrieval_query = """
-RETURN node.id AS chunk_id, node.text AS text, node.base_name AS base_name,
-       node.file_name AS file_name, node.chunk_index AS chunk_index, score
-"""
-return_properties = ["chunk_id", "text"]
+# device = "cpu"
 
 [pre_retrieval]
-stages = [{ method = "identity" }]
+# [[pre_retrieval.stages]]
+# method = "identity"
 
 [retrieval]
 method = "dense"
-fusion = "rrf"
 query_mode = "original"
+top_k = 10
 
 [post_retrieval]
-top_k = 10
-reranker = "identity"
-compressor = "identity"
+method = "identity"
+
+[graph]
+enabled = false
+on_chunk_change = "lazy"
+top_k = 5
+# extraction_model = "lm-studio/auto"   # LLM per l'estrazione entità (None = grafo inattivo)
+# embedding_model = "BAAI/bge-m3"
 ```
 
 ### Appendix B — Esempio di `base.toml`
