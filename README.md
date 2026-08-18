@@ -56,31 +56,26 @@ systemctl --user restart ks-serve
 
 ## Aggiornamento
 
+Con il server attivato come **systemd user service** (vedi sotto) bastano 4 comandi:
+
 ```bash
 cd knowledge_space
 git pull
 uv sync
 uv tool install --editable --force --refresh .
-
-```
-
-Per ricaricare il server MCP, se hai avviato il server a mano con `ks serve`:
-
-```bash
-# in foreground: Ctrl+C nella finestra del server
-# in background:
-pkill -f "ks serve"
-
-# poi rilancia
-ks serve
-```
-
-Se attivato come **systemd user service** (vedi sotto):
-
-```bash
-systemctl --user daemon-reload
 systemctl --user restart ks-serve
 ```
+
+`uv tool install --refresh` serve solo quando cambiano le dipendenze in
+`pyproject.toml`; `uv sync` basta se è cambiato solo il codice.
+
+Se hai avviato il server a mano con `ks serve`: `pkill -f "ks serve"` e
+rilancialo.
+
+> **Attenzione:** dopo un `ks reindex` (o un cambio di config che riscrive
+> le collection Chroma) riavvia sempre il server: il processo tiene aperti
+> gli handle delle collection e senza riavvio la ricerca può fallire con
+> `[Errno 5] Input/output error`.
 
 ## Database a grafo (opzionale, per il modulo Graph)
 
