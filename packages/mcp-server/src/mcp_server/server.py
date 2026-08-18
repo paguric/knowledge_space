@@ -53,6 +53,96 @@ def _make_server(
         description="Knowledge Space — gestione basi di conoscenza con ricerca vettoriale.",
     )
 
+    # --- Cache a livello di server (bug-027): un solo SearchService per
+    # workspace, un solo client Chroma, un solo config loader. Il tool
+    # search veniva costruito per-riconstruito a ogni chiamata e per ogni
+    # base: il modello di embedding veniva RICARICATO da disco a ogni base
+    # ("Loading weights" ripetuto nel log) → request timed out.
+    _search_services: dict[Path, Any] = {}
+    _chroma_clients: dict[Path, Any] = {}
+    _config_loaders: dict[Path, Any] = {}
+    _graph_services: dict[Path, Any] = {}
+
+    def _get_search_service(ws):
+        """SearchService condiviso per workspace (cache embedder interna)."""
+        if ws.path not in _search_services:
+            from knowledge_base.search_service import SearchService
+            from knowledge_base.strategies import embedding_registry
+
+            def embedder_factory(model_name: str):
+                return embedding_registry.get(model_name)()
+
+            _search_services[ws.path] = SearchService(
+                embedder_factory=embedder_factory
+            )
+        return _search_services[ws.path]
+
+    def _get_config_loader(ws):
+        """BaseConfigLoader condiviso per workspace (evita warning ripetuti)."""
+        if ws.path not in _config_loaders:
+            from knowledge_base.base_config import BaseConfigLoader
+
+            _config_loaders[ws.path] = BaseConfigLoader(
+                workspace_path=ws.path,
+                dot_folder_name=".knowledge-space",
+            )
+        return _config_loaders[ws.path]
+
+    def _get_chroma_client(ws):
+        """PersistentClient Chroma condiviso per workspace."""
+        if ws.path not in _chroma_clients:
+            from chromadb import PersistentClient
+
+            chroma_path = ws.path / ".knowledge-space" / "chroma"
+            _chroma_clients[ws.path] = PersistentClient(path=str(chroma_path))
+        return _chroma_clients[ws.path]
+
+    def _get_graph_service(ws):
+        """GraphSearchService condiviso per workspace; ricreato solo se
+        l'insieme delle basi cambia (embedder del grafo resta in memoria)."""
+        key = (ws.path, tuple(sorted(ws.bases.keys())))
+        if key not in _graph_services:
+            from knowledge_base.graph_search_service import GraphSearchService
+
+            graph_manager = graph_manager_factory(ws)
+            _graph_services[key] = GraphSearchService(graph_manager)
+        return _graph_services[key]
+
+    def _prewarm() -> None:
+        """Pre-carica in background gli embedder delle basi del workspace
+        attivo (bug-027).
+
+        Il primo load di un SentenceTransformer è il costo dominante
+        (bge-m3 ~16s su CPU): senza prewarm la prima ricerca MCP dopo il
+        restart del serve va in timeout sul client. Eseguita in un thread
+        daemon dai trasporti, gli errori non sono fatali.
+        """
+        try:
+            ws = _get_active_workspace()
+        except Exception:
+            return
+        service = _get_search_service(ws)
+        config_loader = _get_config_loader(ws)
+        for bname, kb in ws.bases.items():
+            if not kb.files:
+                continue
+            try:
+                config = config_loader.load(bname)
+                embedder = service._get_embedder(config.embedding.model)  # noqa: SLF001
+                # L'istanziazione è lazy: i pesi si caricano al primo
+                # embed. Una query dummy forza il load in background così
+                # la prima ricerca MCP non paga i ~16s di bge-m3.
+                embedder.embed([" "])
+                logger.info(
+                    "Prewarm: embedder %s pronto (base %s)",
+                    config.embedding.model,
+                    bname,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Prewarm fallito (base %s): %s", bname, exc)
+
+    server.prewarm = _prewarm  # type: ignore[attr-defined]
+
     # --- Tool definitions ---
     # L'MCP espone SOLO la lettura dello stato e la ricerca, sempre
     # rispetto al workspace attivo (ultimo usato). Niente operazioni di
@@ -204,16 +294,8 @@ def _make_server(
             base_name = args.get("base_name")
             top_k = args.get("top_k", 5)
 
-            from knowledge_base.base_config import BaseConfigLoader
             from knowledge_base.knowledge_base_manager import chroma_collection_name
-            from knowledge_base.search_service import SearchService
 
-            config_loader = BaseConfigLoader(
-                workspace_path=ws.path,
-                dot_folder_name=".knowledge-space",
-            )
-
-            # Determina la base
             if base_name:
                 if base_name not in ws.bases:
                     return f"Base non trovata: {base_name}"
@@ -221,37 +303,28 @@ def _make_server(
             else:
                 bases_to_search = ws.bases
 
+            service = _get_search_service(ws)
+            config_loader = _get_config_loader(ws)
+            chroma_client = _get_chroma_client(ws)
+
             results: list[str] = []
             for bname, kb in bases_to_search.items():
                 if not kb.files:
                     continue
                 try:
                     config = config_loader.load(bname)
-                    from knowledge_base.strategies import embedding_registry
-
-                    embedder_cls = embedding_registry.get(config.embedding.model)
-                    embedder = embedder_cls()
-
-                    from chromadb import PersistentClient
-
-                    chroma_path = ws.path / ".knowledge-space" / "chroma"
-                    if not chroma_path.exists():
-                        continue
-                    client = PersistentClient(path=str(chroma_path))
-                    col = client.get_collection(name=chroma_collection_name(bname))
-
-                    query_vec = embedder.embed([query])[0]
-                    res = col.query(
-                        query_embeddings=[query_vec],
-                        n_results=min(top_k, col.count()),
-                        include=["documents", "metadatas", "distances"],
+                    collection_name = chroma_collection_name(bname)
+                    retrieved = service.search(
+                        query,
+                        config=config.to_search_config(),
+                        top_k=top_k,
+                        kb=kb,
+                        collection_factory=lambda cn=collection_name: chroma_client.get_collection(name=cn),
                     )
-                    if res and res["ids"] and res["ids"][0]:
-                        for i, cid in enumerate(res["ids"][0]):
-                            doc = res["documents"][0][i] if res["documents"] else ""
-                            dist = res["distances"][0][i] if res["distances"] else 0.0
-                            score = 1.0 - dist
-                            results.append(f"[{bname}] {cid} (score={score:.4f}): {doc[:120]}")
+                    for r in retrieved:
+                        results.append(
+                            f"[{bname}] {r.chunk_id} (score={r.score:.4f}): {r.text[:120]}"
+                        )
                 except Exception as exc:
                     results.append(f"[{bname}] errore: {exc}")
 
@@ -283,12 +356,10 @@ def _make_server(
             ws = _get_active_workspace()
             if graph_manager_factory is None:
                 return "Grafo non disponibile (graph_manager_factory non configurata)."
-            from knowledge_base.graph_search_service import GraphSearchService
 
             query = args["query"]
             top_k = args.get("top_k", 5)
-            graph_manager = graph_manager_factory(ws)
-            service = GraphSearchService(graph_manager)
+            service = _get_graph_service(ws)
             results = service.search(ws, query, top_k=top_k)
             if not results:
                 return "Nessun risultato trovato."
@@ -335,6 +406,11 @@ async def run_stdio(
         state_home=state_home,
         graph_manager_factory=graph_manager_factory,
     )
+    # Prewarm: carica gli embedder del workspace attivo in background così
+    # la prima ricerca non paga il load del modello (bug-027).
+    import threading
+
+    threading.Thread(target=server.prewarm, daemon=True).start()
     logger.info("Avvio server MCP su stdio")
 
     async with stdio_mod.stdio_server() as (read_stream, write_stream):
@@ -383,6 +459,11 @@ async def run_sse(
         state_home=state_home,
         graph_manager_factory=graph_manager_factory,
     )
+    # Prewarm: carica gli embedder del workspace attivo in background così
+    # la prima ricerca non paga il load del modello (bug-027).
+    import threading
+
+    threading.Thread(target=server.prewarm, daemon=True).start()
     logger.info(
         "Avvio server MCP su %s:%s/%s/mcp", host, port, mount_path
     )

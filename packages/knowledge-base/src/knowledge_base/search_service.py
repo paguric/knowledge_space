@@ -150,10 +150,16 @@ class SearchConfig:
         pre_retrieval: Optional[List[PreRetrievalStageConfig]] = None,
         retrieval: Optional[RetrievalConfig] = None,
         post_retrieval: Optional[PostRetrievalConfig] = None,
+        embedding_model: Optional[str] = None,
     ) -> None:
         self.pre_retrieval = pre_retrieval or [PreRetrievalStageConfig()]
         self.retrieval = retrieval or RetrievalConfig()
         self.post_retrieval = post_retrieval or PostRetrievalConfig()
+        # Modello della base per l'embedding della query (bug-027): la
+        # collection è stata costruita con QUESTO modello — il fallback
+        # hardcoded produceva query con un modello diverso da quello dei
+        # chunk (es. chunk MiniLM 384-dim, query bge-m3 1024-dim).
+        self.embedding_model = embedding_model
 
 
 # --------------------------------------------------------------------------- #
@@ -269,7 +275,8 @@ class SearchService:
         retrieval_top_k = config.retrieval.top_k
         for q in queries:
             results = self._run_retrieval(
-                q, config.retrieval, retrieval_top_k, collection_factory
+                q, config.retrieval, retrieval_top_k, collection_factory,
+                embedding_model=config.embedding_model,
             )
             for r in results:
                 if r.chunk_id not in seen_chunk_ids:
@@ -282,7 +289,8 @@ class SearchService:
 
         # 3. Post-retrieval: reranking/compression
         final_results = self._run_post_retrieval(
-            query, all_results, config.post_retrieval, top_k
+            query, all_results, config.post_retrieval, top_k,
+            embedding_model=config.embedding_model,
         )
 
         logger.info("Ricerca completata: %d risultati", len(final_results))
@@ -343,6 +351,7 @@ class SearchService:
         retrieval_config: RetrievalConfig,
         top_k: int,
         collection_factory: Optional[Any] = None,
+        embedding_model: Optional[str] = None,
     ) -> List[RetrievalResult]:
         """Esegue la fase di retrieval."""
         method = retrieval_config.method
@@ -358,11 +367,17 @@ class SearchService:
 
         # Inietta dipendenze in base al tipo di strategy
         if method == "dense":
-            strategy = self._build_dense_strategy(retrieval_config, params, collection_factory)
+            strategy = self._build_dense_strategy(
+                retrieval_config, params, collection_factory,
+                embedding_model=embedding_model,
+            )
         elif method == "sparse":
             strategy = self._build_sparse_strategy(params)
         elif method == "hybrid":
-            strategy = self._build_hybrid_strategy(retrieval_config, params, collection_factory)
+            strategy = self._build_hybrid_strategy(
+                retrieval_config, params, collection_factory,
+                embedding_model=embedding_model,
+            )
         else:
             raise SearchConfigError(f"Metodo di retrieval non supportato: {method}")
 
@@ -372,10 +387,7 @@ class SearchService:
         # per chiamata).
         query_embedding = None
         if method in ("dense", "hybrid") and retrieval_config.query_mode != "hyde":
-            model_name = params.get(
-                "model",
-                "BAAI/bge-m3",
-            )
+            model_name = params.get("model") or embedding_model or "BAAI/bge-m3"
             query_embedding = self._get_query_embedding(model_name, query)
 
         return strategy.search(query, top_k=top_k, query_embedding=query_embedding)
@@ -385,13 +397,14 @@ class SearchService:
         retrieval_config: RetrievalConfig,
         params: Dict[str, Any],
         collection_factory: Optional[Any] = None,
+        embedding_model: Optional[str] = None,
     ) -> Any:
         """Costruisce DenseRetrieval con le dipendenze iniettate."""
         from knowledge_base.strategies.retrieval import DenseRetrieval
 
         embedder = None
         if self._embedder_factory:
-            model_name = params.pop("model", "BAAI/bge-m3")
+            model_name = params.pop("model", embedding_model or "BAAI/bge-m3")
             embedder = self._get_embedder(model_name)
 
         if embedder is None:
@@ -430,6 +443,7 @@ class SearchService:
         retrieval_config: RetrievalConfig,
         params: Dict[str, Any],
         collection_factory: Optional[Any] = None,
+        embedding_model: Optional[str] = None,
     ) -> Any:
         """Costruisce HybridRetrieval con le dipendenze iniettate."""
         from knowledge_base.strategies.retrieval import HybridRetrieval
@@ -441,7 +455,10 @@ class SearchService:
         rrf_k = params.pop("rrf_k", 60)
 
         # Costruisci le componenti
-        dense = self._build_dense_strategy(retrieval_config, dict(params), collection_factory)
+        dense = self._build_dense_strategy(
+            retrieval_config, dict(params), collection_factory,
+            embedding_model=embedding_model,
+        )
         sparse = self._build_sparse_strategy(dict(params))
 
         return HybridRetrieval(
@@ -459,6 +476,7 @@ class SearchService:
         results: List[RetrievalResult],
         post_config: PostRetrievalConfig,
         top_k: int,
+        embedding_model: Optional[str] = None,
     ) -> List[RetrievalResult]:
         """Esegue la fase di post-retrieval con fallback."""
         method = post_config.method
@@ -490,9 +508,7 @@ class SearchService:
         # Se richiede embedder (per mmr), iniettalo
         if method == "mmr" and "embedder" not in params:
             if self._embedder_factory:
-                model_name = params.pop(
-                    "model", "BAAI/bge-m3"
-                )
+                model_name = params.pop("model", embedding_model or "BAAI/bge-m3")
                 try:
                     params["embedder"] = self._embedder_factory(model_name)
                 except Exception:

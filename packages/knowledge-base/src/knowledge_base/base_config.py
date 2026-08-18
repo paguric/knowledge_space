@@ -176,6 +176,7 @@ class BaseConfig(BaseModel):
         ]
         return SearchConfig(
             pre_retrieval=stages or [SrvPreRetrievalStageConfig()],
+            embedding_model=self.embedding.model,
             retrieval=SrvRetrievalConfig(
                 method=self.retrieval.method,
                 query_mode=self.retrieval.query_mode,
