@@ -335,7 +335,9 @@ class VoyageEmbedding(BaseEmbedding):
 _LOCAL_MODELS: List[Dict[str, Any]] = [
     {
         "model_name": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-        "languages": ["en", "it", "de", "fr", "es", "pt"], "dim": 384, "max_ctx": 512, "license": "Apache 2.0",
+        # max_seq_length reale del modello: 128 token (la card: "truncate
+        # long passages to 128 tokens") — 512 era errato.
+        "languages": ["en", "it", "de", "fr", "es", "pt"], "dim": 384, "max_ctx": 128, "license": "Apache 2.0",
     },
     {
         "model_name": "sentence-transformers/all-mpnet-base-v2",
@@ -343,7 +345,8 @@ _LOCAL_MODELS: List[Dict[str, Any]] = [
     },
     {
         "model_name": "sentence-transformers/all-MiniLM-L6-v2",
-        "languages": ["en"], "dim": 384, "max_ctx": 384, "license": "Apache 2.0",
+        # max_seq_length reale: 256 token.
+        "languages": ["en"], "dim": 384, "max_ctx": 256, "license": "Apache 2.0",
     },
     {
         "model_name": "Alibaba-NLP/gte-large-en-v1.5",

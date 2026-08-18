@@ -77,9 +77,9 @@ class TestEmbeddingMetadata:
     @pytest.mark.parametrize(
         "model,dim,max_ctx,langs,requires_api,license",
         [
-            ("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", 384, 512, ["en", "it", "de", "fr", "es", "pt"], False, "Apache 2.0"),
+            ("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", 384, 128, ["en", "it", "de", "fr", "es", "pt"], False, "Apache 2.0"),
             ("sentence-transformers/all-mpnet-base-v2", 768, 384, ["en"], False, "Apache 2.0"),
-            ("sentence-transformers/all-MiniLM-L6-v2", 384, 384, ["en"], False, "Apache 2.0"),
+            ("sentence-transformers/all-MiniLM-L6-v2", 384, 256, ["en"], False, "Apache 2.0"),
             ("Alibaba-NLP/gte-large-en-v1.5", 1024, 8192, ["en"], False, "Apache 2.0"),
             ("BAAI/bge-large-en-v1.5", 1024, 512, ["en"], False, "MIT"),
             ("BAAI/bge-m3", 1024, 8192, ["multilingual"], False, "MIT"),
