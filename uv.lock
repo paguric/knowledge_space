@@ -1208,7 +1208,6 @@ dependencies = [
     { name = "langchain-huggingface" },
     { name = "langchain-text-splitters" },
     { name = "langdetect" },
-    { name = "markitdown", extra = ["docx", "pdf", "pptx", "xlsx"] },
     { name = "openai" },
     { name = "pymupdf4llm" },
     { name = "sentence-transformers" },
@@ -1219,6 +1218,9 @@ dependencies = [
 [package.optional-dependencies]
 docling = [
     { name = "docling" },
+]
+markitdown = [
+    { name = "markitdown", extra = ["docx", "pdf", "pptx", "xlsx"] },
 ]
 neo4j = [
     { name = "neo4j" },
@@ -1239,7 +1241,7 @@ requires-dist = [
     { name = "langchain-huggingface", specifier = ">=1.2.2" },
     { name = "langchain-text-splitters", specifier = ">=1.1.2" },
     { name = "langdetect", specifier = ">=1.0.9" },
-    { name = "markitdown", extras = ["pdf", "docx", "pptx", "xlsx"], specifier = ">=0.1.7" },
+    { name = "markitdown", extras = ["pdf", "docx", "pptx", "xlsx"], marker = "extra == 'markitdown'", specifier = ">=0.1.7" },
     { name = "neo4j", marker = "extra == 'neo4j'", specifier = ">=5.0.0" },
     { name = "openai", specifier = ">=1.0.0" },
     { name = "openai", marker = "extra == 'remote'", specifier = ">=1.0.0" },
@@ -1249,7 +1251,7 @@ requires-dist = [
     { name = "voyageai", marker = "extra == 'remote'", specifier = ">=0.1.0" },
     { name = "watchdog", specifier = ">=6.0.0" },
 ]
-provides-extras = ["docling", "neo4j", "remote"]
+provides-extras = ["docling", "markitdown", "neo4j", "remote"]
 
 [[package]]
 name = "knowledge-space"
@@ -1269,6 +1271,9 @@ dependencies = [
 [package.optional-dependencies]
 docling = [
     { name = "knowledge-base", extra = ["docling"] },
+]
+markitdown = [
+    { name = "knowledge-base", extra = ["markitdown"] },
 ]
 neo4j = [
     { name = "knowledge-base", extra = ["neo4j"] },
@@ -1293,6 +1298,7 @@ requires-dist = [
     { name = "knowledge-base", editable = "packages/knowledge-base" },
     { name = "knowledge-base", marker = "extra == 'pymupdf4llm'", editable = "packages/knowledge-base" },
     { name = "knowledge-base", extras = ["docling"], marker = "extra == 'docling'", editable = "packages/knowledge-base" },
+    { name = "knowledge-base", extras = ["markitdown"], marker = "extra == 'markitdown'", editable = "packages/knowledge-base" },
     { name = "knowledge-base", extras = ["neo4j"], marker = "extra == 'neo4j'", editable = "packages/knowledge-base" },
     { name = "mcp", specifier = ">=1.0.0" },
     { name = "mcp-server", editable = "packages/mcp-server" },
@@ -1303,7 +1309,7 @@ requires-dist = [
     { name = "voyageai", marker = "extra == 'remote'", specifier = ">=0.1.0" },
     { name = "watchdog", specifier = ">=6.0.0" },
 ]
-provides-extras = ["remote", "docling", "pymupdf4llm", "neo4j"]
+provides-extras = ["remote", "docling", "markitdown", "pymupdf4llm", "neo4j"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.1.1" }]

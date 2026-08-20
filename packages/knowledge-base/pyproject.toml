@@ -8,9 +8,6 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
-    # [pdf,docx,pptx,xlsx]: il package base di markitdown non legge PDF
-    # (pypdf) né Office — serve l'extra. Niente [all]: tirerebbe docling.
-    "markitdown[pdf,docx,pptx,xlsx]>=0.1.7",
     # Default hardcoded per l'ingestion (estrazione layout molto più
     # fedele di pdfminer: heading/liste reali, niente tabelle fantasma).
     "pymupdf4llm>=0.2.0",
@@ -31,6 +28,11 @@ dependencies = [
 # relativa strategia di ingestion (uv sync --extra <name>).
 docling = [
     "docling>=2.109.0",
+]
+# [pdf,docx,pptx,xlsx]: il package base di markitdown non legge PDF
+# (pypdf) né Office — serve l'extra. Niente [all]: tirerebbe docling.
+markitdown = [
+    "markitdown[pdf,docx,pptx,xlsx]>=0.1.7",
 ]
 # Driver Neo4j per il modulo grafo (ks graph): installato al primo
 # utilizzo (uv sync --extra neo4j).

@@ -471,8 +471,9 @@ class TestCaseInsensitiveExtensions:
 
 
 class TestMissingLibrary:
-    """Feat: docling/pymupdf4llm sono extra opzionali — al primo utilizzo
-    senza la libreria installata l'errore indica il comando di installazione."""
+    """Feat: docling/pymupdf4llm/markitdown sono extra opzionali — al primo
+    utilizzo senza la libreria installata l'errore indica il comando di
+    installazione."""
 
     _DOCLING_KEYS = [
         "docling",
@@ -497,3 +498,12 @@ class TestMissingLibrary:
                 MissingLibraryError, match="uv sync --extra pymupdf4llm"
             ):
                 PyMuPDF4LLMIngestion().convert(pdf)
+
+    def test_markitdown_mancante(self, tmp_path):
+        pptx = tmp_path / "slides.pptx"
+        pptx.write_bytes(b"PK fake pptx")
+        with patch.dict(sys.modules, {"markitdown": None}):
+            with pytest.raises(
+                MissingLibraryError, match="uv sync --extra markitdown"
+            ):
+                MarkItDownIngestion().convert(pptx)

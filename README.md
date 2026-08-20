@@ -21,12 +21,13 @@ uv tool install -e .
 ```
 
 **Librerie di conversione opzionali** (lazy install, al primo utilizzo):
-`docling` non è installata di default (`pymupdf4llm` è la libreria di
-default ed è sempre installata). Per abilitare docling:
+`pymupdf4llm` è la libreria di default ed è sempre installata. `docling`
+e `markitdown` non sono installate di default. Per abilitarle:
 
 ```bash
-uv sync --extra docling
-uv tool install --editable --force --refresh ".[docling,pymupdf4llm]"
+uv sync --extra docling        # profilo ricercatore (PDF/Office complessi, OCR)
+uv sync --extra markitdown     # profilo studente (PPTX, Office, multi-formato light)
+uv tool install --editable --force --refresh ".[docling,pymupdf4llm,markitdown]"
 ```
 
 Se una libreria manca, `ks file add` solleva un errore con il comando
@@ -418,17 +419,17 @@ cascata. `ks config set <chiave> <valore>` scrive nel file giusto
 ### `[ingestion]` — conversione dei file in Markdown
 
 | Chiave | Valori ammessi | Default |
-|---|---|---|---|
+|---|---|---|
 | `library` | `markitdown` · `docling` · `pymupdf4llm` | `pymupdf4llm` |
 | `params` | dict libero (dipende dalla libreria) | `{}` |
 
-`docling` non è installata di default (vedi sezione
+`docling` e `markitdown` non sono installate di default (vedi sezione
 Installazione — lazy install).
 
 ### `[chunking]` — divisione del Markdown in chunk
 
 | Chiave | Valori ammessi | Default |
-|---|---|---|---|
+|---|---|---|
 | `method` | `fixed_size` · `recursive` · `semantic` · `sentence` · `paragraph` · `markdown` | `fixed_size` |
 | `chunk_size` | intero (caratteri) | `2048` |
 | `chunk_overlap` | intero (caratteri) | `64` |
@@ -448,7 +449,7 @@ I metodi:
 ### `[embedding]` — modello di embedding
 
 | Chiave | Valori ammessi | Default |
-|---|---|---|---|
+|---|---|---|
 | `model` | nome dal registry (`ks models list`) | `BAAI/bge-m3` (8192 token, ~2,3GB, multilingua) |
 | `device` | `cpu` · `cuda` · `mps` (default: auto) | — |
 | `api_base` | URL endpoint remoto (solo modelli API) | — |
@@ -457,7 +458,7 @@ I metodi:
 ### `[pre_retrieval]` — espansione delle query (in cascata)
 
 | Chiave | Valori ammessi | Default |
-|---|---|---|---|
+|---|---|---|
 | `stages[].method` | `identity` · `multi_query` · `step_back` · `least_to_most` | `identity` |
 | `stages[].params` | dict libero (es. `model` per gli stadi che usano LLM) | `{}` |
 
@@ -466,7 +467,7 @@ In TOML gli stadi si dichiarano con `[[pre_retrieval.stages]]` ripetuto.
 ### `[retrieval]` — recupero dei chunk
 
 | Chiave | Valori ammessi | Default |
-|---|---|---|---|
+|---|---|---|
 | `method` | `dense` · `sparse` · `hybrid` | `dense` |
 | `query_mode` | `original` · `hyde` | `original` |
 | `top_k` | intero | `10` |
@@ -475,14 +476,14 @@ In TOML gli stadi si dichiarano con `[[pre_retrieval.stages]]` ripetuto.
 ### `[post_retrieval]` — reranking/compression dei risultati
 
 | Chiave | Valori ammessi | Default |
-|---|---|---|---|
+|---|---|---|
 | `method` | `identity` · `relevance` · `mmr` · `cross_encoder` · `llm` · `llm_chain_extract` · `selective_context` | `identity` |
 | `params` | dict libero (es. `threshold`, `model`) | `{}` |
 
 ### `[graph]` — grafo di conoscenza (Neo4j)
 
 | Chiave | Valori ammessi | Default |
-|---|---|---|---|
+|---|---|---|
 | `enabled` | `true` · `false` | `false` |
 | `on_chunk_change` | `eager` · `lazy` | `lazy` |
 | `top_k` | intero | `5` |

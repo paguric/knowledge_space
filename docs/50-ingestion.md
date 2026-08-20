@@ -27,12 +27,12 @@ Nota: il riuso verifica anche l'hash del documento salvato (file manomesso → r
 |---------|---------|---------|-----|---------------|
 | `pymupdf4llm` (**default**) | PDF | consulente | No | hard (sempre installata) |
 | `docling` | PDF, DOCX, PPTX, HTML | ricercatore | Sì | opzionale: `uv sync --extra docling` |
-| `markitdown` | PDF, DOCX, PPTX, XLSX, HTML, TXT, CSV, JSON, XML, MD | studente | No | hard (sempre installata) |
+| `markitdown` | PDF, DOCX, PPTX, XLSX, HTML, TXT, CSV, JSON, XML, MD | studente | No | opzionale: `uv sync --extra markitdown` |
 | `identity` | MD, TXT | tutti | No | hard |
 
-**Lazy install:** `docling` è un **extra opzionale** — non viene installata con il programma. Al primo utilizzo della strategia senza la libreria, l'errore indica il comando esatto: `Libreria 'docling' non installata. Installa con: uv sync --extra docling`.
+**Lazy install:** `docling` e `markitdown` sono **extra opzionali** — non vengono installate con il programma. Al primo utilizzo della strategia senza la libreria, l'errore indica il comando esatto: `Libreria 'docling' non installata. Installa con: uv sync --extra docling` (analogo per markitdown con `uv sync --extra markitdown`).
 
-**PyMuPDF4LLM** (PyMuPDF) è la libreria di default: estrazione fedele del layout (heading, liste, grassetti reali), molto più affidabile di pdfminer sui PDF legali. **MarkItDown** resta installata come alternativa multi-formato. Per documenti complessi con OCR si installa docling e si imposta `[ingestion] library = "docling"`.
+**PyMuPDF4LLM** (PyMuPDF) è la libreria di default: estrazione fedele del layout (heading, liste, grassetti reali), molto più affidabile di pdfminer sui PDF legali. **MarkItDown** è un'alternativa multi-formato da installare esplicitamente. Per documenti complessi con OCR si installa docling e si imposta `[ingestion] library = "docling"`.
 
 | Aspetto | Scelta |
 |---------|--------|
@@ -100,12 +100,12 @@ params.margins = 5
 params.show_progress = false
 ```
 
-**markitdown** (Microsoft, MIT): PPTX, DOCX, PDF, XLSX, XLS, HTML, TXT, CSV, JSON, XML, immagini, audio. Normalizzazione multi-formato light. Dipendenze leggere (mammoth, pdfminer.six). Veloce.
+**markitdown** (Microsoft, MIT): PPTX, DOCX, PDF, XLSX, XLS, HTML, TXT, CSV, JSON, XML, immagini, audio. Normalizzazione multi-formato light. Dipendenze leggere (mammoth, pdfminer.six). Veloce. Extra opzionale: `uv sync --extra markitdown`.
 
 ```toml
 [ingestion]
-library = "pymupdf4llm"
-params.write_images = false
+library = "markitdown"
+params.plugins = []   # percorsi a plugin custom
 ```
 
 **identity**: lettura diretta per MD/TXT, nessuna libreria, copia del testo.

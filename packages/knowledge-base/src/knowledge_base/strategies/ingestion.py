@@ -4,11 +4,11 @@ Ogni strategia incapsula una libreria di conversione e ne espone i parametri
 configurabili via TOML (``[ingestion].params``). I parametri sono passati al
 costruttore e memorizzati nell'istanza; :meth:`convert` riceve solo il path.
 
-Le librerie pesanti (docling) sono importate lazy dentro
-:meth:`convert` e sono **opzionali** (extra uv ``docling``):
-se non installate, al primo utilizzo sollevano un errore chiaro con il
-comando di installazione. ``pymupdf4llm`` è dipendenza hard (default) e
-``markitdown`` resta dipendenza hard come alternativa.
+Le librerie pesanti (docling) e multi-formato (markitdown) sono importate
+lazy dentro :meth:`convert` e sono **opzionali** (extra uv ``docling`` e
+``markitdown``): se non installate, al primo utilizzo sollevano un errore
+chiaro con il comando di installazione. ``pymupdf4llm`` è dipendenza hard
+(default).
 
 Parametro globale ``use_gpu`` (default ``false``): letto da ``params``.
 Docling lo usa per OCR/table model (CUDA); PyMuPDF4LLM e markitdown non
@@ -248,7 +248,9 @@ class MarkItDownIngestion(BaseIngestion):
     """Ingestion via MarkItDown (Microsoft).
 
     Profilo **studente**: slide PPTX, appunti Markdown, documenti Office,
-    formati eterogenei. Leggero e veloce.
+    formati eterogenei. Leggero e veloce. Extra opzionale
+    (``uv sync --extra markitdown``): al primo utilizzo senza la libreria
+    solleva :class:`MissingLibraryError`.
 
     Parametri TOML (in ``[ingestion].params``):
 
@@ -265,7 +267,10 @@ class MarkItDownIngestion(BaseIngestion):
     ]
 
     def _convert(self, source_path: Path) -> str:
-        from markitdown import MarkItDown
+        try:
+            from markitdown import MarkItDown
+        except ImportError as exc:
+            raise MissingLibraryError("markitdown", "markitdown") from exc
 
         if self.params.get("use_gpu", False):
             logger.debug("markitdown ignora use_gpu (nessun beneficio da CUDA)")
