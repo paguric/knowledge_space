@@ -2,6 +2,7 @@
 
 Pipeline di ingestione, indicizzazione e retrieval su documenti. Architettura modulare con strategy pattern per ingestion, chunking, embedding e retrieval.
 
+
 ## Installazione
 
 Il progetto gestisce le dipendenze via `uv`. È necessario installarlo prima di poter procedere con l'installazione:
@@ -20,106 +21,7 @@ uv sync
 uv tool install -e .
 ```
 
-**Librerie di conversione opzionali** (lazy install, al primo utilizzo):
-`pymupdf4llm` è la libreria di default ed è sempre installata. `docling`
-e `markitdown` non sono installate di default. Per abilitarle:
-
-```bash
-uv sync --extra docling        # profilo ricercatore (PDF/Office complessi, OCR)
-uv sync --extra markitdown     # profilo studente (PPTX, Office, multi-formato light)
-uv tool install --editable --force --refresh ".[docling,pymupdf4llm,markitdown]"
-```
-
-Se una libreria manca, `ks file add` solleva un errore con il comando
-esatto da eseguire.
-
-### GPU con docling (opzionale)
-
-Di default il progetto installa **torch CPU-only** (canale
-`download.pytorch.org/whl/cpu`, via `[tool.uv.sources]` in `pyproject.toml`):
-~4 GB in meno di librerie CUDA. Per usare la GPU con docling (OCR, layout,
-tabelle — serve `use_gpu = true` nel TOML `[ingestion].params`):
-
-1. In `pyproject.toml` commenta la riga `torch = { index = "pytorch-cpu" }`
-   e tutta la sezione `[[tool.uv.index]]` (il torch CUDA torna da PyPI).
-2. Sincronizza con docling e reinstalla il tool globale:
-
-```bash
-uv sync --extra docling
-uv tool install --editable --force --refresh ".[docling]"
-systemctl --user restart ks-serve
-```
-
-> Nota: il canale CPU si applica solo se `torch` è dipendenza **diretta**
-> del progetto (per questo sta in `[project.dependencies]` con vincolo
-> `>=2.0`): le source uv non si applicano alle dipendenze transitive
-> (torch arriva da sentence-transformers).
-
-## Aggiornamento
-
-Con il server attivato come **systemd user service** (vedi sotto) bastano 4 comandi:
-
-```bash
-cd knowledge_space
-git pull
-uv sync
-uv tool install --editable --force --refresh .
-systemctl --user restart ks-serve
-```
-
-`uv tool install --refresh` serve solo quando cambiano le dipendenze in
-`pyproject.toml`; `uv sync` basta se è cambiato solo il codice.
-
-Se hai avviato il server a mano con `ks serve`: `pkill -f "ks serve"` e
-rilancialo.
-
-> **Attenzione:** dopo un `ks reindex` (o un cambio di config che riscrive
-> le collection Chroma) riavvia sempre il server: il processo tiene aperti
-> gli handle delle collection e senza riavvio la ricerca può fallire con
-> `[Errno 5] Input/output error`.
-
-## Database a grafo (opzionale, per il modulo Graph)
-
-Il modulo Graph (grafo della conoscenza, `ks graph`) richiede un'istanza
-**Neo4j** (non embedded). L'opzione più semplice è Docker:
-
-```bash
-docker run -d --name neo4j -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/tua-password neo4j:5-community
-```
-
-**Nota:** la password dev'essere lunga almeno 8 caratteri.
-
-- Porta `7687` = protocollo **Bolt** (usato dal programma) · `7474` = browser
-  (http://localhost:7474).
-- Alternative: tarball nativo (neo4j.com), Neo4j Desktop (Windows/macOS),
-  AuraDB cloud.
-
-**Driver Python** (installazione opzionale, come docling — non incluso di
-default):
-
-```bash
-uv sync --extra neo4j
-uv tool install --editable --force --refresh ".[neo4j]"
-systemctl --user restart ks-serve   # se usi il servizio
-```
-
-Se il driver manca, `ks graph` solleva un errore con il comando esatto da
-eseguire.
-
-La connessione si specifica con variabili d'ambiente (nessuna password nei
-file di configurazione):
-
-```bash
-export NEO4J_URI="bolt://localhost:7687"   # default
-export NEO4J_USER="neo4j"                  # default
-export NEO4J_PASSWORD="la-tua-password"
-```
-
-Al primo `ks graph init -w <workspace>` la connessione viene registrata in
-`<workspace>/.knowledge-space/graph/graph.json` (uri e database; la
-password resta solo nelle env var).
-
-## Avvio automatico del server
+### Avvio automatico del server
 
 `ks serve` avvia il server MCP e attiva i watcher filesystem su tutti i workspace
 registrati: qualsiasi modifica al filesystem (file aggiunti, spostati, rimossi)
@@ -165,6 +67,100 @@ systemctl --user stop ks-serve     # ferma
 > **Nota:** `$HOME` in ExecStart si espande nella home dell'utente. La directory
 > del progetto deve essere allineata con il path indicato (modifica il percorso
 > se il repo è altrove).
+
+### Librerie di conversione opzionali:
+
+`pymupdf4llm` è la libreria di default ed è sempre installata. `docling` e `markitdown` non sono installate di default. Per abilitarle:
+
+```bash
+uv sync --extra docling        # profilo ricercatore (PDF/Office complessi, OCR)
+uv sync --extra markitdown     # profilo studente (PPTX, Office, multi-formato light)
+uv tool install --editable --force --refresh ".[docling,pymupdf4llm,markitdown]"
+```
+
+### GPU con docling (opzionale)
+
+Di default il progetto installa **torch CPU-only**:~4 GB in meno di librerie CUDA. Per usare la GPU con Docling serve impostare `use_gpu = true` ne TOML `[ingestion].params`):
+
+1. In `pyproject.toml` commenta la riga `torch = { index = "pytorch-cpu" }`
+   e tutta la sezione `[[tool.uv.index]]` (il torch CUDA torna da PyPI).
+2. Sincronizza con docling e reinstalla il tool globale:
+
+```bash
+uv sync --extra docling
+uv tool install --editable --force --refresh ".[docling]"
+systemctl --user restart ks-serve
+```
+
+> Nota: il canale CPU si applica solo se `torch` è dipendenza **diretta**
+> del progetto (per questo sta in `[project.dependencies]` con vincolo
+> `>=2.0`): le source uv non si applicano alle dipendenze transitive
+> (torch arriva da sentence-transformers).
+
+### Database a grafo (opzionale, per il modulo Graph)
+
+Il modulo Graph (grafo della conoscenza, `ks graph`) richiede un'istanza
+**Neo4j** (non embedded). L'opzione più semplice è Docker:
+
+```bash
+docker run -d --name neo4j -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/tua-password neo4j:5-community
+```
+
+**Nota:** la password dev'essere lunga almeno 8 caratteri.
+
+- Porta `7687` = protocollo **Bolt** (usato dal programma) · `7474` = browser
+  (http://localhost:7474).
+- Alternative: tarball nativo (neo4j.com), Neo4j Desktop (Windows/macOS),
+  AuraDB cloud.
+
+**Driver Python** (installazione opzionale, come docling — non incluso di
+default):
+
+```bash
+uv sync --extra neo4j
+uv tool install --editable --force --refresh ".[neo4j]"
+systemctl --user restart ks-serve   # se usi il servizio
+```
+
+Se il driver manca, `ks graph` solleva un errore con il comando esatto da
+eseguire.
+
+La connessione si specifica con variabili d'ambiente (nessuna password nei
+file di configurazione):
+
+```bash
+export NEO4J_URI="bolt://localhost:7687"   # default
+export NEO4J_USER="neo4j"                  # default
+export NEO4J_PASSWORD="la-tua-password"
+```
+
+Al primo `ks graph init -w <workspace>` la connessione viene registrata in
+`<workspace>/.knowledge-space/graph/graph.json` (uri e database; la
+password resta solo nelle env var).
+
+## Aggiornamento
+
+Con il server attivato come **systemd user service** (vedi sotto) bastano 4 comandi:
+
+```bash
+cd knowledge_space
+git pull
+uv sync
+uv tool install --editable --force --refresh .
+systemctl --user restart ks-serve
+```
+
+`uv tool install --refresh` serve solo quando cambiano le dipendenze in
+`pyproject.toml`; `uv sync` basta se è cambiato solo il codice.
+
+Se hai avviato il server a mano con `ks serve`: `pkill -f "ks serve"` e
+rilancialo.
+
+> **Attenzione:** dopo un `ks reindex` (o un cambio di config che riscrive
+> le collection Chroma) riavvia sempre il server: il processo tiene aperti
+> gli handle delle collection e senza riavvio la ricerca può fallire con
+> `[Errno 5] Input/output error`.
+
 
 ## Client MCP (es. Claude Code)
 
@@ -285,80 +281,6 @@ ks config init                   # Genera defaults.toml template
 ks models list                   # Elenca modelli embedding
 ks models info <name>            # Dettaglio modello
 ```
-
-## Configurazione LLM
-
-Non esiste una sezione `[llm]` globale: **ogni componente** che usa un LLM
-sceglie il proprio modello nel TOML (cascata per-base), nel parametro
-`model` del suo stadio. Tutti i provider sono **endpoint compatibili con
-il formato OpenAI** (una sola implementazione): cambiano solo URL e chiave.
-
-### Provider supportati
-
-| Prefisso | Endpoint | API key / URL |
-|---|---|---|
-| `lm-studio/<modello>` | LM Studio locale | `http://localhost:1234/v1` (override: `LM_STUDIO_BASE_URL`), nessuna chiave |
-| `openai-compatible/<modello>` | qualsiasi endpoint OpenAI-compatibile | `OPENAI_COMPATIBLE_API_KEY` + `OPENAI_COMPATIBLE_BASE_URL` |
-
-`lm-studio/auto` rileva automaticamente il primo modello caricato nel
-server LM Studio. Abbreviazione utile: `local` → `lm-studio/auto`.
-
-### LM Studio (locale)
-
-1. Avvia LM Studio e carica un modello (es. Qwen2.5-7B-Instruct).
-2. Nel server LM Studio: `Settings → Developer` e avvia il server locale
-   (porta 1234 di default).
-3. Configura lo stadio che vuoi nel `defaults.toml` del workspace
-   (o `base.toml` della base):
-
-```toml
-[pre_retrieval]
-stages = [
-  { method = "multi_query", params = { model = "lm-studio/auto", n = 3 } },
-]
-```
-
-### Provider remoto (es. OpenRouter, OpenAI, vLLM)
-
-Ogni endpoint che espone l'API chat completions in formato OpenAI si usa
-col prefisso `openai-compatible/` + due env var:
-
-```bash
-# Esempio OpenRouter
-export OPENAI_COMPATIBLE_BASE_URL="https://openrouter.ai/api/v1"
-export OPENAI_COMPATIBLE_API_KEY="sk-or-..."
-
-# Esempio OpenAI
-export OPENAI_COMPATIBLE_BASE_URL="https://api.openai.com/v1"
-export OPENAI_COMPATIBLE_API_KEY="sk-..."
-```
-
-Poi configura lo stadio nel TOML (il modello è quello dell'endpoint, es.
-`openrouter/deepseek/deepseek-chat` per OpenRouter):
-
-```toml
-[pre_retrieval]
-stages = [
-  { method = "step_back", params = { model = "openai-compatible/openrouter/auto-beta" } },
-]
-```
-
-Il model id inviato all'endpoint è tutto ciò che segue `openai-compatible/`
-(es. `openrouter/auto-beta` per `https://openrouter.ai/openrouter/auto-beta`).
-
-### Verifica
-
-```bash
-ks search -v "la tua query" -w <workspace>   # log: chiamate LLM e stage
-# oppure nei log di servizio/CLI:
-tail -f ~/.local/state/KnowledgeSpace/ks.log
-```
-
-Se la chiave manca, l'errore è esplicito (`MissingAPIKeyError`); se
-l'endpoint non risponde, l'errore indica URL e modello (`LLMConnectionError`).
-Stadi che usano LLM: pre-retrieval `multi_query`, `step_back`,
-`least_to_most`; retrieval con `query_mode = "hyde"`; post-retrieval
-`relevance`/`cross_encoder` (dove configurato).
 
 ## Flag globali
 
@@ -524,24 +446,78 @@ top_k = 5
 extraction_model = "openai-compatible/openrouter/free"
 ```
 
-## Architettura
 
-```
-knowledge_space/
-├── packages/
-│   ├── knowledge-base/     # Libreria pura (modelli, manager, strategy)
-│   └── mcp-server/         # Server MCP (futuro)
-├── src/knowledge_space/    # App layer (CLI, bootstrap, logging)
-└── tests/
+## Configurazione LLM
+
+Non esiste una sezione `[llm]` globale: **ogni componente** che usa un LLM
+sceglie il proprio modello nel TOML (cascata per-base), nel parametro
+`model` del suo stadio. Tutti i provider sono **endpoint compatibili con
+il formato OpenAI** (una sola implementazione): cambiano solo URL e chiave.
+
+### Provider supportati
+
+| Prefisso | Endpoint | API key / URL |
+|---|---|---|
+| `lm-studio/<modello>` | LM Studio locale | `http://localhost:1234/v1` (override: `LM_STUDIO_BASE_URL`), nessuna chiave |
+| `openai-compatible/<modello>` | qualsiasi endpoint OpenAI-compatibile | `OPENAI_COMPATIBLE_API_KEY` + `OPENAI_COMPATIBLE_BASE_URL` |
+
+`lm-studio/auto` rileva automaticamente il primo modello caricato nel
+server LM Studio. Abbreviazione utile: `local` → `lm-studio/auto`.
+
+### LM Studio (locale)
+
+1. Avvia LM Studio e carica un modello (es. Qwen2.5-7B-Instruct).
+2. Nel server LM Studio: `Settings → Developer` e avvia il server locale
+   (porta 1234 di default).
+3. Configura lo stadio che vuoi nel `defaults.toml` del workspace
+   (o `base.toml` della base):
+
+```toml
+[pre_retrieval]
+stages = [
+  { method = "multi_query", params = { model = "lm-studio/auto", n = 3 } },
+]
 ```
 
-## Sviluppo
+### Provider remoto (es. OpenRouter, OpenAI, vLLM)
+
+Ogni endpoint che espone l'API chat completions in formato OpenAI si usa
+col prefisso `openai-compatible/` + due env var:
 
 ```bash
-# Esegui tutti i test
-uv run pytest
+# Esempio OpenRouter
+export OPENAI_COMPATIBLE_BASE_URL="https://openrouter.ai/api/v1"
+export OPENAI_COMPATIBLE_API_KEY="sk-or-..."
 
-# Esegui test specifici
-uv run pytest tests/test_cli.py -v
-uv run pytest packages/knowledge-base/tests/ -v
+# Esempio OpenAI
+export OPENAI_COMPATIBLE_BASE_URL="https://api.openai.com/v1"
+export OPENAI_COMPATIBLE_API_KEY="sk-..."
 ```
+
+Poi configura lo stadio nel TOML (il modello è quello dell'endpoint, es.
+`openrouter/deepseek/deepseek-chat` per OpenRouter):
+
+```toml
+[pre_retrieval]
+stages = [
+  { method = "step_back", params = { model = "openai-compatible/openrouter/auto-beta" } },
+]
+```
+
+Il model id inviato all'endpoint è tutto ciò che segue `openai-compatible/`
+(es. `openrouter/auto-beta` per `https://openrouter.ai/openrouter/auto-beta`).
+
+### Verifica
+
+```bash
+ks search -v "la tua query" -w <workspace>   # log: chiamate LLM e stage
+# oppure nei log di servizio/CLI:
+tail -f ~/.local/state/KnowledgeSpace/ks.log
+```
+
+Se la chiave manca, l'errore è esplicito (`MissingAPIKeyError`); se
+l'endpoint non risponde, l'errore indica URL e modello (`LLMConnectionError`).
+Stadi che usano LLM: pre-retrieval `multi_query`, `step_back`,
+`least_to_most`; retrieval con `query_mode = "hyde"`; post-retrieval
+`relevance`/`cross_encoder` (dove configurato).
+
